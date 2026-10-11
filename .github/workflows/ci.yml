@@ -117,6 +117,9 @@ jobs:
           check 401 "${mcp[@]}" -H 'authorization: Bearer wrong' localhost:3000/mcp/admin
           check 200 "${mcp[@]}" -H 'authorization: Bearer ci' localhost:3000/mcp/admin
           check 401 "${mcp[@]}" localhost:3000/mcp/client
+          # Мок 1С без ONEC_TOKEN закрыт снаружи (случайный токен процесса), но ЛК им пользуется.
+          check 401 localhost:3000/mock-1c/clients
+          check 401 -X POST localhost:3000/mock-1c/_admin/reset
 
       - name: Container log
         if: always()
