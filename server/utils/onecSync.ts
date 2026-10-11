@@ -131,3 +131,26 @@ export function memorySyncStore(): SyncStore & { runs: SyncRun[], cursors: Map<s
     },
   }
 }
+
+/** Хранилище курсоров и журнала в SQLite (server/db/sqlite.ts): переживает перезапуск. */
+export function sqliteSyncStore(db: import('node:sqlite').DatabaseSync): SyncStore {
+  const getCursor = db.prepare('SELECT cursor FROM sync_cursor WHERE flow = ?')
+  const setCursor = db.prepare(`INSERT INTO sync_cursor (flow, cursor, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT (flow) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`)
+  const insertRun = db.prepare(`INSERT INTO sync_run (flow, status, started_at, finished_at, cursor_from, cursor_to, received, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+  const updateRun = db.prepare(`UPDATE sync_run SET status = ?, finished_at = ?, cursor_to = ?, received = ?, error = ?
+    WHERE flow = ? AND started_at = ?`)
+  return {
+    async getCursor(flow) {
+      return (getCursor.get(flow) as { cursor: string } | undefined)?.cursor ?? null
+    },
+    async setCursor(flow, cursor) {
+      setCursor.run(flow, cursor, new Date().toISOString())
+    },
+    async saveRun(run) {
+      const changed = updateRun.run(run.status, run.finishedAt, run.cursorTo, run.received, run.error, run.flow, run.startedAt).changes
+      if (Number(changed) === 0) insertRun.run(run.flow, run.status, run.startedAt, run.finishedAt, run.cursorFrom, run.cursorTo, run.received, run.error)
+    },
+  }
+}

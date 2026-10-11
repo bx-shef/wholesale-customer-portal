@@ -104,7 +104,7 @@ jobs:
       - name: Smoke test container
         shell: bash
         run: |
-          docker run -d --name app --read-only --tmpfs /tmp --cap-drop ALL \
+          docker run -d --name app --read-only --tmpfs /tmp -v data:/data --cap-drop ALL \
             -e MCP_ADMIN_TOKEN=ci -e ONEC_MOCK=true -p 127.0.0.1:3000:3000 wholesale-customer-portal:ci
           for i in $(seq 1 30); do curl -fs localhost:3000/api/health >/dev/null && break; sleep 1; done
           check() { got=$(curl -s -o /dev/null -w '%{http_code}' "${@:2}"); echo "$1 → $got  ${*:2}"; [ "$got" = "$1" ]; }

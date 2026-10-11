@@ -37,6 +37,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
+| `server/db/sqlite.ts`, `server/utils/db.ts` | база SQLite на томе `/data`: курсоры, журнал синхронизации и входов; миграции дописываются в конец |
 | `server/utils/env.ts` | единственное чтение окружения (имена без `NUXT_`) |
 | `server/utils/bearer.ts` | разбор и сверка Bearer за постоянное время |
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |

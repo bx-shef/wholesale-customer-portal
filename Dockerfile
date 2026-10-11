@@ -16,6 +16,10 @@ ENV NITRO_HOST=0.0.0.0
 # Файлы — пользователю node. Базу справки Nuxt Content пишет при старте в /tmp
 # (nuxt.config.ts → content.database): в проде контейнер read_only, /tmp — tmpfs.
 COPY --from=build --chown=node:node /app/.output ./.output
+# База SQLite (server/db/sqlite.ts) — на томе /data. Каталог создаётся в образе с владельцем node:
+# новый именованный том docker наполняет из образа вместе с правами, иначе он принадлежал бы root.
+RUN mkdir -p /data && chown node:node /data
+ENV DATA_DIR=/data
 USER node
 EXPOSE 3000
 LABEL org.opencontainers.image.source=https://github.com/bx-shef/wholesale-customer-portal
