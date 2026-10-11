@@ -1,0 +1,10 @@
+# Локальная сборка из исходников. Переменные — в .env (шаблон .env.example).
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      # Только loopback: Docker обходит firewalld, а HTTPS и доступ снаружи даёт обратный прокси
+      # на этом же сервере (docs/DEPLOY.md).
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
