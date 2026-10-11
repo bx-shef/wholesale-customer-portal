@@ -4,7 +4,10 @@
 
 ## Документация
 
-- [docs/project.md](docs/project.md) — описание проекта, архитектура, план работ, открытые вопросы.
+- [docs/project.md](docs/project.md) — описание проекта коротко.
+- [docs/spec.md](docs/spec.md) — полное техническое описание: экраны, доступ, обмены, MCP, моки, ИИ, доставка, UX, риски.
+- [docs/plan.md](docs/plan.md) — план работ по этапам с задачами.
+- [docs/START-PROMPT.md](docs/START-PROMPT.md) — стартовый промпт для новой сессии разработки.
 - [docs/onec-contract.md](docs/onec-contract.md) — задание программисту 1С (HTTP-контракт; в прототипе — мок).
 - [docs/related-repos.md](docs/related-repos.md) — связанные репозитории: что берём, зачем, как использовать, как следить за изменениями.
 - [docs/upstream.lock.json](docs/upstream.lock.json) — разобранные версии связанных репозиториев; проверка — `.github/workflows/upstream-watch.yml`.
