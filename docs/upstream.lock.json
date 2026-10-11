@@ -1,0 +1,27 @@
+{
+  "reviewed": "2026-10-11",
+  "repos": [
+    { "repo": "bx-shef/invoice-from-tasks", "branch": "main", "sha": "193cd785b3ef7339684155dd6945e5242ef194c1", "date": "2026-10-09",
+      "watch": ["docs/AGENT_RULES.md", "docs/REPO_SETUP_CHECKLIST.md", ".github/", ".claude/", "server/utils/", "server/middleware/", "shared/domain/", "app/composables/", "app/pages/uf/", "Dockerfile", "Makefile", "docker-compose.prod.yml"] },
+    { "repo": "bx-shef/skills-site", "branch": "main", "sha": "a2884d07c0d8a11d7554c19003f45ad7afc4a785", "date": "2026-10-02",
+      "watch": ["app/app.vue", "app/assets/css/", "app/components/", "server/api/assistant.post.ts", "server/utils/chat-config.ts", "Dockerfile", "docker-compose.prod.yml", "nuxt.config.ts", "package.json"] },
+    { "repo": "bx-shef/toolsai", "branch": "main", "sha": "698296473be1da1a13a05dac531135388f56f94d", "date": "2026-10-11",
+      "watch": ["CHANGELOG.md", "docs/private/agent-rules.md", ".github/", ".claude/skills/", "lib/access/", "docker/", "tools/kb-build.sh"] },
+    { "repo": "bx-shef/toolsai-mp3-txt", "branch": "main", "sha": "dba125f5c827dde3e20ab4a9996352df99db9d0c", "date": "2026-10-11",
+      "watch": ["deploy/bitrixvm/", "docs/DEPLOY_BITRIXVM.md", "docker-compose.yml", "docs/CONTRACT.md", "tests/test_deploy_script.py", "tests/test_makefile.py"] },
+    { "repo": "adminsite-standartnoby/base", "branch": "main", "sha": "5b2c34e6c6feb8f0668e179e4e08e7b778508218", "date": "2026-10-08",
+      "watch": ["docs/deploy.md", "docs/infra/", ".github/workflows/", "scripts/", ".gitignore"] },
+    { "repo": "bx-shef/haschangefiles", "branch": "main", "sha": "f4ef7e60ec08303f303de010d45676e1c4ae4d25", "date": "2026-09-29",
+      "watch": ["CHANGELOG.md", "cli/", "docs/"] },
+    { "repo": "bx-shef/insync", "branch": "main", "sha": "6c7c288c466c7cf4bdfebfb42932c8f42ea2199a", "date": "2026-10-11",
+      "watch": ["CHANGELOG.md", "lib/sync/", "lib/api/", "docs/"] },
+    { "repo": "bx-shef/currency", "branch": "main", "sha": "24022705102bce2bb6e007d194d3fb9f97252ada", "date": "2026-09-29",
+      "watch": ["CHANGELOG.md", "lib/sync/", "lib/main/"] },
+    { "repo": "bx-shef/ai-price-import", "branch": "main", "sha": "29176bd7c90035d230076a1e631c28cf55a70c60", "date": "2026-09-13",
+      "watch": ["server/utils/textExtract.ts", "server/utils/crmWrite.ts", "server/agent/", "app/composables/useFeedback.ts", "app/components/FeedbackWidget.vue", "server/api/feedback.post.ts"] },
+    { "repo": "bx-shef/skills-standard", "branch": "main", "sha": "d76eefff09a7e128da41d5e33f8cd5eed10ef371", "date": "2026-10-02",
+      "watch": ["STANDARD.md", "METHOD.md", "feedback/", "bxshef/CHANGELOG.md", "template/skills/"] },
+    { "repo": "bitrix-tools/env-docker", "branch": "main", "sha": "a697ddb9a6c3bac3015e0eedbac7be6fe47bcc2c", "date": "2026-10-10",
+      "watch": ["docker-compose.yml", "confs/", "README.md"] }
+  ]
+}
