@@ -33,6 +33,8 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/services/b24Access.ts` | доступ в ЛК поверх CRM: контакт по телефону/email, «Доступ в ЛК», компания с GUID 1С |
 | `server/utils/login.ts`, `session.ts`, `accessKeys.ts`, `clientSession.ts` | вход с лимитом и журналом, подписанная сессия, ключи (scrypt), перепроверка ключа в CRM |
 | `server/utils/b24.ts` | B24Hook по `B24_WEBHOOK_URL` (только https) |
+| `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
+| `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
 | `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
 | `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |

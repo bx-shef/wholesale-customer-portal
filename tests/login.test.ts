@@ -25,7 +25,7 @@ describe('вход', () => {
   let db: DatabaseSync
   let journal: ReturnType<typeof sqliteLoginJournal>
   const rec = (over: Partial<AccessRecord> = {}): AccessRecord => ({ id: 11, contactId: 5, companyId: 7, keyHash: hashAccessKey(KEY), status: 'active', expiresAt: null, ...over })
-  const company: CompanyInfo = { id: 7, title: 'ООО «Клиент»', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d' }
+  const company: CompanyInfo = { id: 7, title: 'ООО «Клиент»', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d', assignedById: 3 }
   const contacts = { '+375291234567': [5] }
 
   beforeEach(() => {
@@ -89,7 +89,7 @@ describe('вход', () => {
 describe('выдача ключа', () => {
   it('ключ — только контакту этой компании и только компании с GUID 1С', async () => {
     const { issueAccessKey } = await import('../server/utils/accessAdmin')
-    const company: CompanyInfo = { id: 7, title: 'x', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d' }
+    const company: CompanyInfo = { id: 7, title: 'x', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d', assignedById: null }
     let stored = ''
     const dir = { ...directory([], [company], {}), upsertAccess: async (_c: number, _co: number, hash: string) => { stored = hash; return 33 } }
     expect(await issueAccessKey({ ...dir, contactInCompany: async () => false }, { contactId: 5, companyId: 7 })).toEqual({ ok: false, error: 'contact_not_in_company' })

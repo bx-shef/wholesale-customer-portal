@@ -26,6 +26,8 @@ export interface CompanyInfo {
   id: number
   title: string
   onecGuid: string | null
+  /** Ответственный за компанию — менеджер клиента в профиле ЛК. */
+  assignedById: number | null
 }
 
 export interface AccessDirectory {
@@ -135,7 +137,7 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
         const { item } = await call('crm.item.get', { entityTypeId: 4, id }) as { item: Record<string, unknown> }
         if (!item) return null
         const guid = item[m.companyGuid]
-        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: guid ? String(guid) : null }
+        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: guid ? String(guid) : null, assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
       }
       catch {
         return null

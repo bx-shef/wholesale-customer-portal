@@ -27,11 +27,12 @@
 | `crm.category.add` | `shared/b24Setup.ts` | вебхук | 📄 | воронка сделок «Заявки ЛК», `entityTypeId: 2` |
 | `crm.item.fields` | `server/services/b24Access.ts` | вебхук | 📄 | ключи UF в `crm.item.*` — camelCase, правило не описано: ищем по исходному коду поля |
 | `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | вебхук | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект |
-| `crm.item.list` | `server/services/b24Access.ts` | вебхук | 📄 | «Доступ в ЛК» по одному `contactId`: оператор «в списке» не описан; результат перепроверяем |
+| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts` | вебхук | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по `UF_CRM_1C_GUID`; результат перепроверяем |
 | `crm.item.get` | `server/services/b24Access.ts` | вебхук | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID` |
-| `crm.item.add` | `server/services/b24Access.ts` | вебхук | 📄 | новая запись доступа с `contactId`, `companyId` |
+| `crm.item.add` | `server/services/b24Access.ts`, `b24Companies.ts` | вебхук | 📄 | новая запись доступа с `contactId`, `companyId`; новая компания из 1С |
 | `crm.item.update` | `server/services/b24Access.ts` | вебхук | 📄 | перевыпуск, отзыв, последний вход |
 | `crm.contact.company.items.get` | `server/services/b24Access.ts` | вебхук | 📄 | ключ выдаётся только контакту, привязанному к компании |
+| `user.get` | `server/services/b24Companies.ts` | вебхук | 📄 | ответственный по email менеджера из 1С; результат перепроверяем — фильтр могут проигнорировать |
 
 ## Что вебхуком не делается
 

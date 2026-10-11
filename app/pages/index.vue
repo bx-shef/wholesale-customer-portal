@@ -17,7 +17,10 @@ async function logout() {
   <div>
     <B24Header :title="me?.company.title || 'Личный кабинет'">
       <template #right>
-        <B24Button v-if="me" color="air-tertiary" label="Выйти" @click="logout" />
+        <div v-if="me" class="flex gap-2">
+          <B24Button to="/profile" color="air-tertiary" label="Профиль" />
+          <B24Button color="air-tertiary" label="Выйти" @click="logout" />
+        </div>
       </template>
     </B24Header>
     <B24Main>
