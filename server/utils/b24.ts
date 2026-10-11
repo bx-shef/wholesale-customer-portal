@@ -15,8 +15,8 @@ export function useB24Call(): B24Call {
   const b24 = hook.b24
   return async (method, params) => {
     const response = await b24.actions.v2.call.make({ method, params })
-    // Текст ошибки портала — в лог сервера, наружу не уходит (там могут быть детали CRM).
-    if (!response.isSuccess) throw new Error(`B24 ${method}: ${response.getErrorMessages().join('; ')}`)
+    // Текст ошибки портала — в лог сервера, наружу не уходит. Адрес вебхука — секрет: вырезаем.
+    if (!response.isSuccess) throw new Error(`B24 ${method}: ${response.getErrorMessages().join('; ').replaceAll(url, '<webhook>')}`)
     return response.getData()!.result
   }
 }

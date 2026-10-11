@@ -19,16 +19,16 @@
 | --- | --- | --- | --- | --- |
 | `crm.company.userfield.list` | `scripts/b24-setup.ts` | вебхук | 📄 | ищем `UF_CRM_1C_GUID` |
 | `crm.company.userfield.add` | `shared/b24Setup.ts` | вебхук | 📄 | `FIELD_NAME` без префикса `UF_CRM_` — портал добавляет его сам |
-| `crm.type.list` | `scripts/b24-setup.ts` | вебхук | 📄 | ответ `result.types[]`; `id` типа ≠ `entityTypeId` |
+| `crm.type.list` | `scripts/b24-setup.ts`, `server/services/b24Access.ts` | вебхук | 📄 | ответ `result.types[]`; `id` типа ≠ `entityTypeId` |
 | `crm.type.add` | `shared/b24Setup.ts` | вебхук | 📄 | «Доступ в ЛК», «Рейсы» |
 | `userfieldconfig.list` | `scripts/b24-setup.ts` | вебхук | 📄 | `entityId` смарт-процесса — `CRM_<id типа>` |
 | `userfieldconfig.add` | `shared/b24Setup.ts` | вебхук | 📄 | код поля `UF_CRM_<id типа>_<POSTFIX>` |
 | `crm.category.list` | `scripts/b24-setup.ts` | вебхук | 📄 | ответ `result.categories[]` |
 | `crm.category.add` | `shared/b24Setup.ts` | вебхук | 📄 | воронка сделок «Заявки ЛК», `entityTypeId: 2` |
 | `crm.item.fields` | `server/services/b24Access.ts` | вебхук | 📄 | ключи UF в `crm.item.*` — camelCase, правило не описано: ищем по исходному коду поля |
-| `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | вебхук | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект |
+| `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | вебхук | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект; телефон шлём в двух записях (с «+» и без) — как CRM хранит «+», не описано |
 | `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts` | вебхук | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по `UF_CRM_1C_GUID`; результат перепроверяем |
-| `crm.item.get` | `server/services/b24Access.ts` | вебхук | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID` |
+| `crm.item.get` | `server/services/b24Access.ts` | вебхук | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID`. «Нет записи» — только NOT_FOUND; прочие сбои пробрасываются (иначе простой CRM = отзыв ключа) |
 | `crm.item.add` | `server/services/b24Access.ts`, `b24Companies.ts` | вебхук | 📄 | новая запись доступа с `contactId`, `companyId`; новая компания из 1С |
 | `crm.item.update` | `server/services/b24Access.ts` | вебхук | 📄 | перевыпуск, отзыв, последний вход |
 | `crm.contact.company.items.get` | `server/services/b24Access.ts` | вебхук | 📄 | ключ выдаётся только контакту, привязанному к компании |

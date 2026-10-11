@@ -49,10 +49,16 @@ export function openDatabase(path: string): DatabaseSync {
 }
 
 export function migrate(db: DatabaseSync): number {
-  const { user_version: current } = db.prepare('PRAGMA user_version').get() as { user_version: number }
-  for (let v = current; v < MIGRATIONS.length; v++) {
-    db.exec('BEGIN')
+  const version = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+  for (;;) {
+    // IMMEDIATE + перечитать версию внутри: два процесса на старте не применят миграцию дважды.
+    db.exec('BEGIN IMMEDIATE')
     try {
+      const v = version()
+      if (v >= MIGRATIONS.length) {
+        db.exec('COMMIT')
+        return MIGRATIONS.length
+      }
       db.exec(MIGRATIONS[v]!)
       db.exec(`PRAGMA user_version = ${v + 1}`)
       db.exec('COMMIT')
@@ -62,5 +68,4 @@ export function migrate(db: DatabaseSync): number {
       throw e
     }
   }
-  return MIGRATIONS.length
 }

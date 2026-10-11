@@ -15,6 +15,8 @@ export interface SessionClaims {
   companyId: number
   /** Элемент «Доступ в ЛК»: по нему сверяется, не отозван ли ключ. */
   accessId: number
+  /** Отпечаток хэша ключа (keyFingerprint): перевыпуск ключа закрывает старые сессии. */
+  kf: string
   iat: number
   exp: number
 }
@@ -41,7 +43,7 @@ export function verifySession(token: string | undefined, secret: string, nowSec 
   try {
     const claims = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString()) as SessionClaims
     const ints = [claims.contactId, claims.companyId, claims.accessId, claims.iat, claims.exp]
-    if (!ints.every(v => Number.isInteger(v) && v > 0)) return null
+    if (!ints.every(v => Number.isInteger(v) && v > 0) || typeof claims.kf !== 'string' || claims.kf.length === 0) return null
     return claims.exp > nowSec ? claims : null
   }
   catch {

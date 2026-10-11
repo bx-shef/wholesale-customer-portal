@@ -32,6 +32,9 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента (cookie или тот же токен Bearer) |
 | `server/services/b24Access.ts` | доступ в ЛК поверх CRM: контакт по телефону/email, «Доступ в ЛК», компания с GUID 1С |
 | `server/utils/login.ts`, `session.ts`, `accessKeys.ts`, `clientSession.ts` | вход с лимитом и журналом, подписанная сессия, ключи (scrypt), перепроверка ключа в CRM |
+| `server/api/auth/{login,logout,me}`, `server/api/profile.get.ts` | вход, выход, кто вошёл, профиль |
+| `server/utils/clientIp.ts` | адрес клиента для лимита: правый в `X-Forwarded-For` |
+| `server/tasks/maintenance/prune.ts` | очистка журналов старше 90 дней |
 | `server/utils/b24.ts` | B24Hook по `B24_WEBHOOK_URL` (только https) |
 | `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |

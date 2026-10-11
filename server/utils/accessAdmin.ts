@@ -23,6 +23,6 @@ export async function issueAccessKey(
   if (!company?.onecGuid) return { ok: false, error: 'company_without_guid' }
   const key = generateAccessKey()
   const expiresAt = input.ttlDays ? new Date(now.getTime() + input.ttlDays * 86_400_000) : null
-  const accessId = await dir.upsertAccess(input.contactId, input.companyId, hashAccessKey(key), expiresAt)
+  const accessId = await dir.upsertAccess(input.contactId, input.companyId, await hashAccessKey(key), expiresAt)
   return { ok: true, accessId, key, expiresAt: expiresAt?.toISOString() ?? null }
 }

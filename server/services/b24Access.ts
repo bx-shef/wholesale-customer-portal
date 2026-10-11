@@ -43,6 +43,14 @@ export interface AccessDirectory {
   contactInCompany(contactId: number, companyId: number): Promise<boolean>
 }
 
+/**
+ * «Записи нет» — только ответ портала NOT_FOUND. Любой другой сбой (сеть, 5xx, лимит) —
+ * исключение: иначе простой CRM выглядел бы как отозванный ключ и разлогинивал всех.
+ */
+export function isNotFound(e: unknown): boolean {
+  return /not.?found|не найден/i.test((e as Error)?.message ?? '')
+}
+
 export const ACCESS_STATUS = { active: 'active', revoked: 'revoked' } as const
 const ACCESS_TITLE = SMART_PROCESSES.find(sp => sp.title === 'Доступ в ЛК')!.title
 const MAX_RECORDS = 20
@@ -101,7 +109,9 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
 
   return {
     async findContactIds(login) {
-      const result = await call('crm.duplicate.findbycomm', { entity_type: 'CONTACT', type: login.kind, values: [login.value] }) as { CONTACT?: number[] } | []
+      // Телефон — в обеих записях: как CRM хранит «+», документация метода не уточняет.
+      const values = login.kind === 'PHONE' ? [login.value, `+${login.value}`] : [login.value]
+      const result = await call('crm.duplicate.findbycomm', { entity_type: 'CONTACT', type: login.kind, values }) as { CONTACT?: number[] } | []
       // Пустой результат REST отдаёт пустым массивом, а не объектом.
       return Array.isArray(result) ? [] : (result.CONTACT ?? []).map(Number).slice(0, MAX_RECORDS)
     },
@@ -126,8 +136,9 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
         const { item } = await call('crm.item.get', { entityTypeId: m.entityTypeId, id }) as { item: Record<string, unknown> }
         return item ? toRecord(m, item) : null
       }
-      catch {
-        return null
+      catch (e) {
+        if (isNotFound(e)) return null
+        throw e
       }
     },
 
@@ -139,8 +150,9 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
         const guid = item[m.companyGuid]
         return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: guid ? String(guid) : null, assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
       }
-      catch {
-        return null
+      catch (e) {
+        if (isNotFound(e)) return null
+        throw e
       }
     },
 

@@ -66,3 +66,11 @@ describe('профиль', () => {
     expect(broken.manager?.name).toBe('Анна Иванова')
   })
 })
+
+describe('профиль — ошибки', () => {
+  it('компании нет — 404, а не 500', async () => {
+    const { loadProfile } = await import('../server/utils/profile')
+    const e = await loadProfile(7, { directory: { getCompany: async () => null } as never, call: async () => [], onec: () => ({}) as never }).catch((x: unknown) => x)
+    expect(e).toMatchObject({ statusCode: 404 })
+  })
+})

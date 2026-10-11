@@ -1,6 +1,7 @@
 /**
  * Логин сотрудника клиента — телефон или email контакта компании в CRM (docs/spec.md §3).
- * Нормализуем до поиска: телефон — только цифры (с ведущим «+»), email — в нижнем регистре.
+ * Нормализуем до поиска: телефон — только цифры (без «+»: «+375…» и «375…» — один логин и один
+ * лимит попыток), email — в нижнем регистре.
  * Неразборчивое — null, до CRM такой запрос не доходит.
  */
 export type LoginKind = 'PHONE' | 'EMAIL'
@@ -19,5 +20,5 @@ export function normalizeLogin(raw: string): NormalizedLogin | null {
   }
   const digits = value.replace(/[\s()\-.]/g, '')
   if (!/^\+?\d{7,15}$/.test(digits)) return null
-  return { kind: 'PHONE', value: digits }
+  return { kind: 'PHONE', value: digits.replace(/^\+/, '') }
 }

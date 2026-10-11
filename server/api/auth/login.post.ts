@@ -5,17 +5,19 @@ export default defineEventHandler(async (event) => {
   if (env.sessionSecret.length < 32) throw createError({ statusCode: 503, message: 'Login is not configured: SESSION_SECRET' })
   // Только JSON: форма с чужого сайта (text/plain, urlencoded) сюда не дойдёт без CORS-предзапроса.
   if (!getRequestHeader(event, 'content-type')?.startsWith('application/json')) throw createError({ statusCode: 415 })
+  // Логин и ключ — пара коротких строк; большое тело не разбираем.
+  if (Number(getRequestHeader(event, 'content-length') ?? 0) > 4096) throw createError({ statusCode: 413 })
   const body: { login?: unknown, key?: unknown } = await readBody(event).catch(() => ({})) ?? {}
-  const ip = getRequestIP(event, { xForwardedFor: env.trustProxy }) ?? 'unknown'
+  const ip = clientIp(getRequestHeader(event, 'x-forwarded-for'), event.node.req.socket.remoteAddress, env.trustProxy)
 
-  const result = await login({ login: body.login, key: body.key, ip }, { directory: useAccessDirectory(), journal: sqliteLoginJournal(useDb()) })
+  const result = await login({ login: body.login, key: body.key, ip }, { directory: useAccessDirectory(), journal: sqliteLoginJournal(useDb()), secret: env.sessionSecret })
   if (!result.ok) {
     const message = result.status === 429 ? 'Слишком много попыток. Попробуйте через 15 минут.'
       : result.status === 503 ? 'Вход временно недоступен. Попробуйте позже.'
         : 'Неверный логин или ключ доступа.'
     throw createError({ statusCode: result.status, message: message })
   }
-  setCookie(event, SESSION_COOKIE, signSession({ contactId: result.contactId, companyId: result.companyId, accessId: result.accessId }, env.sessionSecret), {
+  setCookie(event, SESSION_COOKIE, signSession({ contactId: result.contactId, companyId: result.companyId, accessId: result.accessId, kf: result.kf }, env.sessionSecret), {
     httpOnly: true,
     secure: !import.meta.dev,
     sameSite: 'lax',

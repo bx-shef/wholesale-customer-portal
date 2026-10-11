@@ -3,7 +3,8 @@
  * `b24_upsert_company`). Компанию заводят в 1С; ЛК создаёт или обновляет её в Б24 по
  * `UF_CRM_1C_GUID` — идемпотентно: повторная синхронизация того же клиента ничего не плодит.
  *
- * Ответственный — сотрудник портала с email менеджера из 1С; не нашли — поле не трогаем.
+ * Ответственный — сотрудник портала с email менеджера из 1С; не нашли — поле не трогаем
+ * (прежнего ответственного не снимаем: пустой email в 1С не повод оставить клиента без менеджера).
  * Пометку удаления в 1С (`deleted`) в CRM не переносим: удалять компании поставщика ЛК не вправе
  * (docs/AGENT_RULES.md §5.8), такая компания просто перестаёт обновляться.
  */
@@ -47,12 +48,14 @@ export function createCompanySync(call: B24Call) {
       const managers = new Map<string, number | null>()
       const summary: UpsertSummary = { created: 0, updated: 0, skippedDeleted: 0 }
       for (const client of clients) {
-        const { items } = await call('crm.item.list', { entityTypeId: 4, filter: { [guid]: client.guid }, select: ['id', guid] }) as { items: Record<string, unknown>[] }
-        const existing = items.filter(i => String(i[guid] ?? '').toLowerCase() === client.guid.toLowerCase())
+        // Удалённых в 1С не трогаем — и REST на них не тратим.
         if (client.deleted) {
           summary.skippedDeleted++
           continue
         }
+        const { items } = await call('crm.item.list', { entityTypeId: 4, filter: { [guid]: client.guid }, select: ['id', guid] }) as { items: Record<string, unknown>[] }
+        const existing = items.filter(i => String(i[guid] ?? '').toLowerCase() === client.guid.toLowerCase())
+        if (existing.length > 1) console.warn(`[sync:clients] ${existing.length} companies share 1C GUID ${client.guid}; updating id ${existing[0]!.id}`)
         const assignedById = await userIdByEmail(client.managerEmail, managers)
         const fields: Record<string, unknown> = {
           title: client.name,

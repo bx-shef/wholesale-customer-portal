@@ -44,7 +44,7 @@ export default defineNuxtConfig({
     preset: 'node-server',
     // Обмены по расписанию (docs/spec.md §4); задача сама молчит без B24_WEBHOOK_URL.
     experimental: { tasks: true },
-    scheduledTasks: { '*/10 * * * *': ['sync:companies'] },
+    scheduledTasks: { '*/10 * * * *': ['sync:companies'], '17 3 * * *': ['maintenance:prune'] },
     routeRules: { '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } } },
   },
 

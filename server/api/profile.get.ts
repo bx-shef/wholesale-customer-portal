@@ -2,5 +2,12 @@
 export default defineEventHandler(async (event) => {
   const session = await resolveClientSession(event)
   if (!session) throw createError({ statusCode: 401 })
-  return loadProfile(session.companyId, { directory: useAccessDirectory(), call: useB24Call(), onec: useOnec })
+  try {
+    return await loadProfile(session.companyId, { directory: useAccessDirectory(), call: useB24Call(), onec: useOnec })
+  }
+  catch (e) {
+    if ((e as { statusCode?: number }).statusCode === 404) throw createError({ statusCode: 404, message: 'Компания не найдена' })
+    console.error(`[profile] ${(e as Error).message}`)
+    throw createError({ statusCode: 503, message: 'Профиль временно недоступен' })
+  }
 })

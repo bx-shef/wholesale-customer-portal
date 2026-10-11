@@ -16,8 +16,9 @@ export async function loadProfile(
   companyId: number,
   deps: { directory: AccessDirectory, call: B24Call, onec: () => OnecClient },
 ): Promise<Profile> {
+  // Компании нет — 404 (удалили или объединили в CRM); сбой CRM пробрасывается и станет 503.
   const company = await deps.directory.getCompany(companyId)
-  if (!company) throw new Error(`Company ${companyId} not found`)
+  if (!company) throw Object.assign(new Error('Компания не найдена'), { statusCode: 404 })
 
   // Договор и менеджер — не обязательны для показа профиля: сбой одного не прячет остальное.
   const contract = company.onecGuid
