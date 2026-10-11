@@ -1,0 +1,61 @@
+# Следит за связанными репозиториями (docs/related-repos.md).
+# Сравнивает последний коммит ветки с SHA из docs/upstream.lock.json и
+# открывает/обновляет issue со списком изменений в отслеживаемых путях.
+# Для приватных репозиториев нужен секрет UPSTREAM_TOKEN (fine-grained PAT, Contents: read).
+name: upstream-watch
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # понедельник, 09:17 по Минску
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, SHA как в ci.yml
+
+      - name: Собрать изменения
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          out=report.md
+          : > "$out"
+          jq -c '.repos[]' docs/upstream.lock.json | while read -r r; do
+            repo=$(jq -r .repo <<<"$r"); branch=$(jq -r .branch <<<"$r"); sha=$(jq -r .sha <<<"$r")
+            if ! cmp=$(gh api "repos/$repo/compare/$sha...$branch" 2>/dev/null); then
+              echo "### $repo — нет доступа (проверьте UPSTREAM_TOKEN)" >> "$out"; echo >> "$out"; continue
+            fi
+            ahead=$(jq -r .ahead_by <<<"$cmp")
+            [ "$ahead" = "0" ] && continue
+            head=$(jq -r '.commits[-1].sha' <<<"$cmp")
+            files=$(jq -r --argjson w "$(jq -c .watch <<<"$r")" \
+              '[.files[].filename | select(. as $f | any($w[]; . as $p | $f | startswith($p)))] | unique | .[]' <<<"$cmp")
+            {
+              echo "### [$repo](https://github.com/$repo/compare/$sha...$head) — новых коммитов: $ahead"
+              jq -r '.commits[] | "- `\(.sha[0:7])` \(.commit.message | split("\n")[0])"' <<<"$cmp" | tail -n 20
+              if [ -n "$files" ]; then
+                echo; echo "Изменены отслеживаемые пути:"; sed 's/^/- `/; s/$/`/' <<<"$files"
+              else
+                echo; echo "Отслеживаемые пути не изменены — можно просто обновить SHA в замке."
+              fi
+              echo
+            } >> "$out"
+          done
+          echo "has_changes=$([ -s "$out" ] && echo yes || echo no)" >> "$GITHUB_ENV"
+
+      - name: Открыть или обновить issue
+        if: env.has_changes == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="Изменения в связанных репозиториях"
+          { echo "Проверка $(date -u +%Y-%m-%d). Разбор: docs/related-repos.md → «Как следить за изменениями»."; echo; cat report.md; } > body.md
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number')
+          if [ -n "$num" ]; then gh issue edit "$num" --body-file body.md; else gh issue create --title "$title" --body-file body.md; fi

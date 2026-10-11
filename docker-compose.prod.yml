@@ -1,0 +1,56 @@
+# Стенд за общим nginx-proxy + acme-companion (docs/DEPLOY.md, таргет 1; схема invoice-from-tasks
+# и client-bank-alfa-by). Требует на хосте:
+#   - docker-сеть proxy-net и nginx-proxy + acme-companion (один на сервер);
+#   - Watchtower с --label-enable — один на сервер, второй не поднимать;
+#   - .env рядом с этим файлом (шаблон .env.example).
+# Наружу контейнер выставляет nginx-proxy по VIRTUAL_HOST — порта на хосте нет.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+    compress: "true"
+
+services:
+  app:
+    logging: *default-logging
+    image: ghcr.io/bx-shef/wholesale-customer-portal:latest
+    container_name: wholesale-customer-portal
+    expose:
+      - "3000"
+    env_file: .env
+    environment:
+      # ⚠ DNS A-запись DOMAIN должна указывать на сервер ДО подъёма, иначе сертификат не выпустится.
+      VIRTUAL_HOST: ${DOMAIN:?set DOMAIN}
+      VIRTUAL_PORT: 3000
+      LETSENCRYPT_HOST: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
+      TRUST_PROXY: "1"
+    restart: unless-stopped
+    # Усиление — как в bx-shef/toolsai-mp3-txt.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    healthcheck:
+      # В node:22-slim нет curl — проверяем самим node; 127.0.0.1, а не localhost (::1).
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - proxy-net
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      # Node закрывает простаивающие соединения через 5 с, nginx-proxy держит их до 60 с: запрос
+      # в закрытое соединение — 502, а Битрикс24 открывает встройку POST-ом (замер invoice-from-tasks).
+      - "com.github.nginx-proxy.nginx-proxy.keepalive=disabled"
+
+networks:
+  proxy-net:
+    external: true

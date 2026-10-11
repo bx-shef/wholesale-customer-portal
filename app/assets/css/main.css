@@ -1,0 +1,3 @@
+/* Tailwind и Bitrix24 UI — база. Порядок как в bx-shef/skills-site: сначала база, потом свои слои. */
+@import "tailwindcss";
+@import "@bitrix24/b24ui-nuxt";
