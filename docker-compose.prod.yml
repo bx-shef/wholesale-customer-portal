@@ -32,6 +32,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # Курсоры синхронизации с 1С и журнал входов (SQLite). Watchtower пересоздаёт контейнер
+      # на каждом выкате — без тома полная пересинхронизация и потеря журнала.
+      - data:/data
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -50,6 +54,9 @@ services:
       # Node закрывает простаивающие соединения через 5 с, nginx-proxy держит их до 60 с: запрос
       # в закрытое соединение — 502, а Битрикс24 открывает встройку POST-ом (замер invoice-from-tasks).
       - "com.github.nginx-proxy.nginx-proxy.keepalive=disabled"
+
+volumes:
+  data:
 
 networks:
   proxy-net:

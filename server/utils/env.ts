@@ -17,6 +17,10 @@ export interface ServerEnv {
   sessionSecret: string
   mcpAdminToken: string
   commitSha: string
+  /** Каталог базы SQLite; в проде — том `/data`. */
+  dataDir: string
+  /** За обратным прокси (nginx-proxy): адрес клиента берём из X-Forwarded-For — для лимита входа. */
+  trustProxy: boolean
 }
 
 export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -31,5 +35,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     sessionSecret: get('SESSION_SECRET'),
     mcpAdminToken: get('MCP_ADMIN_TOKEN'),
     commitSha: get('COMMIT_SHA'),
+    dataDir: get('DATA_DIR') || '.data',
+    trustProxy: get('TRUST_PROXY') === '1',
   }
 }

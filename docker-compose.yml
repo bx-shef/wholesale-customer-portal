@@ -7,4 +7,9 @@ services:
       # Только loopback: Docker обходит firewalld, а HTTPS и доступ снаружи даёт обратный прокси
       # на этом же сервере (docs/DEPLOY.md).
       - "127.0.0.1:3000:3000"
+    volumes:
+      - data:/data
     restart: unless-stopped
+
+volumes:
+  data:

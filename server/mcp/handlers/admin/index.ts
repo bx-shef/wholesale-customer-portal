@@ -5,7 +5,7 @@ export default defineMcpHandler({
   middleware: (event) => {
     const token = parseBearer(getRequestHeader(event, 'authorization'))
     if (!bearerMatches(token, readServerEnv().mcpAdminToken)) {
-      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+      throw createError({ statusCode: 401, message: 'Unauthorized' })
     }
   },
 })

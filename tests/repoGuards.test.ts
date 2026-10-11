@@ -84,6 +84,14 @@ describe('выкат (docs/DEPLOY.md): main → GHCR → Watchtower → nginx-pr
     expect(COMPOSE).toMatch(new RegExp(`^ {6}- "${port}"$`, 'm'))
   })
 
+  it('база SQLite — на томе /data: Watchtower пересоздаёт контейнер на каждом выкате', () => {
+    const dockerfile = readFileSync(join(ROOT, 'Dockerfile'), 'utf8')
+    expect(dockerfile).toMatch(/^ENV DATA_DIR=\/data$/m)
+    expect(dockerfile).toMatch(/^RUN mkdir -p \/data && chown node:node \/data$/m)
+    expect(COMPOSE).toMatch(/^ {6}- data:\/data$/m)
+    expect(COMPOSE).toMatch(/^volumes:\n {2}data:$/m)
+  })
+
   it('контейнер усилен и пишет только в tmpfs — туда же Nuxt Content кладёт базу справки', () => {
     expect(COMPOSE).toMatch(/^ {4}read_only: true$/m)
     expect(COMPOSE).toMatch(/^ {4}cap_drop: \[ALL\]$/m)

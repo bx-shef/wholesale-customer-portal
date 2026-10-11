@@ -2,8 +2,17 @@
 // (docs/DEPLOY.md). Без секретов: только какие настройки заданы.
 export default defineEventHandler(() => {
   const env = readServerEnv()
+  // База открывается (и мигрирует) здесь же: health упадёт, если том не смонтирован или не пишется.
+  let db = false
+  try {
+    useDb().prepare('SELECT 1').get()
+    db = true
+  }
+  catch (e) {
+    console.error(`[db] ${(e as Error).message}`)
+  }
   return {
-    status: 'ok',
+    status: db ? 'ok' : 'degraded',
     commit: env.commitSha ? env.commitSha.slice(0, 7) : null,
     config: {
       b24Webhook: Boolean(env.b24WebhookUrl),
@@ -12,6 +21,7 @@ export default defineEventHandler(() => {
       deepseek: Boolean(env.deepseekApiKey),
       session: Boolean(env.sessionSecret),
       mcpAdmin: Boolean(env.mcpAdminToken),
+      db,
     },
   }
 })

@@ -104,13 +104,14 @@ jobs:
       - name: Smoke test container
         shell: bash
         run: |
-          docker run -d --name app --read-only --tmpfs /tmp --cap-drop ALL \
+          docker run -d --name app --read-only --tmpfs /tmp -v data:/data --cap-drop ALL \
             -e MCP_ADMIN_TOKEN=ci -e ONEC_MOCK=true -p 127.0.0.1:3000:3000 wholesale-customer-portal:ci
           for i in $(seq 1 30); do curl -fs localhost:3000/api/health >/dev/null && break; sleep 1; done
           check() { got=$(curl -s -o /dev/null -w '%{http_code}' "${@:2}"); echo "$1 → $got  ${*:2}"; [ "$got" = "$1" ]; }
           rpc='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
           mcp=(-X POST -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d "$rpc")
-          check 200 localhost:3000/
+          check 302 localhost:3000/
+          check 200 localhost:3000/login
           check 200 localhost:3000/help
           check 200 localhost:3000/api/health
           check 401 "${mcp[@]}" localhost:3000/mcp/admin

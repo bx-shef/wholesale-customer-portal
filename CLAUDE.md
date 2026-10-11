@@ -26,10 +26,19 @@ make help             # цели сервера (docs/DEPLOY.md)
 
 | Где | Что |
 |---|---|
-| `app/` | страницы на Bitrix24 UI: `index` (каталог, пока пустой), `help` (справка из Nuxt Content) |
+| `app/` | страницы на Bitrix24 UI: `login` (вход), `index` (каталог, пока пустой, за входом), `help` (справка из Nuxt Content) |
 | `content/help/` | справка ЛК (коллекция `help`, `content.config.ts`) |
 | `server/mcp/handlers/admin` | `/mcp/admin` — Bearer `MCP_ADMIN_TOKEN`, без токена закрыт для всех |
-| `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента; до этапа 2 закрыт для всех |
+| `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента (cookie или тот же токен Bearer) |
+| `server/services/b24Access.ts` | доступ в ЛК поверх CRM: контакт по телефону/email, «Доступ в ЛК», компания с GUID 1С |
+| `server/utils/login.ts`, `session.ts`, `accessKeys.ts`, `clientSession.ts` | вход с лимитом и журналом, подписанная сессия, ключи (scrypt), перепроверка ключа в CRM |
+| `server/api/auth/{login,logout,me}`, `server/api/profile.get.ts` | вход, выход, кто вошёл, профиль |
+| `server/utils/clientIp.ts` | адрес клиента для лимита: правый в `X-Forwarded-For` |
+| `server/tasks/maintenance/prune.ts` | очистка журналов старше 90 дней |
+| `server/utils/b24.ts` | B24Hook по `B24_WEBHOOK_URL` (только https) |
+| `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
+| `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
+| `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
 | `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
@@ -37,6 +46,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
+| `server/db/sqlite.ts`, `server/utils/db.ts` | база SQLite на томе `/data`: курсоры, журнал синхронизации и входов; миграции дописываются в конец |
 | `server/utils/env.ts` | единственное чтение окружения (имена без `NUXT_`) |
 | `server/utils/bearer.ts` | разбор и сверка Bearer за постоянное время |
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |
@@ -55,6 +65,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 - **Контракт 1С меняется только в `shared/onec/schemas.ts`**, затем `pnpm onec:openapi`; тест
   краснеет, если OpenAPI отстал.
 - **Данные клиента — только его компании**: фильтр по компании из сессии на сервере, всегда.
+- **Отказ входа — один текст на любую причину**; причина — только в журнале входов.
 - **Секреты — только окружением** (`.env.example`); в лог не пишем.
 - **Чистые функции отдельно** (`shared/`, `server/utils/`) с тестами; тест обязан краснеть при
   мутации (`AGENT_RULES.md` §5.2).
