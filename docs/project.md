@@ -22,7 +22,7 @@ B2B-кабинет для клиентов поставщика: с телефо
 - MCP на [@nuxtjs/mcp-toolkit](https://github.com/nuxt-modules/mcp-toolkit): `/mcp/client` — инструменты покупателя и ИИ, `/mcp/admin` — обмены `onec_*` и `b24_*`, выдача ключей.
 - Два независимых обмена: приложение ↔ 1С и приложение ↔ Битрикс24. Как 1С и Б24 обмениваются между собой, проект не касается.
 - Хранение доступа — смарт-процесс «Доступ в ЛК» (хэш ключа), расписание — смарт-процесс «Рейсы».
-- Docker + reverse proxy; на VM клиента — по схеме [toolsai-mp3-txt](https://github.com/bx-shef/toolsai-mp3-txt).
+- Docker: стенд — GHCR + Watchtower за nginx-proxy, бой — ВМ Битрикс24 клиента (nginx bitrix-env → `127.0.0.1`, cron-опрос git с откатом) по схеме [client-bank-alfa-by](https://github.com/bx-shef/client-bank-alfa-by); подробно — [DEPLOY.md](DEPLOY.md).
 
 ## 1С в прототипе — моки
 

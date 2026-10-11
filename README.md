@@ -9,6 +9,7 @@
 - [docs/plan.md](docs/plan.md) — план работ по этапам с задачами.
 - [docs/START-PROMPT.md](docs/START-PROMPT.md) — стартовый промпт для новой сессии разработки.
 - [docs/onec-contract.md](docs/onec-contract.md) — задание программисту 1С (HTTP-контракт; в прототипе — мок).
+- [docs/DEPLOY.md](docs/DEPLOY.md) — выкат: стенд (GHCR + Watchtower) и ВМ Битрикс24 клиента.
 - [docs/related-repos.md](docs/related-repos.md) — связанные репозитории: что берём, зачем, как использовать, как следить за изменениями.
 - [docs/upstream.lock.json](docs/upstream.lock.json) — разобранные версии связанных репозиториев; проверка — `.github/workflows/upstream-watch.yml`.
 
@@ -19,7 +20,9 @@
 | [bx-shef/invoice-from-tasks](https://github.com/bx-shef/invoice-from-tasks) | Главный донор: тот же стек, процесс, серверные утилиты Б24, справка с ИИ |
 | [bx-shef/skills-site](https://github.com/bx-shef/skills-site) | Каркас UI на Bitrix24 UI |
 | [bx-shef/toolsai](https://github.com/bx-shef/toolsai) | Ведение проекта, права, релизы |
-| [bx-shef/toolsai-mp3-txt](https://github.com/bx-shef/toolsai-mp3-txt) | Выкат Docker на BitrixVM |
+| [bx-shef/client-bank-alfa-by](https://github.com/bx-shef/client-bank-alfa-by) | Эталон выката: GHCR + Watchtower, ВМ Битрикс24 |
+| [bx-shef/import-client-bank](https://github.com/bx-shef/import-client-bank) | Приёмы workflow выката |
+| [bx-shef/toolsai-mp3-txt](https://github.com/bx-shef/toolsai-mp3-txt) | Усиленный compose для BitrixVM |
 | [adminsite-standartnoby/base](https://github.com/adminsite-standartnoby/base) | Деплой и обновление коробки Б24 |
 | [bx-shef/haschangefiles](https://github.com/bx-shef/haschangefiles) | Учёт правок ядра |
 | [bx-shef/insync](https://github.com/bx-shef/insync) | Паттерны синхронизаций |

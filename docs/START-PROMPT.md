@@ -2,13 +2,13 @@
 
 > Last reviewed: 2026-10-11
 
-Скопируйте в новую сессию, подключив репозиторий bx-shef/wholesale-customer-portal (и для чтения — bx-shef/skills-site, bx-shef/invoice-from-tasks).
+Скопируйте в новую сессию, подключив репозиторий bx-shef/wholesale-customer-portal (и для чтения — bx-shef/skills-site, bx-shef/invoice-from-tasks, bx-shef/client-bank-alfa-by).
 
 ---
 
 Проект — bx-shef/wholesale-customer-portal: B2B-кабинет клиентов поставщика (Битрикс24 коробка + 1С), Nuxt 4 + Bitrix24 UI + @bitrix24/b24jssdk, MCP на @nuxtjs/mcp-toolkit, ИИ на DeepSeek.
 
-Прочитай по порядку: `README.md`, `docs/project.md`, `docs/spec.md`, `docs/plan.md`, `docs/onec-contract.md`, `docs/related-repos.md`.
+Прочитай по порядку: `README.md`, `docs/project.md`, `docs/spec.md`, `docs/plan.md`, `docs/onec-contract.md`, `docs/DEPLOY.md`, `docs/related-repos.md`.
 
 Правила:
 - Весь UI — только компоненты Bitrix24 UI, Nuxt UI не подключаем.

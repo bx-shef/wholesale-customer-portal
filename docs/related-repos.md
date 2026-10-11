@@ -10,7 +10,9 @@
 | [bx-shef/invoice-from-tasks](https://github.com/bx-shef/invoice-from-tasks) | **Главный донор**: тот же стек (Nuxt 4 + Bitrix24 UI + b24jssdk) | Правила ведения проекта, CI, серверные утилиты Б24, UF-типы, справка с ИИ-чатом |
 | [bx-shef/skills-site](https://github.com/bx-shef/skills-site) | Каркас UI на Bitrix24 UI вместо Docus | Оболочка B24App, токены стилей, поиск, чат-оверлей, Docker |
 | [bx-shef/toolsai](https://github.com/bx-shef/toolsai) | Пример ведения проекта и модуля коробки | Процесс (agent-rules, PR-шаблон, CHANGELOG, релиз по тегу), модель прав «действия → роли → назначения», мок-провайдер |
-| [bx-shef/toolsai-mp3-txt](https://github.com/bx-shef/toolsai-mp3-txt) | Выкат Docker-сервиса на BitrixVM | `deploy/bitrixvm/*`, усиленный compose, тесты скрипта выката |
+| [bx-shef/client-bank-alfa-by](https://github.com/bx-shef/client-bank-alfa-by) | **Эталон выката**: GHCR + Watchtower и таргет «ВМ Битрикс24» | `docs/DEPLOY*.md`, `deploy/bitrixvm/*` (nginx `site_settings`, docroot, cron-опрос git, откат) |
+| [bx-shef/import-client-bank](https://github.com/bx-shef/import-client-bank) | Выкат статики по SSH | Приёмы workflow `deploy.yml`: секреты через `env:`, `concurrency`, очистка ключа |
+| [bx-shef/toolsai-mp3-txt](https://github.com/bx-shef/toolsai-mp3-txt) | Выкат Docker-сервиса на BitrixVM | Усиленный compose, тесты скрипта выката; сам выкат — по client-bank-alfa-by |
 | [adminsite-standartnoby/base](https://github.com/adminsite-standartnoby/base) | Репозиторий коробки: деплой и обновление Б24 | Схема деплоя `www/local/`, стражи дерева, правило «ядро не правим» |
 | [bx-shef/haschangefiles](https://github.com/bx-shef/haschangefiles) | Учёт правок ядра | Только соглашение и CLI-проверку — если всё же придётся править ядро |
 | [bx-shef/insync](https://github.com/bx-shef/insync) | Заготовки синхронизаций (PHP) | Паттерны: очередь со статусами, стратегии ошибок, идемпотентность по внешнему ключу |
@@ -44,7 +46,7 @@
 
 **Что это.** Сайт методологии на Nuxt 4 + Nuxt Content + Bitrix24 UI (без Nuxt UI), чат через OpenAI-совместимого провайдера, Docker + nginx-proxy.
 
-**Что берём.** `app/app.vue` (оболочка B24App), `app/assets/css/*` (порядок: tokens → layout → content → components), `app/components/Hd{Header,Search,ChatOverlay}.vue`, `server/api/assistant.post.ts` и `server/utils/chat-config.ts` (DeepSeek уже описан в `.env.example`), `Dockerfile`, `docker-compose.prod.yml`, `Makefile`.
+**Что берём.** `app/app.vue` (оболочка B24App), `app/assets/css/*` (порядок: tokens → layout → content → components), `app/components/Hd{Header,Search,ChatOverlay}.vue`, `server/api/assistant.post.ts` и `server/utils/chat-config.ts` (DeepSeek уже описан в `.env.example`), `Dockerfile`, `docker-compose.prod.yml`, `Makefile`, `deploy/proxy.compose.yml`; из `.github/workflows/site-image.yml` — дымовые проверки контейнера до публикации образа.
 
 **Как использовать.** Раскладку helpdesk меняем на мобильный каталог; страницы каталога, корзины, заявок пишем на тех же компонентах Bitrix24 UI.
 
@@ -63,6 +65,23 @@
 
 **Риски.** Код PHP, к Nuxt напрямую не переносится; права там в таблицах модуля, у нас — в смарт-процессе через REST.
 
+## bx-shef/client-bank-alfa-by — эталон выката
+
+**Что это.** Приложение «Импорт из клиент-банка» (Альфа-Банк): Nuxt + backend Nitro + Postgres + Redis/BullMQ. На его `docs/DEPLOY.md` ссылаются invoice-from-tasks и skills-site.
+
+**Что берём.** Подробно — [DEPLOY.md](DEPLOY.md).
+- `docs/DEPLOY.md`: конвейер `ci` → `deploy` (matrix образов, `fail-fast: false`), GHCR + Watchtower, требования к `X-Forwarded-For`/`X-Forwarded-Proto` для лимита входа и `Secure`-cookie.
+- `docs/DEPLOY_BITRIXVM.md` и `deploy/bitrixvm/`: `nginx/00-app-proxy.conf` (переопределение `$proxyserver`, перехват `/_nuxt/`), `docroot/` (заглушка 503), `git-poll-deploy.sh`, `server-files.txt` (выборочная копия репозитория на сервере), `deploy.env.{client,upstream}.example`, `docker-compose.bitrixvm.yml`.
+- `docs/OPERATIONS.md` — образец runbook эксплуатации.
+
+**Риски.** Стек тяжелее нашего (Postgres, Redis, два образа) — берём механизм, не сервисы. Схема «клиентский репозиторий» добавляет репозиторий на клиента.
+
+## bx-shef/import-client-bank — выкат статики
+
+**Что это.** Ранняя версия импорта выписок: `nuxt generate`, `deploy.yml` — rsync по SSH с бэкапом прежней версии и смоук `curl`.
+
+**Что берём.** Только приёмы workflow: секреты в `env:` шага, `concurrency: { group: deploy, cancel-in-progress: false }`, удаление ключа в `if: always()`, проверка непустого `.output`. Способ выката не подходит — ЛК нужен сервер Nitro.
+
 ## bx-shef/toolsai-mp3-txt — Docker на BitrixVM
 
 **Что это.** FastAPI-сервис распознавания речи, который ставится на ту же VM, что и портал; интересен не код, а механизм выката.
@@ -73,7 +92,7 @@
 - Усиленный compose: `read_only`, `cap_drop: ALL`, `no-new-privileges`, лимиты, порт только `127.0.0.1` (Docker обходит firewalld).
 - `tests/test_deploy_script.py`, `tests/test_makefile.py` — тесты скрипта выката на подменах; `docs/CONTRACT.md` — образец описания HTTP-контракта (для `contracts/onec.openapi.yaml`).
 
-**Как использовать.** Это схема выката нашего ЛК на VM клиента: меняем имя сервиса и health-check, `docker-compose.yml` на сервере обновляет человек.
+**Как использовать.** Усиленный compose и тесты скрипта выката. Сам выкат на ВМ берём у client-bank-alfa-by — там учтены nginx bitrix-env, статика и docroot ([DEPLOY.md](DEPLOY.md)).
 
 **Риски.** ЛК открывают снаружи — нужен reverse proxy: location в nginx bitrix-env на `127.0.0.1:<порт>`. На живой BitrixVM схема ещё не прогонялась (сказано в самом документе). Пользователь `bitrix` в группе `docker` почти равен root.
 

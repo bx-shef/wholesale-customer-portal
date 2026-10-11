@@ -10,9 +10,9 @@
 
 - [ ] Каркас из bx-shef/skills-site: Nuxt 4 + Nuxt Content + `@bitrix24/b24ui-nuxt`, оболочка B24App, токены стилей; убрать контент сайта методологии и `sync-content`.
 - [ ] Процесс из invoice-from-tasks: `CLAUDE.md`, `docs/AGENT_RULES.md`, `docs/REPO_SETUP_CHECKLIST.md`, `docs/project-map.md`, `.claude/hooks/session-start.sh`, `.claude/skills/{b24-docs,review-panel,merge-pr}`, PR-шаблон из toolsai.
-- [ ] Инструменты: pnpm, eslint, vitest, `pnpm check`; `.github/workflows/ci.yml` (lint, typecheck, test, docker-build), dependabot.
+- [ ] Инструменты: pnpm, eslint, vitest, `pnpm check`; `.github/workflows/ci.yml` (lint, typecheck, test, docker-build с дымовой проверкой контейнера; на `main` — образ в GHCR `latest` + `sha-…`), dependabot — по [DEPLOY.md](DEPLOY.md).
 - [ ] `@nuxtjs/mcp-toolkit` + zod, пустые `/mcp/client` и `/mcp/admin` с Bearer-проверкой.
-- [ ] Docker: `Dockerfile`, `docker-compose.yml` (127.0.0.1), `docker-compose.prod.yml`, `Makefile` (doctor, prod-up).
+- [ ] Docker: `Dockerfile`, `docker-compose.yml` (127.0.0.1), `docker-compose.prod.yml` (метки Watchtower и `keepalive=disabled`), `Makefile` (doctor, health, prod-up, self-update, compose-update, proxy-timeout); стенд на GHCR + Watchtower.
 - [ ] Тестовая коробка Б24 на bitrix-tools/env-docker.
 - [ ] Скрипт настройки Б24 (идемпотентный, через вебхук): поле `UF_CRM_1C_GUID` у компании, смарт-процессы «Доступ в ЛК» и «Рейсы» с полями, воронка «Заявки ЛК», placement `CRM_COMPANY_DETAIL_TAB`, `event.bind`.
 - [ ] `.env.example`: `B24_WEBHOOK_URL`, `ONEC_URL`, `ONEC_TOKEN`, `ONEC_MOCK`, `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`, `SESSION_SECRET`, `MCP_ADMIN_TOKEN`.
@@ -74,7 +74,7 @@
 
 ## Этап 7. Пилот — 1–2 недели
 
-- [ ] Выкат на VM клиента по схеме toolsai-mp3-txt (`deploy/bitrixvm/*`), nginx bitrix-env → 127.0.0.1.
+- [ ] Выкат на ВМ клиента по схеме client-bank-alfa-by (`deploy/bitrixvm/*`): `00-app-proxy.conf` в `site_settings`, заглушка docroot, cron-опрос git с откатом — [DEPLOY.md](DEPLOY.md).
 - [ ] 2–3 клиента, сбор замечаний, доработки, решение о запуске.
 
 ## Параллельно — программист 1С
