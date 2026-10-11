@@ -7,7 +7,10 @@ export interface ServerEnv {
   b24WebhookUrl: string
   onecUrl: string
   onecToken: string
-  /** Мок 1С включён, пока явно не сказано `ONEC_MOCK=false`: без 1С прототип работает на моке. */
+  /**
+   * Мок 1С — только при явном `ONEC_MOCK=true`. Иначе забытая строка на проде молча подменила бы
+   * 1С фейковыми данными и открыла `/mock-1c` с токеном реальной 1С (находка ревью PR #2).
+   */
   onecMock: boolean
   deepseekApiKey: string
   deepseekModel: string
@@ -22,7 +25,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     b24WebhookUrl: get('B24_WEBHOOK_URL'),
     onecUrl: get('ONEC_URL'),
     onecToken: get('ONEC_TOKEN'),
-    onecMock: get('ONEC_MOCK').toLowerCase() !== 'false',
+    onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
     deepseekModel: get('DEEPSEEK_MODEL') || 'deepseek-chat',
     sessionSecret: get('SESSION_SECRET'),

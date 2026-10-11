@@ -6,6 +6,7 @@
  * Поведение (docs/spec.md §6): остатки меняются между запросами, заказ сам проходит статусы
  * по времени, включаются задержка и 5xx. Время приходит параметром — тесты двигают его сами.
  */
+import { timingSafeEqual } from 'node:crypto'
 import { generateSeed, guidFrom, prng, round2, SEED_EPOCH, type SeedData } from './seed'
 import {
   ERROR_CODES, ListQuery, OrderRequest, PricesRequest,
@@ -39,6 +40,7 @@ export interface MockMode {
 interface MockOrder {
   orderGuid: string
   externalId: string
+  clientGuid: string
   number: string
   createdAt: number
   /** Момент отмены, мс эпохи: он же changedAt — иначе синхронизация по курсору отмену не увидит. */
@@ -52,6 +54,7 @@ export interface MockState {
   /** Момент изменения остатка: ключ `itemGuid|warehouseGuid`, мс эпохи. */
   stockChangedAt: Map<string, number>
   orders: Map<string, MockOrder>
+  ordersByExternalId: Map<string, MockOrder>
   stockTicks: number
   mode: MockMode
   rand: () => number
@@ -65,6 +68,8 @@ export const ORDER_TIMELINE: [OrderStatusT, number][] = [
   ['new', 0], ['confirmed', 60], ['assembled', 180], ['shipped', 300], ['delivered', 600],
 ]
 
+const SHIPPED_AFTER_SEC = ORDER_TIMELINE.find(([status]) => status === 'shipped')![1]
+
 export function createMockState(token: string, seed = 1): MockState {
   const data = generateSeed(seed)
   const epoch = Date.parse(SEED_EPOCH) + 86_400_000
@@ -74,6 +79,7 @@ export function createMockState(token: string, seed = 1): MockState {
     data,
     stockChangedAt: new Map([...data.stock.keys()].map(k => [k, epoch])),
     orders: new Map(),
+    ordersByExternalId: new Map(),
     stockTicks: 0,
     mode: { delayMs: 0, failRate: 0, failNext: 0 },
     rand: prng(seed ^ 0x5eed),
@@ -147,8 +153,10 @@ function newClient(state: MockState, name: string | undefined, now: number): Cli
 /** Обработка запроса к моку. `now` — мс эпохи. */
 export function handleMockRequest(state: MockState, req: MockRequest, now: number): MockResponse {
   const { mode } = state
-  const bearer = /^Bearer\s+(\S+)$/i.exec(req.authorization ?? '')?.[1]
-  if (!state.token || bearer !== state.token) return error('unauthorized', 'Bearer token required')
+  const bearer = /^Bearer\s+(\S+)$/i.exec(req.authorization ?? '')?.[1] ?? ''
+  const a = Buffer.from(bearer)
+  const b = Buffer.from(state.token)
+  if (!state.token || a.length !== b.length || !timingSafeEqual(a, b)) return error('unauthorized', 'Bearer token required')
 
   const method = req.method.toUpperCase()
   const path = req.path.replace(/\/+$/, '') || '/'
@@ -167,12 +175,13 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     const parsed = ListQuery.safeParse(req.query)
     return parsed.success ? parsed.data : null
   }
+  // changedSince включает границу (docs/onec-contract.md): строгое «>» теряло бы записи того же момента.
   const since = (changedSince: string | undefined) => changedSince ? Date.parse(changedSince) : -Infinity
 
   if (method === 'GET' && path === '/clients') {
     const q = list()
     if (!q) return error('validation', 'Bad list parameters')
-    const rows = byChange(state.data.clients.filter(c => Date.parse(c.changedAt) > since(q.changedSince)), c => c.changedAt, c => c.guid)
+    const rows = byChange(state.data.clients.filter(c => Date.parse(c.changedAt) >= since(q.changedSince)), c => c.changedAt, c => c.guid)
     return ok(paginate(rows, q.page, q.pageSize))
   }
 
@@ -186,7 +195,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
   if (method === 'GET' && path === '/catalog') {
     const q = list()
     if (!q) return error('validation', 'Bad list parameters')
-    const rows = byChange(state.data.items.filter(i => Date.parse(i.changedAt) > since(q.changedSince)), i => i.changedAt, i => i.guid)
+    const rows = byChange(state.data.items.filter(i => Date.parse(i.changedAt) >= since(q.changedSince)), i => i.changedAt, i => i.guid)
     const pageData = paginate(rows, q.page, q.pageSize)
     // Разделы — целиком на первой странице: дерево небольшое и нужно до товаров.
     return ok({ sections: q.page === 1 ? state.data.sections : [], ...pageData })
@@ -213,7 +222,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     const rows: StockT[] = []
     for (const [key, available] of state.data.stock) {
       const changedAt = state.stockChangedAt.get(key)!
-      if (changedAt <= since(q.changedSince)) continue
+      if (changedAt < since(q.changedSince)) continue
       const [itemGuid, warehouseGuid] = key.split('|') as [string, string]
       const warehouse = state.data.warehouses.find(w => w.guid === warehouseGuid)!
       rows.push({ itemGuid, warehouseGuid, warehouseName: warehouse.name, available, changedAt: new Date(changedAt).toISOString() })
@@ -224,21 +233,29 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
   if (method === 'POST' && path === '/order') {
     const parsed = OrderRequest.safeParse(req.body)
     if (!parsed.success) return error('validation', 'Bad order request')
-    const existing = [...state.orders.values()].find(o => o.externalId === parsed.data.externalId)
+    const existing = state.ordersByExternalId.get(parsed.data.externalId)
+    if (existing && existing.clientGuid !== parsed.data.clientGuid.toLowerCase()) {
+      // Чужой externalId: молча вернуть чужой заказ значило бы показать его другому клиенту.
+      return error('conflict', 'externalId already used by another client')
+    }
+    const client = state.data.clients.find(c => c.guid.toLowerCase() === parsed.data.clientGuid.toLowerCase() && !c.deleted)
+    if (!client) return error('not_found', 'Client not found')
+    if (client.contractGuid !== parsed.data.contractGuid.toLowerCase() || !client.deliveryAddresses.some(a => a.guid === parsed.data.deliveryAddressGuid.toLowerCase())) {
+      return error('validation', 'Contract or delivery address does not belong to the client')
+    }
     const order = existing ?? (() => {
-      const client = state.data.clients.find(c => c.guid.toLowerCase() === parsed.data.clientGuid.toLowerCase() && !c.deleted)
-      if (!client) return null
       const created: MockOrder = {
         orderGuid: guidFrom(state.rand),
         externalId: parsed.data.externalId,
+        clientGuid: client.guid,
         number: `ЗК-${String(state.orders.size + 1).padStart(5, '0')}`,
         createdAt: now,
         cancelledAt: null,
       }
       state.orders.set(created.orderGuid, created)
+      state.ordersByExternalId.set(created.externalId, created)
       return created
     })()
-    if (!order) return error('not_found', 'Client not found')
     // Повтор с тем же externalId — тот же заказ и 200, первое создание — 201.
     return ok({ orderGuid: order.orderGuid, number: order.number, status: orderStatusAt(order, now).status }, existing ? 200 : 201)
   }
@@ -253,10 +270,10 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         externalId: o.externalId,
         number: o.number,
         status,
-        shipmentDate: status === 'shipped' || status === 'delivered' ? new Date(o.createdAt + 300_000).toISOString().slice(0, 10) : null,
+        shipmentDate: status === 'shipped' || status === 'delivered' ? new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString().slice(0, 10) : null,
         changedAt: new Date(changedAt).toISOString(),
       }
-    }).filter(r => Date.parse(r.changedAt) > since(q.changedSince))
+    }).filter(r => Date.parse(r.changedAt) >= since(q.changedSince))
     return ok(paginate(byChange(rows, r => r.changedAt, r => r.orderGuid), q.page, q.pageSize))
   }
 
@@ -280,7 +297,7 @@ function handleAdmin(state: MockState, method: string, path: string, body: unkno
     state.mode = {
       delayMs: num(input.delayMs, 30_000) ?? state.mode.delayMs,
       failRate: num(input.failRate, 1) ?? state.mode.failRate,
-      failNext: num(input.failNext, 1000) ?? state.mode.failNext,
+      failNext: Number.isInteger(input.failNext) ? num(input.failNext, 1000) ?? state.mode.failNext : state.mode.failNext,
     }
     return { status: 200, body: state.mode, delayMs: 0 }
   }

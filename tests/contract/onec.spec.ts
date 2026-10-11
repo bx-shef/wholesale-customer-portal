@@ -14,6 +14,8 @@ import { collectPages, OnecClient, OnecError } from '../../server/services/onec'
 import { ErrorBody, type ClientT } from '../../shared/onec/schemas'
 
 const remoteUrl = process.env.ONEC_CONTRACT_URL?.trim()
+// Без токена тесты 401 проверяли бы пустой Bearer, а остальные упали бы невнятно.
+if (remoteUrl && !process.env.ONEC_CONTRACT_TOKEN?.trim()) throw new Error('ONEC_CONTRACT_TOKEN is required with ONEC_CONTRACT_URL')
 const target = remoteUrl
   ? { baseUrl: remoteUrl, token: process.env.ONEC_CONTRACT_TOKEN ?? '', fetch, allowOrder: process.env.ONEC_CONTRACT_ALLOW_ORDER === '1' }
   : (() => {
@@ -66,11 +68,13 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
       expect(new Set(paged.map(c => c.guid)).size).toBe(paged.length)
     })
 
-    it('changedSince отдаёт только изменённое позже', async () => {
+    it('changedSince отдаёт изменённое начиная с момента — граница включительно', async () => {
+      expect(new Set(clients.map(c => c.changedAt)).size, 'нужны клиенты хотя бы с двумя разными changedAt').toBeGreaterThan(1)
       const sorted = [...clients].sort((a, b) => a.changedAt.localeCompare(b.changedAt))
       const pivot = sorted[Math.floor(sorted.length / 2)]!.changedAt
       const after = await collectPages(page => client.clients({ page, changedSince: pivot }))
-      expect(after.every(c => Date.parse(c.changedAt) > Date.parse(pivot))).toBe(true)
+      expect(after.every(c => Date.parse(c.changedAt) >= Date.parse(pivot))).toBe(true)
+      expect(after.map(c => c.guid)).toContain(sorted.find(c => c.changedAt === pivot)!.guid)
       const future = await client.clients({ changedSince: '2999-01-01T00:00:00Z' })
       expect(future).toEqual({ items: [], nextPage: null })
     })
@@ -120,6 +124,17 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
     })
   })
 
+  describe('POST /order — проверка входа (ничего не пишет)', () => {
+    it('заказ без позиций отвергается', async () => {
+      const res = await raw('/order', {
+        method: 'POST',
+        headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ externalId: 'x', clientGuid: clients[0]!.guid, items: [] }),
+      })
+      expect(res.status).toBe(400)
+    })
+  })
+
   describe.skipIf(!target.allowOrder)('POST /order и GET /orders/status', () => {
     it('заказ идемпотентен по externalId и виден в статусах', async () => {
       const buyer = clients.find(c => c.contractGuid && !c.deleted && c.deliveryAddresses.length > 0)!
@@ -141,15 +156,13 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
 
       const statuses = await collectPages(page => client.orderStatus({ page }))
       expect(statuses.find(s => s.externalId === externalId)?.orderGuid).toBe(first.orderGuid)
+
+      // Тот же externalId от другого клиента — 409, а не чужой заказ.
+      const other = clients.find(c => c.guid !== buyer.guid && c.contractGuid && !c.deleted && c.deliveryAddresses.length > 0)
+      if (other) {
+        await expectError(client.createOrder({ ...order, clientGuid: other.guid, contractGuid: other.contractGuid!, deliveryAddressGuid: other.deliveryAddresses[0]!.guid }), 409)
+      }
     })
 
-    it('заказ без позиций отвергается', async () => {
-      const res = await raw('/order', {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ externalId: 'x', clientGuid: clients[0]!.guid, items: [] }),
-      })
-      expect(res.status).toBe(400)
-    })
   })
 })

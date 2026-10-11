@@ -13,8 +13,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV NITRO_HOST=0.0.0.0
-# Nuxt Content при старте пишет SQLite в .output/server — каталог должен принадлежать node,
-# иначе база пуста и справка отдаёт 404 (замечено в bx-shef/skills-site).
+# Файлы — пользователю node. Базу справки Nuxt Content пишет при старте в /tmp
+# (nuxt.config.ts → content.database): в проде контейнер read_only, /tmp — tmpfs.
 COPY --from=build --chown=node:node /app/.output ./.output
 USER node
 EXPOSE 3000

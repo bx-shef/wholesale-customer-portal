@@ -25,15 +25,29 @@ async function call<T>(method: string, params: Record<string, unknown>): Promise
   return response.getData()!.result
 }
 
+// List methods return 50 rows per page; `next` is the next offset. Reading only the first page
+// would miss «Доступ в ЛК» on a portal with >50 smart processes and --apply would create a duplicate.
+async function callAll<T>(method: string, params: Record<string, unknown>, pick: (result: unknown) => T[]): Promise<T[]> {
+  const out: T[] = []
+  for (let start: number | undefined = 0; start !== undefined;) {
+    const response = await b24.actions.v2.call.make({ method, params: { ...params, start } })
+    if (!response.isSuccess) throw new Error(`${method}: ${response.getErrorMessages().join('; ')}`)
+    const data = response.getData() as { result: unknown, next?: number }
+    out.push(...pick(data.result))
+    start = typeof data.next === 'number' && data.next > start ? data.next : undefined
+  }
+  return out
+}
+
 async function readState(): Promise<PortalState> {
-  const companyFields = await call<{ FIELD_NAME: string }[]>('crm.company.userfield.list', { filter: { FIELD_NAME: COMPANY_GUID_FIELD } })
-  const { types } = await call<{ types: { id: number, entityTypeId: number, title: string }[] }>('crm.type.list', {})
+  const companyFields = await callAll('crm.company.userfield.list', { filter: { FIELD_NAME: COMPANY_GUID_FIELD } }, r => r as { FIELD_NAME: string }[])
+  const types = await callAll('crm.type.list', {}, r => (r as { types: { id: number, entityTypeId: number, title: string }[] }).types)
   const smartProcesses = []
   for (const type of types) {
-    const { fields } = await call<{ fields: { fieldName: string }[] }>('userfieldconfig.list', { moduleId: 'crm', filter: { entityId: `CRM_${type.id}` } })
+    const fields = await callAll('userfieldconfig.list', { moduleId: 'crm', filter: { entityId: `CRM_${type.id}` } }, r => (r as { fields: { fieldName: string }[] }).fields)
     smartProcesses.push({ id: Number(type.id), entityTypeId: Number(type.entityTypeId), title: type.title, fieldNames: fields.map(f => f.fieldName) })
   }
-  const { categories } = await call<{ categories: { name: string }[] }>('crm.category.list', { entityTypeId: 2 })
+  const categories = await callAll('crm.category.list', { entityTypeId: 2 }, r => (r as { categories: { name: string }[] }).categories)
   return {
     companyFieldNames: companyFields.map(f => f.FIELD_NAME),
     smartProcesses,

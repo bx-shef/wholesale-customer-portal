@@ -10,7 +10,7 @@
 
 - [x] Каркас из bx-shef/skills-site: Nuxt 4 + Nuxt Content + `@bitrix24/b24ui-nuxt`, оболочка B24App, токены стилей; убрать контент сайта методологии и `sync-content`.
 - [x] Процесс из invoice-from-tasks: `CLAUDE.md`, `docs/AGENT_RULES.md`, `docs/REPO_SETUP_CHECKLIST.md`, `docs/project-map.md`, `.claude/hooks/session-start.sh`, `.claude/skills/{b24-docs,review-panel,merge-pr}`, PR-шаблон из toolsai.
-- [x] Инструменты: pnpm, eslint, vitest, `pnpm check`; `.github/workflows/ci.yml` (lint, typecheck, test, docker-build с дымовой проверкой контейнера; на `main` — образ в GHCR `latest` + `sha-…`), dependabot — по [DEPLOY.md](DEPLOY.md).
+- [x] Инструменты: pnpm, eslint, vitest, `pnpm check`; `.github/workflows/ci.yml` (lint, typecheck, test, docker-build с дымовой проверкой контейнера; на `main` — образ в GHCR `latest` + `sha-…`), dependabot — по [DEPLOY.md](DEPLOY.md). Зелёный CI на GitHub — после открытия PR.
 - [x] `@nuxtjs/mcp-toolkit` + zod, пустые `/mcp/client` и `/mcp/admin` с Bearer-проверкой.
 - [x] Docker: `Dockerfile`, `docker-compose.yml` (127.0.0.1), `docker-compose.prod.yml` (метки Watchtower и `keepalive=disabled`), `Makefile` (doctor, health, prod-up, prod-redeploy, self-update); `compose-update` и `proxy-timeout` — когда появятся стрим ИИ-чата и правки compose (этап 5).
 - [ ] Тестовая коробка Б24 на bitrix-tools/env-docker — порядок в `docs/TEST_STAND.md`, не поднята.
@@ -30,6 +30,9 @@
 - [ ] Передать программисту 1С: контракт, адрес мока, команду тестов — всё в `docs/onec-contract.md`; адрес заработает после выката стенда `wsp.algena.by` с `ONEC_TOKEN`.
 
 ## Этап 2. Битрикс24 и доступ — 1 неделя
+
+- [ ] **Сначала — постоянное хранилище** (курсоры синхронизации, журнал запусков, токены установки, журнал входов): том или SQLite вне `/tmp`, либо Б24. Контейнер read_only, сейчас всё в памяти (замечание ревью PR #2).
+- [ ] Регистрация локального приложения на коробке: права, scope, обработчик установки.
 
 - [ ] `server/services/b24.ts` на `B24Hook`; инструменты `b24_*`.
 - [ ] Синхронизация компаний: `onec_companies` → `b24_upsert_company` по расписанию.

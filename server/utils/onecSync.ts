@@ -5,6 +5,13 @@
  * Правила:
  * - курсор — наибольший `changedAt` из полученного, а не «сейчас»: часы 1С и ЛК расходятся, и
  *   «сейчас» сервера ЛК могло бы перепрыгнуть изменения, которые 1С пометила своим временем;
+ * - `changedSince` включает границу (контракт): запись того же момента, что курсор, но появившаяся
+ *   после запуска, при строгом «>» терялась бы навсегда. Цена — граничные записи приходят повторно,
+ *   потребители идемпотентны по GUID;
+ * - чтение по ключу, а не по номеру страницы от начала: следующий запрос берёт `changedSince` =
+ *   `changedAt` последней полученной строки. Запись, изменённая во время чтения, уезжает в хвост
+ *   (её `changedAt` новее) и приходит позже, а не сдвигает непрочитанные строки на уже прочитанную
+ *   страницу. Номер страницы растёт только внутри строк с одинаковым `changedAt`;
  * - курсор двигается только после того, как потребитель принял ВСЮ выборку: упал на середине —
  *   следующий запуск возьмёт её снова (потребители идемпотентны по GUID 1С);
  * - каждый запуск пишется в журнал со статусом, отказ не теряется молча.
@@ -13,7 +20,7 @@
  * здесь — механика, без привязки к ним.
  */
 import type { ListParams } from '../services/onec'
-import { collectPages } from '../services/onec'
+import { OnecError } from '../services/onec'
 
 export type SyncStatus = 'running' | 'done' | 'failed'
 
@@ -37,6 +44,8 @@ export interface SyncStore {
 export interface FlowDefinition<T extends { changedAt: string }> {
   name: string
   load(params: ListParams): Promise<{ items: T[], nextPage: number | null }>
+  /** Ключ строки для снятия повторов на границах страниц: GUID или пара GUID (остаток — товар|склад). */
+  key(row: T): string
   /** Принять выборку целиком; бросает — курсор не двигается. */
   consume(items: T[]): Promise<void>
 }
@@ -53,7 +62,7 @@ export async function runFlow<T extends { changedAt: string }>(
   }
   await store.saveRun(run)
   try {
-    const items = await collectPages(page => flow.load({ page, ...(cursorFrom ? { changedSince: cursorFrom } : {}) }))
+    const items = await readByKey(flow, cursorFrom)
     run.received = items.length
     await flow.consume(items)
     const newest = items.reduce<string | null>((max, i) => (max === null || Date.parse(i.changedAt) > Date.parse(max) ? i.changedAt : max), cursorFrom)
@@ -69,6 +78,41 @@ export async function runFlow<T extends { changedAt: string }>(
   run.finishedAt = now().toISOString()
   await store.saveRun(run)
   return run
+}
+
+/**
+ * Все строки, изменённые начиная с `cursor` (включительно), чтением по ключу `changedAt`.
+ * Повторы на границах страниц снимаются по ключу строки (GUID и момент изменения).
+ */
+export async function readByKey<T extends { changedAt: string }>(
+  flow: Pick<FlowDefinition<T>, 'load' | 'key'>,
+  cursor: string | null,
+  maxRequests = 10_000,
+): Promise<T[]> {
+  const out: T[] = []
+  const seen = new Set<string>()
+  const keyOf = (row: T) => `${flow.key(row)}|${row.changedAt}`
+  let since = cursor
+  let page = 1
+  for (let n = 0; ; n++) {
+    if (n >= maxRequests) throw new OnecError('contract', `1C: more than ${maxRequests} requests in one sync`)
+    const { items, nextPage } = await flow.load({ page, ...(since ? { changedSince: since } : {}) })
+    for (const row of items) {
+      const key = keyOf(row)
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push(row)
+      }
+    }
+    if (nextPage === null || items.length === 0) return out
+    const last = items.at(-1)!.changedAt
+    // Вся страница — один момент: двигаться по ключу некуда, идём по страницам внутри него.
+    if (last === since) page++
+    else {
+      since = last
+      page = 1
+    }
+  }
 }
 
 /** Хранилище курсоров и журнала в памяти — для тестов и как образец формы. */

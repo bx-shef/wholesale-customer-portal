@@ -8,10 +8,10 @@
 
 - HTTPS, `Authorization: Bearer <token>`; доступ только с сервера ЛК (VPN или белый список IP).
 - JSON в UTF-8, даты ISO 8601, суммы — число с двумя знаками, идентификаторы — GUID ссылок 1С.
-- Ошибка — HTTP-код и `{"error": "<код>", "message": "<текст>"}`.
-- Списки — страницами: `page`, `pageSize` (до 500, больше — 400). Ответ — объект `{"items": [...], "nextPage": <номер> | null}`; у `/catalog` ещё `sections` (целиком на первой странице, на остальных — пустой массив).
+- Ошибка — HTTP-код и `{"error": "<код>", "message": "<текст>"}`. Коды: `unauthorized` (401), `validation` (400), `not_found` (404), `conflict` (409), `unavailable` (503 — ЛК повторит), `internal` (500).
+- Списки — страницами: `page`, `pageSize` (до 500; больше — **обязательно** 400, это проверяет контрактный тест). Ответ — объект `{"items": [...], "nextPage": <номер> | null}`; у `/catalog` ещё `sections` (целиком на первой странице, на остальных — пустой массив).
 - Порядок строк в списке — по `changedAt`, затем по GUID: иначе страницы «поплывут» между запросами.
-- `changedSince` — всё изменённое **строго после** момента, включая пометку удаления (`deleted: true`). ЛК берёт следующий курсор из наибольшего `changedAt` полученных строк, поэтому `changedAt` — время 1С, монотонное.
+- `changedSince` — всё изменённое **начиная с** момента (граница включительно), включая пометку удаления (`deleted: true`). ЛК читает по ключу: следующий запрос — `changedSince` = `changedAt` последней полученной строки. Поэтому `changedAt` — время 1С, монотонное, лучше с миллисекундами; строки на границе ЛК получает повторно и снимает по GUID.
 
 ## Методы
 
@@ -22,7 +22,7 @@
 | `GET /catalog` | `changedSince`, `page` | `sections[]` (`guid`, `parentGuid`, `name`); `items[]` (`guid`, `sku`, `name`, `sectionGuid`, `brand`, `unit`, `packQty`, `minQty`, `description`, `properties{}`, `images[]`, `analogs[]`, `changedAt`, `deleted`) |
 | `POST /prices` | `clientGuid`, `items[]` (GUID, до 500) | `[{itemGuid, price, currency, vatRate}]` — цена по договору клиента, с НДС; неизвестного товара в ответе просто нет |
 | `GET /stock` | `changedSince`, `page` | `items[]`: `[{itemGuid, warehouseGuid, warehouseName, available, changedAt}]` — свободный остаток без резервов |
-| `POST /order` | `externalId` (ID сделки Б24), `clientGuid`, `contractGuid`, `deliveryAddressGuid`, `deliveryDate`, `comment`, `items[]` (`itemGuid`, `qty`, `price`) | `orderGuid`, `number`, `status`; 201 — создан. Повтор с тем же `externalId` — 200 и уже созданный заказ |
+| `POST /order` | `externalId` (ID сделки Б24), `clientGuid`, `contractGuid`, `deliveryAddressGuid`, `deliveryDate`, `comment`, `items[]` (`itemGuid`, `qty`, `price`) | `orderGuid`, `number`, `status`; 201 — создан. Повтор с тем же `externalId` — 200 и уже созданный заказ (**обязательно**: ЛК повторяет запрос после таймаута). Тот же `externalId` от другого клиента — 409. Договор или адрес не этого клиента — 400 |
 | `GET /orders/status` | `changedSince`, `page` | `items[]`: `[{orderGuid, externalId, number, status, shipmentDate, changedAt}]`; `status`: `new`, `confirmed`, `assembled`, `shipped`, `delivered`, `cancelled` |
 
 ## Точная форма — OpenAPI

@@ -69,3 +69,55 @@ describe('collectPages', () => {
     await expect(collectPages(() => Promise.resolve({ items: [1], nextPage: 1 }))).rejects.toThrow(/does not advance/)
   })
 })
+
+describe('OnecClient — повторы и запрос', () => {
+  it('429 повторяется, задержки растут 200 → 400 мс', async () => {
+    const sleeps: number[] = []
+    let calls = 0
+    const client = new OnecClient({
+      baseUrl: 'http://1c.local/hs', token: 't', retries: 2, sleep: async ms => { sleeps.push(ms) },
+      fetch: async () => (calls++, json(429, { error: 'busy', message: '' })),
+    })
+    await client.clients().catch(() => {})
+    expect(calls).toBe(3)
+    expect(sleeps).toEqual([200, 400])
+  })
+
+  it('обрыв при чтении тела — network с повтором, а не contract', async () => {
+    let calls = 0
+    const broken = () => new Response(new ReadableStream({ start(c) { c.error(new TypeError('terminated')) } }), { status: 200 })
+    const client = clientWith(async () => (calls++, broken()), { retries: 1 })
+    const e = await client.clients().catch((err: unknown) => err)
+    expect(e).toMatchObject({ kind: 'network' })
+    expect(calls).toBe(2)
+  })
+
+  it('незаданные параметры не уходят в URL, GUID кодируется', async () => {
+    const urls: string[] = []
+    const client = clientWith(async (url) => {
+      urls.push(String(url))
+      return json(404, { error: 'not_found', message: '' })
+    })
+    await client.clients({ page: 2 }).catch(() => {})
+    await client.contract('a/b?c').catch(() => {})
+    expect(urls[0]).toBe('http://1c.local/hs/clients?page=2')
+    expect(urls[1]).toBe('http://1c.local/hs/client/a%2Fb%3Fc/contract')
+  })
+})
+
+describe('collectPages — предел', () => {
+  it('бесконечный nextPage обрывается на maxPages', async () => {
+    await expect(collectPages(n => Promise.resolve({ items: [n], nextPage: n + 1 }), 3)).rejects.toThrow(/more than 3 pages/)
+  })
+})
+
+describe('mockFetch', () => {
+  it('задержка «медленной 1С» прерывается таймаутом клиента, а не досиживается', async () => {
+    const state = createMockState('t')
+    state.mode.delayMs = 10_000
+    const client = new OnecClient({ baseUrl: 'http://m/mock-1c', token: 't', fetch: mockFetch(state), timeoutMs: 30, retries: 0 })
+    const started = Date.now()
+    await expect(client.clients()).rejects.toMatchObject({ kind: 'timeout' })
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+})

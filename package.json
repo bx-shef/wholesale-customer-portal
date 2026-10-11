@@ -14,7 +14,7 @@
     "preview": "nuxt preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit && tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --types node scripts/*.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "b24:setup": "tsx scripts/b24-setup.ts",
     "postinstall": "nuxt prepare",

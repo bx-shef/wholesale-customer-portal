@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import { handleMockRequest, type MockState } from './mock'
 
 /** `fetch`, который отвечает моком, не выходя в сеть. */
@@ -13,7 +14,8 @@ export function mockFetch(state: MockState, now: () => number = Date.now): typeo
       body,
       authorization: headers.get('authorization'),
     }, now())
-    if (res.delayMs > 0) await new Promise(resolve => setTimeout(resolve, res.delayMs))
+    // Задержка прерывается таймаутом клиента, как настоящий fetch, — а не досиживается до конца.
+    if (res.delayMs > 0) await delay(res.delayMs, undefined, { signal: init?.signal ?? undefined })
     init?.signal?.throwIfAborted()
     return new Response(JSON.stringify(res.body), { status: res.status, headers: { 'content-type': 'application/json' } })
   }

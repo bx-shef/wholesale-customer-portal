@@ -132,6 +132,7 @@ export type OrderStatusRowT = z.infer<typeof OrderStatusRow>
 export const ERROR_CODES = {
   unauthorized: 401,
   not_found: 404,
+  conflict: 409,
   validation: 400,
   unavailable: 503,
   internal: 500,

@@ -47,7 +47,7 @@ describe('поведение мока', () => {
   it('остатки меняются между запросами, и changedSince видит именно их', () => {
     const state = createMockState('t')
     handleMockRequest(state, req({ path: '/stock' }), T0)
-    const res = handleMockRequest(state, req({ path: '/stock', query: { changedSince: new Date(T0).toISOString() } }), T0 + 1000)
+    const res = handleMockRequest(state, req({ path: '/stock', query: { changedSince: new Date(T0 + 1).toISOString() } }), T0 + 1000)
     const { items } = res.body as { items: { changedAt: string }[] }
     expect(items.length).toBeGreaterThan(0)
     expect(items.length).toBeLessThanOrEqual(5)
@@ -94,5 +94,36 @@ describe('поведение мока', () => {
     expect(handleMockRequest(state, req({ authorization: null, path: '/clients' }), T0).status).toBe(401)
     expect(handleMockRequest(state, req({ authorization: null, method: 'POST', path: '/_admin/reset' }), T0).status).toBe(401)
     expect(handleMockRequest(createMockState(''), req({ authorization: 'Bearer ', path: '/clients' }), T0).status).toBe(401)
+  })
+})
+
+describe('заказы и страницы мока', () => {
+  const orderFor = (state: ReturnType<typeof createMockState>, i: number, externalId = 'deal-1') => {
+    const client = state.data.clients[i]!
+    return {
+      externalId, clientGuid: client.guid, contractGuid: client.contractGuid,
+      deliveryAddressGuid: client.deliveryAddresses[0]!.guid, deliveryDate: '2026-10-13',
+      items: [{ itemGuid: state.data.items[0]!.guid, qty: 1, price: 1 }],
+    }
+  }
+
+  it('чужой externalId — 409, а не чужой заказ', () => {
+    const state = createMockState('t')
+    expect(handleMockRequest(state, req({ method: 'POST', path: '/order', body: orderFor(state, 0) }), T0).status).toBe(201)
+    const res = handleMockRequest(state, req({ method: 'POST', path: '/order', body: orderFor(state, 1) }), T0)
+    expect(res.status).toBe(409)
+  })
+
+  it('договор или адрес не этого клиента — 400', () => {
+    const state = createMockState('t')
+    const body = { ...orderFor(state, 0), contractGuid: state.data.clients[1]!.contractGuid }
+    expect(handleMockRequest(state, req({ method: 'POST', path: '/order', body }), T0).status).toBe(400)
+  })
+
+  it('последняя полная страница — nextPage: null, без пустой страницы следом', () => {
+    const state = createMockState('t')
+    const res = handleMockRequest(state, req({ path: '/clients', query: { pageSize: '5' } }), T0)
+    expect((res.body as { items: unknown[], nextPage: unknown })).toMatchObject({ nextPage: null })
+    expect((res.body as { items: unknown[] }).items).toHaveLength(5)
   })
 })

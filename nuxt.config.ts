@@ -35,6 +35,9 @@ export default defineNuxtConfig({
     name: 'wholesale-customer-portal',
     version: '0.0.0',
     // Обработчики — server/mcp/handlers/{client,admin}: /mcp/client и /mcp/admin.
+    // Явно: общий /mcp без проверки видит только инструменты вне именованных обработчиков (их нет).
+    // При 'all' он отдал бы onec_* без токена — CI проверяет, что /mcp пуст.
+    defaultHandlerStrategy: 'orphans',
   },
 
   nitro: {

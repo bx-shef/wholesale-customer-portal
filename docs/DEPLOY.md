@@ -19,7 +19,7 @@
 
 | Триггер | Что бежит |
 | --- | --- |
-| PR → `main` | `ci` (lint, typecheck, test, build) + `docker-build`: образ собирается, дымовая проверка контейнера (`/api/health`, `/login` 200, `/mcp/admin` без токена 401, чат без ключа 503, мок 1С отвечает), в реестр не идёт |
+| PR → `main` | `ci` (lint, typecheck, test, build) + `docker-build`: образ собирается, дымовая проверка контейнера в режиме read_only (`/`, `/help`, `/api/health` — 200; `/mcp/admin` без токена и с чужим — 401, с верным — 200; `/mcp/client` — 401; общий `/mcp` без инструментов; `/mock-1c` без токена — 401), в реестр не идёт. Вход (`/login`) и чат добавятся в проверку на этапах 2 и 5 |
 | push в `main` | `ci` → `deploy`: `ghcr.io/bx-shef/wholesale-customer-portal` с тегами `latest` и `sha-<коммит>` |
 | `workflow_dispatch` | Повторный выкат без коммита |
 
@@ -44,7 +44,7 @@ make prod-up && make doctor
 - `com.centurylinklabs.watchtower.enable=true` — Watchtower один на хост, второй не поднимать;
 - `com.github.nginx-proxy.nginx-proxy.keepalive=disabled` — иначе `502` на POST из портала (Node закрывает простаивающие соединения через 5 с, прокси держит 60 с; замер invoice-from-tasks 2026-09-25).
 
-Для прокси: `vhost.d/<домен>_location` с `proxy_buffering off;` (стрим ИИ-чата, skills-site) и `proxy_read_timeout` для долгих ответов DeepSeek с tool calling (`make proxy-timeout`, invoice-from-tasks).
+Для прокси: `vhost.d/<домен>_location` с `proxy_buffering off;` (стрим ИИ-чата, skills-site) и `proxy_read_timeout` для долгих ответов DeepSeek с tool calling (цель `make proxy-timeout` — как в invoice-from-tasks; в нашем Makefile появится на этапе 5).
 
 Откат и пауза автообновлений — `:latest` → `:sha-<7 знаков>` в compose на сервере, `make prod-up`.
 
@@ -69,19 +69,25 @@ make prod-up && make doctor
 
 ЛК обращается к порталу по `B24_WEBHOOK_URL`; на ВМ — внутренним адресом, без выхода в интернет. Placement `CRM_COMPANY_DETAIL_TAB` и `event.bind` указывают на внешний домен ЛК; смена домена — перерегистрация (как «Смена адреса сервера» в invoice-from-tasks).
 
+## Ограничения прототипа
+
+- **Один экземпляр.** Мок 1С и (пока) курсоры синхронизации живут в памяти процесса: две реплики
+  увидели бы разные данные, перезапуск сбрасывает заказы мока и курсоры (следующий синк — полный,
+  потребители идемпотентны). Постоянное хранилище — решение начала этапа 2 (`docs/plan.md`).
+
 ## Переменные окружения
 
 | Переменная | Зачем |
 | --- | --- |
 | `DOMAIN`, `LETSENCRYPT_EMAIL` | Стенд: домен для nginx-proxy и сертификата; из `DOMAIN` compose собирает `NUXT_PUBLIC_SITE_URL` |
-| `APP_BIND_PORT` | ВМ: порт на `127.0.0.1`, по нему же проверка здоровья |
-| `TRUST_PROXY=1` | За прокси: лимит попыток входа по IP клиента |
+| `APP_BIND_PORT` | ВМ: порт на `127.0.0.1`, по нему же проверка здоровья — *этап 7* |
+| `TRUST_PROXY=1` | За прокси: лимит попыток входа по IP клиента; задан в `docker-compose.prod.yml`, читать начнёт вход — *этап 2* |
 | `B24_WEBHOOK_URL` | Вебхук коробки |
-| `ONEC_URL`, `ONEC_TOKEN`, `ONEC_MOCK` | 1С или мок |
+| `ONEC_URL`, `ONEC_TOKEN`, `ONEC_MOCK` | 1С или мок. Мок — только при явном `ONEC_MOCK=true`; тогда `ONEC_TOKEN` — токен `/mock-1c` (пусто — мок закрыт снаружи) |
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | ИИ-помощник; без ключа чат отвечает `503`, ЛК работает |
 | `SESSION_SECRET` | Подпись сессий клиентов (`openssl rand -hex 32`) |
 | `MCP_ADMIN_TOKEN` | Bearer для `/mcp/admin` |
-| `FEEDBACK_URL`, `FEEDBACK_TOKEN` | Приёмник оценок ИИ (skills-standard); пусто — канал выключен |
+| `FEEDBACK_URL`, `FEEDBACK_TOKEN` | Приёмник оценок ИИ (skills-standard); пусто — канал выключен — *этап 5* |
 
 `make` запускает compose только с `.env` (без переменных оболочки) — приём invoice-from-tasks против соседних проектов на общем хосте. Копии `SESSION_SECRET` и `MCP_ADMIN_TOKEN` — вне сервера.
 

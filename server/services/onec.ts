@@ -27,9 +27,11 @@ export class OnecError extends Error {
     this.name = 'OnecError'
   }
 
-  /** Повторять имеет смысл сбой связи, таймаут и 5xx; 4xx и нарушение контракта — нет. */
+  /** Повторять имеет смысл сбой связи, таймаут, 5xx, 408 и 429; прочие 4xx и нарушение контракта — нет. */
   get retryable(): boolean {
-    return this.kind === 'timeout' || this.kind === 'network' || (this.kind === 'http' && (this.status ?? 0) >= 500)
+    if (this.kind === 'timeout' || this.kind === 'network') return true
+    const status = this.status ?? 0
+    return this.kind === 'http' && (status >= 500 || status === 408 || status === 429)
   }
 }
 
@@ -134,7 +136,12 @@ export class OnecClient {
   }
 
   private async once<S extends z.ZodType>(method: string, url: URL, body: unknown, schema: S) {
+    const failed = (e: unknown) => {
+      const name = (e as { name?: string }).name
+      return new OnecError(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'network', `1C ${method} ${url.pathname}: ${name ?? 'network error'}`)
+    }
     let response: Response
+    let text: string
     try {
       response = await this.fetchImpl(url, {
         method,
@@ -146,13 +153,21 @@ export class OnecClient {
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(this.timeoutMs),
       })
+      // Тело читается под тем же таймаутом: обрыв после заголовков — сбой связи, его повторяем,
+      // а не «нарушение контракта» (находка ревью PR #2).
+      text = await response.text()
     }
     catch (e) {
-      const name = (e as { name?: string }).name
-      throw new OnecError(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'network', `1C ${method} ${url.pathname}: ${name ?? 'network error'}`)
+      throw failed(e)
     }
 
-    const payload: unknown = await response.json().catch(() => undefined)
+    let payload: unknown
+    try {
+      payload = text ? JSON.parse(text) : undefined
+    }
+    catch {
+      payload = undefined
+    }
     if (!response.ok) {
       const parsed = ErrorBody.safeParse(payload)
       throw new OnecError('http', `1C ${method} ${url.pathname}: HTTP ${response.status}`, response.status, parsed.success ? parsed.data.error : undefined)
