@@ -21,13 +21,13 @@
 
 ## Этап 1. Контракт и мок 1С — 3–4 дня
 
-- [ ] `contracts/onec.openapi.yaml` по [onec-contract.md](onec-contract.md); zod-схемы `shared/onec/`.
-- [ ] Генератор данных `server/mocks/onec/seed.ts` (фиксированный seed).
-- [ ] Мок-маршруты `server/routes/mock-1c/*`: 7 методов, пагинация, `changedSince`, Bearer, ошибки; `_admin/reset`, `_admin/client`; режимы задержки и 5xx.
-- [ ] HTTP-клиент `server/services/onec.ts` (таймауты, повторы, лог без секретов — паттерн `AConnector`).
-- [ ] Инструменты `onec_*`; курсоры `changedSince`; очередь со статусами (паттерн insync).
-- [ ] Контрактные тесты `tests/contract/onec.spec.ts` (URL базы — из env).
-- [ ] Передать программисту 1С: контракт, адрес мока, команду тестов.
+- [x] `contracts/onec.openapi.yaml` по [onec-contract.md](onec-contract.md); zod-схемы `shared/onec/` — источник, OpenAPI собирается из них (`pnpm onec:openapi`).
+- [x] Генератор данных `server/mocks/onec/seed.ts` (фиксированный seed).
+- [x] Мок-маршруты `server/routes/mock-1c/*`: 7 методов, пагинация, `changedSince`, Bearer, ошибки; `_admin/reset`, `_admin/client`, `_admin/mode`, `_admin/cancel`; режимы задержки и 5xx.
+- [x] HTTP-клиент `server/services/onec.ts` (таймауты, повторы, проверка ответа схемой, лог без секретов — паттерн `AConnector`).
+- [x] Инструменты `onec_*` в `/mcp/admin`; синхронизация по курсору `changedSince` с журналом запусков (`server/utils/onecSync.ts`, паттерн insync). Хранилище курсоров и расписание — вместе с первым потребителем (этап 2).
+- [x] Контрактные тесты `tests/contract/onec.spec.ts` (URL базы — из env, `pnpm test:contract`).
+- [ ] Передать программисту 1С: контракт, адрес мока, команду тестов — всё в `docs/onec-contract.md`; адрес заработает после выката стенда `wsp.algena.by` с `ONEC_TOKEN`.
 
 ## Этап 2. Битрикс24 и доступ — 1 неделя
 

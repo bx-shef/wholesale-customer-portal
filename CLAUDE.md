@@ -16,6 +16,8 @@ pnpm install          # + nuxt prepare (postinstall)
 pnpm dev              # разработка
 pnpm check            # lint + typecheck + test — перед каждым PR
 pnpm build            # сборка .output/server/index.mjs
+pnpm test:contract    # контрактные тесты 1С: мок; ONEC_CONTRACT_URL=… — тестовая база
+pnpm onec:openapi     # пересобрать contracts/onec.openapi.yaml из shared/onec/schemas.ts
 pnpm b24:setup        # план настройки коробки по B24_WEBHOOK_URL; --apply — записать (docs/TEST_STAND.md)
 make help             # цели сервера (docs/DEPLOY.md)
 ```
@@ -28,6 +30,13 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `content/help/` | справка ЛК (коллекция `help`, `content.config.ts`) |
 | `server/mcp/handlers/admin` | `/mcp/admin` — Bearer `MCP_ADMIN_TOKEN`, без токена закрыт для всех |
 | `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента; до этапа 2 закрыт для всех |
+| `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
+| `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
+| `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
+| `server/services/onec.ts` | клиент 1С: таймаут, повторы, проверка схемой |
+| `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
+| `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
+| `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
 | `server/utils/env.ts` | единственное чтение окружения (имена без `NUXT_`) |
 | `server/utils/bearer.ts` | разбор и сверка Bearer за постоянное время |
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |
@@ -43,6 +52,8 @@ make help             # цели сервера (docs/DEPLOY.md)
   строка в `docs/REST_METHODS.md`, иначе краснеет `tests/repoGuards.test.ts`.
 - **Обмены только приложение ↔ 1С и приложение ↔ Б24.** 1С в прототипе — мок по
   `docs/onec-contract.md`; браузер к Б24, 1С и DeepSeek напрямую не ходит.
+- **Контракт 1С меняется только в `shared/onec/schemas.ts`**, затем `pnpm onec:openapi`; тест
+  краснеет, если OpenAPI отстал.
 - **Данные клиента — только его компании**: фильтр по компании из сессии на сервере, всегда.
 - **Секреты — только окружением** (`.env.example`); в лог не пишем.
 - **Чистые функции отдельно** (`shared/`, `server/utils/`) с тестами; тест обязан краснеть при
