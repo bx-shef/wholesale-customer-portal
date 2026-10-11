@@ -43,6 +43,29 @@ describe('клиенты 1С → компании Б24', () => {
     expect([...crm.companies.values()][1]).not.toHaveProperty('assignedById')
   })
 
+  it('два сотрудника с одним email — ответственный не ставится', async () => {
+    const crm = fakeCrm()
+    const call = async (m: string, p: Record<string, unknown>) => m === 'user.get'
+      ? [{ ID: '3', EMAIL: 'dup@example.by' }, { ID: '4', EMAIL: 'DUP@example.by' }]
+      : crm.call(m, p)
+    const [client] = generateSeed(1).clients
+    await createCompanySync(call).upsert([{ ...client!, managerEmail: 'dup@example.by' }])
+    expect([...crm.companies.values()][0]).not.toHaveProperty('assignedById')
+  })
+
+  it('GUID в другом регистре — та же компания, без дубля', async () => {
+    const crm = fakeCrm()
+    const [client] = generateSeed(1).clients
+    const sync = createCompanySync(async (m, p) => {
+      // Портал хранит GUID как записали первым, а фильтр сравнивает без регистра.
+      if (m === 'crm.item.list') return { items: [...crm.companies.values()].filter(c => String(c.ufCrm1cGuid).toLowerCase() === String((p.filter as Record<string, string>).ufCrm1cGuid).toLowerCase()) }
+      return crm.call(m, p)
+    })
+    await sync.upsert([client!])
+    expect(await sync.upsert([{ ...client!, guid: client!.guid.toUpperCase() }])).toMatchObject({ created: 0, updated: 1 })
+    expect(crm.companies.size).toBe(1)
+  })
+
   it('пометка удаления в 1С компанию в CRM не трогает', async () => {
     const crm = fakeCrm()
     const [client] = generateSeed(1).clients

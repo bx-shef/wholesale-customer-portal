@@ -12,6 +12,17 @@ describe('миграции', () => {
   })
 })
 
+describe('откат миграции', () => {
+  it('битая миграция не меняет ни версию, ни схему', () => {
+    const db = new DatabaseSync(':memory:')
+    const bad = ['CREATE TABLE ok_a (id INTEGER)', 'CREATE TABLE half (id INTEGER); SELECT * FROM nowhere']
+    expect(() => migrate(db, bad)).toThrow()
+    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(1)
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'half'").get()).toBeUndefined()
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'ok_a'").get()).toBeTruthy()
+  })
+})
+
 describe('sqliteSyncStore', () => {
   it('курсор и журнал переживают «перезапуск» — новое подключение к тому же файлу', async () => {
     const dir = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'wcp-'))

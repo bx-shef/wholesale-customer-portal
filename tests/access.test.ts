@@ -24,7 +24,7 @@ describe('ключи доступа', () => {
 
   it('испорченный или «тяжёлый» хэш — «не подходит», а не исключение', async () => {
     const big = 'A'.repeat(200)
-    for (const bad of ['', 'plain-text-key', 'scrypt$1073741824$8$1$AAAA$AAAAAAAAAAAAAAAAAAAAAA', 'scrypt$131072$16$1$AAAA$AAAAAAAAAAAAAAAAAAAAAA', `scrypt$16384$8$1$AAAA$${big}`]) {
+    for (const bad of ['', 'plain-text-key', 'scrypt$1073741824$8$1$AAAA$AAAAAAAAAAAAAAAAAAAAAA', 'scrypt$131072$16$1$AAAA$AAAAAAAAAAAAAAAAAAAAAA', `scrypt$16384$8$1$AAAA$${big}`, 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA', 'scrypt$16384$8$1$AAAA$AAAAAAAAAAAAAAAAAAAAAA$x', 'scrypt$16384$8$1$AAAA$AAAA']) {
       await expect(verifyAccessKey('k', bad)).resolves.toBe(false)
     }
   })
@@ -73,6 +73,16 @@ describe('сессия', () => {
     const none = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
     expect(verifySession(`${none}.${forged}.`, SECRET, 1001)).toBeNull()
     expect(verifySession(signSession({ ...claims, kf: '' }, SECRET, 1000), SECRET, 1001)).toBeNull()
+  })
+
+  it('нулевые id, чужой заголовок и подпись другой длины — отказ', () => {
+    expect(verifySession(signSession({ ...claims, contactId: 0 }, SECRET, 1000), SECRET, 1001)).toBeNull()
+    expect(verifySession(signSession({ ...claims, companyId: -1 }, SECRET, 1000), SECRET, 1001)).toBeNull()
+    const token = signSession(claims, SECRET, 1000)
+    const [h, b, s] = token.split('.')
+    expect(verifySession(`${h}.${b}.${s!.slice(0, -2)}`, SECRET, 1001)).toBeNull()
+    const hs512 = Buffer.from(JSON.stringify({ alg: 'HS512', typ: 'JWT' })).toString('base64url')
+    expect(verifySession(`${hs512}.${b}.${s}`, SECRET, 1001)).toBeNull()
   })
 
   it('короткий секрет не подписывает и не проверяет', () => {

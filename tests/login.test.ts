@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { hashAccessKey } from '../server/utils/accessKeys'
-import { login, MAX_FAILS_PER_LOGIN, pruneJournals, sqliteLoginJournal } from '../server/utils/login'
+import { login, MAX_FAILS_PER_IP, MAX_FAILS_PER_LOGIN, pruneJournals, sqliteLoginJournal } from '../server/utils/login'
 import type { AccessDirectory, AccessRecord, CompanyInfo } from '../server/services/b24Access'
 
 const KEY = 'AbcdEfghJkmn2345'
@@ -41,6 +41,27 @@ describe('вход', () => {
 
   it('верный логин и ключ — сессия на компанию из записи доступа', async () => {
     expect(await run([rec()])).toMatchObject({ ok: true, contactId: 5, companyId: 7, accessId: 11 })
+  })
+
+  it('лимит по IP: разные логины с одного адреса упираются в MAX_FAILS_PER_IP', async () => {
+    for (let i = 0; i < MAX_FAILS_PER_IP; i++) await run([rec()], KEY, `user${i}@x.by`, '9.9.9.9')
+    expect(await run([rec()], KEY, '+375291234567', '9.9.9.9')).toMatchObject({ ok: false, reason: 'locked', status: 429 })
+    expect(await run([rec()], KEY, '+375291234567', '8.8.8.8')).toMatchObject({ ok: true })
+  })
+
+  it('ключ короче 12 или длиннее 128 знаков — invalid_input без scrypt', async () => {
+    expect(await run([rec()], 'Abc2345')).toMatchObject({ reason: 'invalid_input' })
+    expect(await run([rec()], 'A'.repeat(129))).toMatchObject({ reason: 'invalid_input' })
+  })
+
+  it('ровно в момент expiresAt ключ уже истёк', async () => {
+    expect(await run([rec({ expiresAt: NOW.toISOString() })])).toMatchObject({ reason: 'expired' })
+  })
+
+  it('сбой записи LAST_LOGIN вход не ломает', async () => {
+    const dir = { ...directory([rec()], [company], contacts), markLogin: async () => { throw new Error('503') } }
+    expect(await login({ login: '+375291234567', key: KEY, ip: '1.1.1.1' }, { directory: dir, journal, secret: SECRET, now: () => NOW }))
+      .toMatchObject({ ok: true })
   })
 
   it('каждый отказ — 401 без подсказки, причина — только в журнале', async () => {
@@ -123,5 +144,17 @@ describe('выдача ключа', () => {
     const { verifyAccessKey } = await import('../server/utils/accessKeys')
     expect(stored).not.toContain((ok as { key: string }).key)
     expect(await verifyAccessKey((ok as { key: string }).key, stored)).toBe(true)
+  })
+
+  it('срок ключа — целые дни от 1 до MAX_TTL_DAYS', async () => {
+    const { issueAccessKey, MAX_TTL_DAYS } = await import('../server/utils/accessAdmin')
+    const company: CompanyInfo = { id: 7, title: 'x', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d', assignedById: null }
+    const dir = { ...directory([], [company], {}), upsertAccess: async () => 33 }
+    for (const ttlDays of [0, -1, 1.5, MAX_TTL_DAYS + 1]) {
+      expect(await issueAccessKey(dir, { contactId: 5, companyId: 7, ttlDays })).toEqual({ ok: false, error: 'bad_ttl' })
+    }
+    for (const ttlDays of [1, MAX_TTL_DAYS]) {
+      expect(await issueAccessKey(dir, { contactId: 5, companyId: 7, ttlDays })).toMatchObject({ ok: true })
+    }
   })
 })

@@ -37,4 +37,27 @@ describe('перепроверка сессии', () => {
     forgetAccessCheck()
     expect(await accessStillValid(claims(), async () => { throw new Error('503') }, 0)).toBe(false)
   })
+
+  it('отозванный, истёкший или чужой контакт закрывают сессию', async () => {
+    for (const r of [rec({ status: 'revoked' }), rec({ expiresAt: '1970-01-01T00:00:00Z' }), rec({ contactId: 6 }), null]) {
+      forgetAccessCheck()
+      expect(await accessStillValid(claims(), async () => r, 1000)).toBe(false)
+    }
+  })
+
+  it('в пределах ACCESS_RECHECK_MS CRM не спрашиваем, после — спрашиваем', async () => {
+    forgetAccessCheck()
+    const get = vi.fn(async () => rec())
+    await accessStillValid(claims(), get, 0)
+    await accessStillValid(claims(), get, ACCESS_RECHECK_MS - 1)
+    expect(get).toHaveBeenCalledTimes(1)
+    await accessStillValid(claims(), get, ACCESS_RECHECK_MS + 1)
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('отрицательный ответ при падении CRM льготы не даёт', async () => {
+    forgetAccessCheck()
+    expect(await accessStillValid(claims(), async () => rec({ status: 'revoked' }), 0)).toBe(false)
+    expect(await accessStillValid(claims(), async () => { throw new Error('503') }, ACCESS_RECHECK_MS + 1)).toBe(false)
+  })
 })
