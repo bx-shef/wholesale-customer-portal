@@ -1,0 +1,44 @@
+{
+  "name": "wholesale-customer-portal",
+  "type": "module",
+  "private": true,
+  "description": "Личный кабинет оптового клиента: каталог с ценой клиента и остатками, заявки, дата машины, ИИ-помощник. Битрикс24 (коробка) + 1С.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bx-shef/wholesale-customer-portal.git"
+  },
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "b24:setup": "node --experimental-strip-types scripts/b24-setup.ts",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@bitrix24/b24icons-vue": "^2.0.8",
+    "@bitrix24/b24jssdk": "^3.0.0",
+    "@bitrix24/b24ui-nuxt": "^2.14.0",
+    "@nuxt/content": "^3.16.1",
+    "@nuxtjs/mcp-toolkit": "^0.24.1",
+    "nuxt": "^4.5.2",
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.8.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.9"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
