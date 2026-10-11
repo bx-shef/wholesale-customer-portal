@@ -9,7 +9,7 @@
 // A new smart process gets its fields on the next run: the field entityId needs the type id
 // the portal assigns on creation.
 import { B24Hook } from '@bitrix24/b24jssdk'
-import { COMPANY_GUID_FIELD, planSetup, type PortalState } from '../shared/b24Setup.ts'
+import { COMPANY_GUID_FIELD, planSetup, type PortalState } from '../shared/b24Setup'
 
 const url = process.env.B24_WEBHOOK_URL?.trim()
 if (!url) {

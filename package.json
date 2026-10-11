@@ -16,8 +16,10 @@
     "test": "vitest run",
     "typecheck": "vue-tsc --noEmit",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "b24:setup": "node --experimental-strip-types scripts/b24-setup.ts",
-    "postinstall": "nuxt prepare"
+    "b24:setup": "tsx scripts/b24-setup.ts",
+    "postinstall": "nuxt prepare",
+    "test:contract": "vitest run tests/contract",
+    "onec:openapi": "tsx scripts/onec-openapi.ts"
   },
   "dependencies": {
     "@bitrix24/b24icons-vue": "^2.0.8",
@@ -33,9 +35,11 @@
     "@nuxt/eslint": "^1.17.0",
     "@types/node": "^22.0.0",
     "eslint": "^10.8.1",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.9",
+    "yaml": "^2.9.1"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {

@@ -1,0 +1,75 @@
+/**
+ * OpenAPI контракта 1С из zod-схем: файл `contracts/onec.openapi.yaml` для программиста 1С
+ * собирается отсюда (`pnpm onec:openapi`), а `tests/onecOpenapi.test.ts` краснеет, если файл
+ * отстал от схем. Вторая, рукописная копия контракта разошлась бы молча.
+ */
+import { z } from 'zod'
+import * as s from './schemas'
+
+const json = (schema: z.ZodType) => z.toJSONSchema(schema, { io: 'output', unrepresentable: 'any' })
+const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` })
+const content = (name: string) => ({ 'application/json': { schema: ref(name) } })
+const errors = {
+  400: { description: 'Неверные параметры', content: content('Error') },
+  401: { description: 'Нет или неверный Bearer-токен', content: content('Error') },
+  503: { description: 'Сервис временно недоступен — ЛК повторит запрос', content: content('Error') },
+}
+const listParams = [
+  { name: 'changedSince', in: 'query', required: false, schema: { type: 'string', format: 'date-time' }, description: 'Только изменённое строго позже этого момента, включая пометку удаления' },
+  { name: 'page', in: 'query', required: false, schema: { type: 'integer', minimum: 1, default: 1 } },
+  { name: 'pageSize', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: s.PAGE_SIZE_MAX, default: s.PAGE_SIZE_MAX } },
+]
+
+export function buildOnecOpenApi() {
+  const schemas = {
+    Error: s.ErrorBody, Client: s.Client, ClientsPage: s.ClientsPage, Contract: s.Contract, Section: s.Section,
+    Item: s.Item, CatalogPage: s.CatalogPage, PricesRequest: s.PricesRequest, Price: s.Price, PricesResponse: s.PricesResponse,
+    Stock: s.Stock, StockPage: s.StockPage, OrderRequest: s.OrderRequest, OrderCreated: s.OrderCreated,
+    OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage,
+  }
+  return {
+    openapi: '3.1.0',
+    info: {
+      title: 'HTTP-сервис 1С для ЛК опта',
+      version: '1.0.0',
+      description: 'Собрано из shared/onec/schemas.ts. Описание и порядок сдачи — docs/onec-contract.md. Не править руками: pnpm onec:openapi.',
+    },
+    security: [{ bearer: [] }],
+    paths: {
+      '/clients': { get: { summary: 'Контрагенты', parameters: listParams, responses: { 200: { description: 'Страница', content: content('ClientsPage') }, ...errors } } },
+      '/client/{guid}/contract': {
+        get: {
+          summary: 'Договор клиента',
+          parameters: [{ name: 'guid', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { 200: { description: 'Договор', content: content('Contract') }, 404: { description: 'Нет клиента или договора', content: content('Error') }, ...errors },
+        },
+      },
+      '/catalog': { get: { summary: 'Каталог: разделы на первой странице, товары постранично', parameters: listParams, responses: { 200: { description: 'Страница', content: content('CatalogPage') }, ...errors } } },
+      '/prices': {
+        post: {
+          summary: 'Цены по договору клиента, с НДС. Неизвестный товар — нет строки в ответе',
+          requestBody: { required: true, content: content('PricesRequest') },
+          responses: { 200: { description: 'Цены', content: content('PricesResponse') }, 404: { description: 'Нет клиента или договора', content: content('Error') }, ...errors },
+        },
+      },
+      '/stock': { get: { summary: 'Свободный остаток без резервов', parameters: listParams, responses: { 200: { description: 'Страница', content: content('StockPage') }, ...errors } } },
+      '/order': {
+        post: {
+          summary: 'Заказ. Повтор с тем же externalId возвращает уже созданный заказ',
+          requestBody: { required: true, content: content('OrderRequest') },
+          responses: {
+            201: { description: 'Создан', content: content('OrderCreated') },
+            200: { description: 'Уже был создан с этим externalId', content: content('OrderCreated') },
+            404: { description: 'Нет клиента', content: content('Error') },
+            ...errors,
+          },
+        },
+      },
+      '/orders/status': { get: { summary: 'Статусы заказов', parameters: listParams, responses: { 200: { description: 'Страница', content: content('OrderStatusPage') }, ...errors } } },
+    },
+    components: {
+      securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } },
+      schemas: Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [name, json(schema)])),
+    },
+  }
+}

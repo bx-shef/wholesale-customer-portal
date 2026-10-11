@@ -1,0 +1,1002 @@
+openapi: 3.1.0
+info:
+  title: HTTP-сервис 1С для ЛК опта
+  version: 1.0.0
+  description: "Собрано из shared/onec/schemas.ts. Описание и порядок сдачи — docs/onec-contract.md. Не править руками: pnpm onec:openapi."
+security:
+  - bearer: []
+paths:
+  /clients:
+    get:
+      summary: Контрагенты
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientsPage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /client/{guid}/contract:
+    get:
+      summary: Договор клиента
+      parameters:
+        - name: guid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Договор
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contract"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Нет клиента или договора
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /catalog:
+    get:
+      summary: "Каталог: разделы на первой странице, товары постранично"
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogPage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /prices:
+    post:
+      summary: Цены по договору клиента, с НДС. Неизвестный товар — нет строки в ответе
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PricesRequest"
+      responses:
+        "200":
+          description: Цены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PricesResponse"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Нет клиента или договора
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /stock:
+    get:
+      summary: Свободный остаток без резервов
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockPage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /order:
+    post:
+      summary: Заказ. Повтор с тем же externalId возвращает уже созданный заказ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderRequest"
+      responses:
+        "200":
+          description: Уже был создан с этим externalId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderCreated"
+        "201":
+          description: Создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderCreated"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Нет клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /orders/status:
+    get:
+      summary: Статусы заказов
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderStatusPage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        error:
+          type: string
+          minLength: 1
+        message:
+          type: string
+      required:
+        - error
+        - message
+      additionalProperties: false
+    Client:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        guid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        name:
+          type: string
+        unp:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        managerEmail:
+          type: string
+        contractGuid:
+          anyOf:
+            - type: string
+              pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            - type: "null"
+        deliveryAddresses:
+          type: array
+          items:
+            type: object
+            properties:
+              guid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              city:
+                type: string
+              address:
+                type: string
+            required:
+              - guid
+              - city
+              - address
+            additionalProperties: false
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+        deleted:
+          type: boolean
+      required:
+        - guid
+        - name
+        - unp
+        - address
+        - city
+        - managerEmail
+        - contractGuid
+        - deliveryAddresses
+        - changedAt
+        - deleted
+      additionalProperties: false
+    ClientsPage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              guid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              name:
+                type: string
+              unp:
+                type: string
+              address:
+                type: string
+              city:
+                type: string
+              managerEmail:
+                type: string
+              contractGuid:
+                anyOf:
+                  - type: string
+                    pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  - type: "null"
+              deliveryAddresses:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    guid:
+                      type: string
+                      pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                    city:
+                      type: string
+                    address:
+                      type: string
+                  required:
+                    - guid
+                    - city
+                    - address
+                  additionalProperties: false
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+              deleted:
+                type: boolean
+            required:
+              - guid
+              - name
+              - unp
+              - address
+              - city
+              - managerEmail
+              - contractGuid
+              - deliveryAddresses
+              - changedAt
+              - deleted
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - items
+        - nextPage
+      additionalProperties: false
+    Contract:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        guid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        number:
+          type: string
+        date:
+          type: string
+          format: date
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+        priceTypeGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        paymentDelayDays:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        creditLimit:
+          type: number
+        debt:
+          type: number
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+      required:
+        - guid
+        - number
+        - date
+        - priceTypeGuid
+        - paymentDelayDays
+        - creditLimit
+        - debt
+        - currency
+      additionalProperties: false
+    Section:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        guid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        parentGuid:
+          anyOf:
+            - type: string
+              pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            - type: "null"
+        name:
+          type: string
+      required:
+        - guid
+        - parentGuid
+        - name
+      additionalProperties: false
+    Item:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        guid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        sku:
+          type: string
+        name:
+          type: string
+        sectionGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        brand:
+          type: string
+        unit:
+          type: string
+        packQty:
+          type: number
+          exclusiveMinimum: 0
+        minQty:
+          type: number
+          exclusiveMinimum: 0
+        description:
+          type: string
+        properties:
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: string
+        images:
+          type: array
+          items:
+            type: string
+        analogs:
+          type: array
+          items:
+            type: string
+            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+        deleted:
+          type: boolean
+      required:
+        - guid
+        - sku
+        - name
+        - sectionGuid
+        - brand
+        - unit
+        - packQty
+        - minQty
+        - description
+        - properties
+        - images
+        - analogs
+        - changedAt
+        - deleted
+      additionalProperties: false
+    CatalogPage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              guid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              parentGuid:
+                anyOf:
+                  - type: string
+                    pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  - type: "null"
+              name:
+                type: string
+            required:
+              - guid
+              - parentGuid
+              - name
+            additionalProperties: false
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              guid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              sku:
+                type: string
+              name:
+                type: string
+              sectionGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              brand:
+                type: string
+              unit:
+                type: string
+              packQty:
+                type: number
+                exclusiveMinimum: 0
+              minQty:
+                type: number
+                exclusiveMinimum: 0
+              description:
+                type: string
+              properties:
+                type: object
+                propertyNames:
+                  type: string
+                additionalProperties:
+                  type: string
+              images:
+                type: array
+                items:
+                  type: string
+              analogs:
+                type: array
+                items:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+              deleted:
+                type: boolean
+            required:
+              - guid
+              - sku
+              - name
+              - sectionGuid
+              - brand
+              - unit
+              - packQty
+              - minQty
+              - description
+              - properties
+              - images
+              - analogs
+              - changedAt
+              - deleted
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - sections
+        - items
+        - nextPage
+      additionalProperties: false
+    PricesRequest:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        clientGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        items:
+          minItems: 1
+          maxItems: 500
+          type: array
+          items:
+            type: string
+            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+      required:
+        - clientGuid
+        - items
+      additionalProperties: false
+    Price:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        itemGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        price:
+          type: number
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        vatRate:
+          type: number
+          minimum: 0
+      required:
+        - itemGuid
+        - price
+        - currency
+        - vatRate
+      additionalProperties: false
+    PricesResponse:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: array
+      items:
+        type: object
+        properties:
+          itemGuid:
+            type: string
+            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+          price:
+            type: number
+          currency:
+            type: string
+            pattern: ^[A-Z]{3}$
+          vatRate:
+            type: number
+            minimum: 0
+        required:
+          - itemGuid
+          - price
+          - currency
+          - vatRate
+        additionalProperties: false
+    Stock:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        itemGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        warehouseGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        warehouseName:
+          type: string
+        available:
+          type: number
+          minimum: 0
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+      required:
+        - itemGuid
+        - warehouseGuid
+        - warehouseName
+        - available
+        - changedAt
+      additionalProperties: false
+    StockPage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              itemGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              warehouseGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              warehouseName:
+                type: string
+              available:
+                type: number
+                minimum: 0
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+            required:
+              - itemGuid
+              - warehouseGuid
+              - warehouseName
+              - available
+              - changedAt
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - items
+        - nextPage
+      additionalProperties: false
+    OrderRequest:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        externalId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        clientGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        contractGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        deliveryAddressGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        deliveryDate:
+          type: string
+          format: date
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+        comment:
+          default: ""
+          type: string
+          maxLength: 2000
+        items:
+          minItems: 1
+          maxItems: 500
+          type: array
+          items:
+            type: object
+            properties:
+              itemGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              qty:
+                type: number
+                exclusiveMinimum: 0
+              price:
+                type: number
+            required:
+              - itemGuid
+              - qty
+              - price
+            additionalProperties: false
+      required:
+        - externalId
+        - clientGuid
+        - contractGuid
+        - deliveryAddressGuid
+        - deliveryDate
+        - comment
+        - items
+      additionalProperties: false
+    OrderCreated:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        orderGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        number:
+          type: string
+        status:
+          type: string
+          enum:
+            - new
+            - confirmed
+            - assembled
+            - shipped
+            - delivered
+            - cancelled
+      required:
+        - orderGuid
+        - number
+        - status
+      additionalProperties: false
+    OrderStatusRow:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        orderGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        externalId:
+          type: string
+        number:
+          type: string
+        status:
+          type: string
+          enum:
+            - new
+            - confirmed
+            - assembled
+            - shipped
+            - delivered
+            - cancelled
+        shipmentDate:
+          anyOf:
+            - type: string
+              format: date
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            - type: "null"
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+      required:
+        - orderGuid
+        - externalId
+        - number
+        - status
+        - shipmentDate
+        - changedAt
+      additionalProperties: false
+    OrderStatusPage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              orderGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              externalId:
+                type: string
+              number:
+                type: string
+              status:
+                type: string
+                enum:
+                  - new
+                  - confirmed
+                  - assembled
+                  - shipped
+                  - delivered
+                  - cancelled
+              shipmentDate:
+                anyOf:
+                  - type: string
+                    format: date
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                  - type: "null"
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+            required:
+              - orderGuid
+              - externalId
+              - number
+              - status
+              - shipmentDate
+              - changedAt
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - items
+        - nextPage
+      additionalProperties: false
