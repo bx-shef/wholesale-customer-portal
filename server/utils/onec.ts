@@ -33,6 +33,6 @@ export function useOnec(): OnecClient {
     const state = getMockState()
     return new OnecClient({ baseUrl: 'http://mock.local/mock-1c', token: state.token, fetch: mockFetch(state), log })
   }
-  if (!env.onecUrl || !env.onecToken) throw createError({ statusCode: 503, statusMessage: '1C is not configured: ONEC_URL / ONEC_TOKEN' })
+  if (!env.onecUrl || !env.onecToken) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL / ONEC_TOKEN' })
   return new OnecClient({ baseUrl: env.onecUrl, token: env.onecToken, log })
 }

@@ -26,10 +26,14 @@ make help             # цели сервера (docs/DEPLOY.md)
 
 | Где | Что |
 |---|---|
-| `app/` | страницы на Bitrix24 UI: `index` (каталог, пока пустой), `help` (справка из Nuxt Content) |
+| `app/` | страницы на Bitrix24 UI: `login` (вход), `index` (каталог, пока пустой, за входом), `help` (справка из Nuxt Content) |
 | `content/help/` | справка ЛК (коллекция `help`, `content.config.ts`) |
 | `server/mcp/handlers/admin` | `/mcp/admin` — Bearer `MCP_ADMIN_TOKEN`, без токена закрыт для всех |
-| `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента; до этапа 2 закрыт для всех |
+| `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента (cookie или тот же токен Bearer) |
+| `server/services/b24Access.ts` | доступ в ЛК поверх CRM: контакт по телефону/email, «Доступ в ЛК», компания с GUID 1С |
+| `server/utils/login.ts`, `session.ts`, `accessKeys.ts`, `clientSession.ts` | вход с лимитом и журналом, подписанная сессия, ключи (scrypt), перепроверка ключа в CRM |
+| `server/utils/b24.ts` | B24Hook по `B24_WEBHOOK_URL` (только https) |
+| `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
 | `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
@@ -56,6 +60,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 - **Контракт 1С меняется только в `shared/onec/schemas.ts`**, затем `pnpm onec:openapi`; тест
   краснеет, если OpenAPI отстал.
 - **Данные клиента — только его компании**: фильтр по компании из сессии на сервере, всегда.
+- **Отказ входа — один текст на любую причину**; причина — только в журнале входов.
 - **Секреты — только окружением** (`.env.example`); в лог не пишем.
 - **Чистые функции отдельно** (`shared/`, `server/utils/`) с тестами; тест обязан краснеть при
   мутации (`AGENT_RULES.md` §5.2).

@@ -1,0 +1,105 @@
+import { DatabaseSync } from 'node:sqlite'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { migrate } from '../server/db/sqlite'
+import { hashAccessKey } from '../server/utils/accessKeys'
+import { login, MAX_FAILS_PER_LOGIN, sqliteLoginJournal } from '../server/utils/login'
+import type { AccessDirectory, AccessRecord, CompanyInfo } from '../server/services/b24Access'
+
+const KEY = 'AbcdEfghJkmn2345'
+const NOW = new Date('2026-10-11T12:00:00Z')
+
+function directory(records: AccessRecord[], companies: CompanyInfo[], contacts: Record<string, number[]>): AccessDirectory {
+  return {
+    findContactIds: async l => contacts[l.value] ?? [],
+    listAccessByContacts: async ids => records.filter(r => ids.includes(r.contactId)),
+    getAccess: async id => records.find(r => r.id === id) ?? null,
+    getCompany: async id => companies.find(c => c.id === id) ?? null,
+    markLogin: async () => {},
+    upsertAccess: async () => 0,
+    revokeAccess: async () => 0,
+    contactInCompany: async () => true,
+  }
+}
+
+describe('вход', () => {
+  let db: DatabaseSync
+  let journal: ReturnType<typeof sqliteLoginJournal>
+  const rec = (over: Partial<AccessRecord> = {}): AccessRecord => ({ id: 11, contactId: 5, companyId: 7, keyHash: hashAccessKey(KEY), status: 'active', expiresAt: null, ...over })
+  const company: CompanyInfo = { id: 7, title: 'ООО «Клиент»', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d' }
+  const contacts = { '+375291234567': [5] }
+
+  beforeEach(() => {
+    db = new DatabaseSync(':memory:')
+    migrate(db)
+    journal = sqliteLoginJournal(db)
+  })
+
+  const run = (r: AccessRecord[], k = KEY, l = '+375 29 123-45-67', ip = '1.1.1.1', c = [company]) =>
+    login({ login: l, key: k, ip }, { directory: directory(r, c, contacts), journal, now: () => NOW })
+
+  it('верный логин и ключ — сессия на компанию из записи доступа', async () => {
+    expect(await run([rec()])).toEqual({ ok: true, contactId: 5, companyId: 7, accessId: 11 })
+  })
+
+  it('каждый отказ — 401 без подсказки, причина — только в журнале', async () => {
+    const cases: [AccessRecord[], string, string, CompanyInfo[], string][] = [
+      [[rec()], KEY, '+375 29 000-00-00', [company], 'no_contact'],
+      [[], KEY, '+375291234567', [company], 'no_access'],
+      [[rec()], 'WrongKey23456789', '+375291234567', [company], 'bad_key'],
+      [[rec({ status: 'revoked' })], KEY, '+375291234567', [company], 'revoked'],
+      [[rec({ expiresAt: '2026-10-01T00:00:00Z' })], KEY, '+375291234567', [company], 'expired'],
+      [[rec()], KEY, '+375291234567', [{ ...company, onecGuid: null }], 'no_guid'],
+    ]
+    for (const [records, key, l, companies, reason] of cases) {
+      const result = await run(records, key, l, `ip-${reason}`, companies)
+      expect(result).toEqual({ ok: false, reason, status: 401 })
+    }
+    expect(db.prepare('SELECT reason FROM login_journal ORDER BY id').all().map(r => (r as { reason: string }).reason))
+      .toEqual(['no_contact', 'no_access', 'bad_key', 'revoked', 'expired', 'no_guid'])
+  })
+
+  it('журнал хранит хэш логина, а не телефон', async () => {
+    await run([rec()], 'WrongKey23456789')
+    const row = db.prepare('SELECT login_hash FROM login_journal').get() as { login_hash: string }
+    expect(row.login_hash).toMatch(/^[0-9a-f]{32}$/)
+    expect(JSON.stringify(db.prepare('SELECT * FROM login_journal').all())).not.toContain('375291234567')
+  })
+
+  it(`после ${MAX_FAILS_PER_LOGIN} неудач логин заблокирован — даже верным ключом, и блок не продлевает сам себя`, async () => {
+    for (let i = 0; i < MAX_FAILS_PER_LOGIN; i++) await run([rec()], 'WrongKey23456789', '+375291234567', `ip${i}`)
+    expect(await run([rec()])).toEqual({ ok: false, reason: 'locked', status: 429 })
+    expect(await run([rec()])).toMatchObject({ reason: 'locked' })
+    const fails = db.prepare("SELECT COUNT(*) AS n FROM login_journal WHERE ok = 0").get() as { n: number }
+    expect(fails.n).toBe(MAX_FAILS_PER_LOGIN)
+  })
+
+  it('ключ сверяется со всеми записями контакта — вход в ту компанию, чей ключ', async () => {
+    const other = rec({ id: 12, companyId: 8, keyHash: hashAccessKey('OtherKey23456789') })
+    const result = await run([rec(), other], 'OtherKey23456789', '+375291234567', '1.1.1.1', [company, { ...company, id: 8 }])
+    expect(result).toMatchObject({ ok: true, companyId: 8, accessId: 12 })
+  })
+
+  it('CRM недоступна — 503, не «неверный ключ»', async () => {
+    const broken = { ...directory([], [], contacts), findContactIds: async () => { throw new Error('ECONNREFUSED') } }
+    const result = await login({ login: '+375291234567', key: KEY, ip: 'x' }, { directory: broken, journal, now: () => NOW })
+    expect(result).toEqual({ ok: false, reason: 'error', status: 503 })
+  })
+})
+
+describe('выдача ключа', () => {
+  it('ключ — только контакту этой компании и только компании с GUID 1С', async () => {
+    const { issueAccessKey } = await import('../server/utils/accessAdmin')
+    const company: CompanyInfo = { id: 7, title: 'x', onecGuid: '0d16986b-24f9-4029-b2a9-0106aacaaf0d' }
+    let stored = ''
+    const dir = { ...directory([], [company], {}), upsertAccess: async (_c: number, _co: number, hash: string) => { stored = hash; return 33 } }
+    expect(await issueAccessKey({ ...dir, contactInCompany: async () => false }, { contactId: 5, companyId: 7 })).toEqual({ ok: false, error: 'contact_not_in_company' })
+    expect(await issueAccessKey({ ...dir, getCompany: async () => ({ ...company, onecGuid: null }) }, { contactId: 5, companyId: 7 })).toEqual({ ok: false, error: 'company_without_guid' })
+
+    const ok = await issueAccessKey(dir, { contactId: 5, companyId: 7, ttlDays: 30 }, NOW)
+    expect(ok).toMatchObject({ ok: true, accessId: 33, expiresAt: '2026-11-10T12:00:00.000Z' })
+    // В CRM уходит хэш, а не сам ключ — и этим хэшем ключ потом проверяется.
+    const { verifyAccessKey } = await import('../server/utils/accessKeys')
+    expect(stored).not.toContain((ok as { key: string }).key)
+    expect(verifyAccessKey((ok as { key: string }).key, stored)).toBe(true)
+  })
+})
