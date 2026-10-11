@@ -19,7 +19,7 @@
 
 | Триггер | Что бежит |
 | --- | --- |
-| PR → `main` | `ci` (lint, typecheck, test, build) + `docker-build`: образ собирается, дымовая проверка контейнера в режиме read_only (`/`, `/help`, `/api/health` — 200; `/mcp/admin` без токена и с чужим — 401, с верным — 200; `/mcp/client` — 401; общий `/mcp` без инструментов; `/mock-1c` без токена — 401), в реестр не идёт. Вход (`/login`) и чат добавятся в проверку на этапах 2 и 5 |
+| PR → `main` | `ci` (lint, typecheck, test, build) + `docker-build`: образ собирается, дымовая проверка контейнера в режиме read_only (`/` — 302 на вход; `/login`, `/help`, `/api/health` — 200; `/mcp/admin` без токена и с чужим — 401, с верным — 200; `/mcp/client` — 401; общий `/mcp` без инструментов; `/mock-1c` без токена — 401), в реестр не идёт. Чат добавится в проверку на этапе 5 |
 | push в `main` | `ci` → `deploy`: `ghcr.io/bx-shef/wholesale-customer-portal` с тегами `latest` и `sha-<коммит>` |
 | `workflow_dispatch` | Повторный выкат без коммита |
 

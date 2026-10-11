@@ -110,7 +110,8 @@ jobs:
           check() { got=$(curl -s -o /dev/null -w '%{http_code}' "${@:2}"); echo "$1 → $got  ${*:2}"; [ "$got" = "$1" ]; }
           rpc='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
           mcp=(-X POST -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d "$rpc")
-          check 200 localhost:3000/
+          check 302 localhost:3000/
+          check 200 localhost:3000/login
           check 200 localhost:3000/help
           check 200 localhost:3000/api/health
           check 401 "${mcp[@]}" localhost:3000/mcp/admin
