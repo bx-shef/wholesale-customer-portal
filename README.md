@@ -1,6 +1,19 @@
 # wholesale-customer-portal
 
+> Last reviewed: 2026-10-11
+
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Каталог с ценой клиента и остатками, заявки, дата приезда машины, ИИ-помощник на DeepSeek. Nuxt 4 + Bitrix24 UI + `@bitrix24/b24jssdk`, MCP на `@nuxtjs/mcp-toolkit`.
+
+## Быстрый старт
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm dev            # http://localhost:3000
+pnpm check          # lint + typecheck + test
+```
+
+Правила работы — [CLAUDE.md](CLAUDE.md) и [docs/AGENT_RULES.md](docs/AGENT_RULES.md).
 
 ## Документация
 
@@ -9,6 +22,9 @@
 - [docs/plan.md](docs/plan.md) — план работ по этапам с задачами.
 - [docs/START-PROMPT.md](docs/START-PROMPT.md) — стартовый промпт для новой сессии разработки.
 - [docs/onec-contract.md](docs/onec-contract.md) — задание программисту 1С (HTTP-контракт; в прототипе — мок).
+- [docs/project-map.md](docs/project-map.md) — где мы сейчас.
+- [docs/TEST_STAND.md](docs/TEST_STAND.md) — тестовая коробка и настройка Б24 скриптом.
+- [docs/REST_METHODS.md](docs/REST_METHODS.md) — какие методы Б24 зовём.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — выкат: стенд (GHCR + Watchtower) и ВМ Битрикс24 клиента.
 - [docs/related-repos.md](docs/related-repos.md) — связанные репозитории: что берём, зачем, как использовать, как следить за изменениями.
 - [docs/upstream.lock.json](docs/upstream.lock.json) — разобранные версии связанных репозиториев; проверка — `.github/workflows/upstream-watch.yml`.
