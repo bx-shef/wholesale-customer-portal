@@ -3,18 +3,25 @@
  * проверяются без сервера (tests/orders.test.ts).
  *
  * - Цена, название и кратность берутся с сервера: из браузера — только GUID товара и количество.
- * - Заявка уходит, только если у каждой строки есть цена договора: сделка без цены — работа
- *   менеджеру вслепую, а клиенту — неверный итог.
- * - `requestId` (UUID из браузера) делает отправку идемпотентной: повтор после обрыва связи
- *   возвращает ту же заявку, а не создаёт вторую сделку.
+ * - Заявка уходит, только если у каждой строки есть цена договора и валюта одна.
+ * - `requestId` (UUID из браузера) делает отправку идемпотентной. Строка заявки — источник правды:
+ *   сделка всегда собирается из сохранённой строки, а не из пересчёта на повторе, поэтому база,
+ *   CRM и ответ клиенту не расходятся. Изменилась корзина при том же requestId — пока сделки нет,
+ *   строка обновляется; после — 409, клиент начинает новую заявку.
+ * - Отправку в CRM захватывает одна попытка (`pending` → `sending`): двойной клик и вторая вкладка
+ *   не создают двух сделок. Захват протухает через SENDING_STALE_MS — упавший процесс не держит
+ *   заявку вечно; на этот случай страхует поиск сделки по ORIGIN_ID.
  */
+import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import { addressLine, CART_LINES_MAX, COMMENT_MAX, humanDateTime, isValidQty, lineTotal, neutralizeBb, normalizeQty, type CartLineInput } from '../../shared/cart'
+import type { PriceT } from '../../shared/onec/schemas'
+import { addressLine, CART_LINES_MAX, COMMENT_MAX, isValidQty, lineTotal, neutralizeBb, normalizeQty, roundQty, type CartLineInput } from '../../shared/cart'
+import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSchedule } from '../../shared/delivery'
 import type { CatalogStore } from './catalog'
 import type { ClientPricing, PriceSource } from './catalogView'
 import { GUID_RE } from './catalogView'
-import type { ClientStore, DeliveryAddress } from './clients'
-import type { B24Orders, Trip } from '../services/b24Orders'
+import type { ClientStore } from './clients'
+import type { B24Orders } from '../services/b24Orders'
 
 export type LineProblem = 'not_found' | 'no_price' | 'bad_qty'
 
@@ -44,6 +51,8 @@ export interface Quote {
   ok: boolean
 }
 
+const QTY_MAX = 1e6
+
 /** Разбор корзины из тела запроса: мусор отбрасывается, повторы одного товара складываются. */
 export function parseCartLines(body: unknown): CartLineInput[] {
   const raw = (body as { items?: unknown })?.items
@@ -52,8 +61,8 @@ export function parseCartLines(body: unknown): CartLineInput[] {
   for (const r of raw.slice(0, CART_LINES_MAX)) {
     const guid = typeof r?.guid === 'string' ? r.guid.toLowerCase() : ''
     const qty = Number(r?.qty)
-    if (!GUID_RE.test(guid) || !Number.isFinite(qty) || qty <= 0 || qty > 1e6) continue
-    byGuid.set(guid, (byGuid.get(guid) ?? 0) + qty)
+    if (!GUID_RE.test(guid) || !Number.isFinite(qty) || qty <= 0 || qty > QTY_MAX) continue
+    byGuid.set(guid, roundQty((byGuid.get(guid) ?? 0) + qty))
   }
   return [...byGuid].map(([guid, qty]) => ({ guid, qty }))
 }
@@ -61,11 +70,11 @@ export function parseCartLines(body: unknown): CartLineInput[] {
 export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pricing: ClientPricing, prices: PriceSource): Promise<Quote> {
   const items = lines.map(l => ({ input: l, item: store.item(l.guid) }))
   const known = items.filter(i => i.item).map(i => i.item!.guid)
-  let priceMap = new Map<string, { price: number, currency: string, vatRate: number }>()
+  let priceMap = new Map<string, PriceT>()
   let priceStatus: Quote['priceStatus'] = pricing.status
   if (pricing.status === 'ok' && known.length) {
     try {
-      priceMap = await prices(pricing.clientGuid, known) as never
+      priceMap = await prices(pricing.clientGuid, known)
     }
     catch {
       priceStatus = 'unavailable'
@@ -86,7 +95,8 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
     }
   })
   const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))
-  const total = Math.round(out.reduce((s, l) => s + l.total, 0) * 100) / 100
+  // Итог — сумма уже округлённых строк: так же считает и сделка (цена × количество по строкам).
+  const total = Math.round(out.reduce((s, l) => s + l.total * 100, 0)) / 100
   return {
     lines: out,
     total,
@@ -97,36 +107,9 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
   }
 }
 
-/** Заявки компании в базе ЛК: «Мои заявки» читаются отсюда, по компании из сессии. */
-export function createOrderStore(db: DatabaseSync) {
-  const insert = db.prepare(`INSERT INTO order_request (request_id, company_id, contact_id, client_guid, contract_guid, address_guid,
-      address_text, delivery_at, items, total, currency, comment, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    ON CONFLICT (request_id) DO NOTHING`)
-  const byRequest = db.prepare('SELECT * FROM order_request WHERE request_id = ?')
-  const setDeal = db.prepare(`UPDATE order_request SET deal_id = ?, status = 'sent', error = NULL, updated_at = ? WHERE id = ?`)
-  const setError = db.prepare('UPDATE order_request SET error = ?, updated_at = ? WHERE id = ?')
-  const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_at AS deliveryAt, address_text AS address,
-      total, currency, deal_id AS dealId, onec_number AS onecNumber, shipment_date AS shipmentDate, items
-    FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
-  return {
-    /** Вставляет черновик или возвращает уже существующий по requestId. */
-    begin(row: OrderRow) {
-      insert.run(row.requestId, row.companyId, row.contactId, row.clientGuid, row.contractGuid, row.addressGuid, row.addressText,
-        row.deliveryAt, JSON.stringify(row.items), row.total, row.currency, row.comment, row.now, row.now)
-      return byRequest.get(row.requestId) as { id: number, company_id: number, deal_id: number | null, status: string }
-    },
-    sent(id: number, dealId: number, now: string) { setDeal.run(dealId, now, id) },
-    failed(id: number, error: string, now: string) { setError.run(error.slice(0, 500), now, id) },
-    list(companyId: number, limit = 20, offset = 0) {
-      return (list.all(companyId, Math.min(Math.max(limit, 1), 50), Math.max(offset, 0)) as unknown as (OrderListRow & { items: string })[])
-        .map(r => ({ ...r, items: JSON.parse(r.items) as OrderItem[] }))
-    },
-  }
-}
-
 export interface OrderItem { guid: string, sku: string, name: string, unit: string, qty: number, price: number, vatRate: number }
-export interface OrderRow {
+
+export interface OrderDraft {
   requestId: string
   companyId: number
   contactId: number
@@ -134,24 +117,103 @@ export interface OrderRow {
   contractGuid: string
   addressGuid: string
   addressText: string
-  deliveryAt: string | null
+  slot: DeliverySlot | null
   items: OrderItem[]
   total: number
   currency: string
   comment: string
-  now: string
 }
+
+interface OrderRowDb {
+  id: number
+  company_id: number
+  contact_id: number
+  address_text: string
+  delivery_from: string | null
+  delivery_to: string | null
+  payload_hash: string
+  items: string
+  total: number
+  currency: string
+  comment: string
+  deal_id: number | null
+  status: string
+  sending_at: string | null
+}
+
 export interface OrderListRow {
   id: number
   createdAt: string
   status: string
-  deliveryAt: string | null
+  deliveryFrom: string | null
+  deliveryTo: string | null
   address: string
   total: number
   currency: string
-  dealId: number | null
   onecNumber: string | null
   shipmentDate: string | null
+  items: OrderItem[]
+}
+
+/** Захват отправки протухает: упавшая попытка не держит заявку дольше этого. */
+export const SENDING_STALE_MS = 2 * 60_000
+
+/**
+ * Отпечаток того, что выбрал клиент: адрес, комментарий, товары и количество. Цены в него не входят:
+ * повтор после смены цены в 1С — тот же заказ клиента, и в сделку уходят цены, сохранённые в строке.
+ */
+export function payloadHash(d: Pick<OrderDraft, 'addressGuid' | 'items' | 'comment'>): string {
+  const key = JSON.stringify([d.addressGuid, d.comment, d.items.map(i => [i.guid, i.qty]).sort()])
+  return createHash('sha256').update(key).digest('hex')
+}
+
+/** Заявки компании в базе ЛК: «Мои заявки» читаются отсюда, по компании из сессии. */
+export function createOrderStore(db: DatabaseSync) {
+  const insert = db.prepare(`INSERT INTO order_request (request_id, company_id, contact_id, client_guid, contract_guid, address_guid,
+      address_text, delivery_from, delivery_to, payload_hash, items, total, currency, comment, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    ON CONFLICT (request_id) DO NOTHING`)
+  const byRequest = db.prepare('SELECT * FROM order_request WHERE request_id = ?')
+  const replace = db.prepare(`UPDATE order_request SET address_guid = ?, address_text = ?, delivery_from = ?, delivery_to = ?,
+      payload_hash = ?, items = ?, total = ?, currency = ?, comment = ?, updated_at = ?
+    WHERE id = ? AND status = 'pending' AND deal_id IS NULL`)
+  const claim = db.prepare(`UPDATE order_request SET status = 'sending', sending_at = ?, updated_at = ?
+    WHERE id = ? AND deal_id IS NULL AND (status = 'pending' OR (status = 'sending' AND sending_at < ?))`)
+  const setDeal = db.prepare(`UPDATE order_request SET deal_id = ?, status = 'sent', sending_at = NULL, error = NULL, updated_at = ? WHERE id = ?`)
+  const setError = db.prepare(`UPDATE order_request SET status = 'pending', sending_at = NULL, error = ?, updated_at = ? WHERE id = ?`)
+  const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
+      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, items
+    FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
+
+  return {
+    /** Черновик или уже существующая строка с тем же requestId. */
+    begin(d: OrderDraft, hash: string, now: string): OrderRowDb {
+      insert.run(d.requestId, d.companyId, d.contactId, d.clientGuid, d.contractGuid, d.addressGuid, d.addressText,
+        d.slot?.arrivalFrom ?? null, d.slot?.arrivalTo ?? null, hash, JSON.stringify(d.items), d.total, d.currency, d.comment, now, now)
+      return byRequest.get(d.requestId) as unknown as OrderRowDb
+    },
+    /** Правка ещё не отправленной заявки: true — обновлено. */
+    replace(id: number, d: OrderDraft, hash: string, now: string): boolean {
+      return Number(replace.run(d.addressGuid, d.addressText, d.slot?.arrivalFrom ?? null, d.slot?.arrivalTo ?? null, hash,
+        JSON.stringify(d.items), d.total, d.currency, d.comment, now, id).changes) === 1
+    },
+    /** Захватить отправку: true — эта попытка единственная. */
+    claim(id: number, now: Date): boolean {
+      const iso = now.toISOString()
+      return Number(claim.run(iso, iso, id, new Date(now.getTime() - SENDING_STALE_MS).toISOString()).changes) === 1
+    },
+    get(requestId: string): OrderRowDb | undefined {
+      return byRequest.get(requestId) as unknown as OrderRowDb | undefined
+    },
+    sent(id: number, dealId: number, now: string) { setDeal.run(dealId, now, id) },
+    failed(id: number, error: string, now: string) { setError.run(error.slice(0, 200), now, id) },
+    list(companyId: number, limit = 20, offset = 0): OrderListRow[] {
+      const lim = Math.min(Math.max(Math.trunc(limit) || 20, 1), 50)
+      const off = Math.min(Math.max(Math.trunc(offset) || 0, 0), 100_000)
+      return (list.all(companyId, lim, off) as unknown as (Omit<OrderListRow, 'items'> & { items: string })[])
+        .map(r => ({ ...r, items: JSON.parse(r.items) as OrderItem[] }))
+    },
+  }
 }
 export type OrderStore = ReturnType<typeof createOrderStore>
 
@@ -160,16 +222,30 @@ export interface SubmitDeps {
   store: CatalogStore
   clients: ClientStore
   orders: OrderStore
-  b24: Pick<B24Orders, 'createDeal' | 'nearestTrip'>
+  b24: Pick<B24Orders, 'createDeal'>
+  schedules: () => Promise<TripSchedule[]>
   prices: PriceSource
   now?: () => Date
 }
 
+export type SubmitError = 'bad_request' | 'no_contract' | 'bad_address' | 'cart_invalid' | 'crm_unavailable' | 'in_progress' | 'already_sent'
 export type SubmitResult =
-  | { ok: true, orderId: number, dealId: number, deliveryAt: string | null }
-  | { ok: false, status: number, error: 'bad_request' | 'no_contract' | 'bad_address' | 'cart_invalid' | 'crm_unavailable', quote?: Quote }
+  | { ok: true, orderId: number, dealId: number, deliveryFrom: string | null, deliveryTo: string | null }
+  | { ok: false, status: number, error: SubmitError, quote?: Quote }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Описание сделки для менеджера: всё, что пришло извне, — без BB-разметки. */
+export function dealComments(id: number, row: { address_text: string, delivery_from: string | null, delivery_to: string | null, comment: string }, cutoffAt?: string): string {
+  return [
+    `Заявка из личного кабинета №${id}.`,
+    `Адрес доставки: ${neutralizeBb(row.address_text)}`,
+    row.delivery_from && row.delivery_to
+      ? `Ближайший рейс: ${formatSlot({ arrivalFrom: row.delivery_from, arrivalTo: row.delivery_to })}${cutoffAt ? ` (приём до ${formatCutoff(cutoffAt)})` : ''}`
+      : 'Ближайший рейс не найден — согласуйте дату с клиентом.',
+    row.comment ? `Комментарий клиента: ${neutralizeBb(row.comment)}` : '',
+  ].filter(Boolean).join('\n')
+}
 
 export async function submitOrder(
   session: { companyId: number, contactId: number },
@@ -178,61 +254,71 @@ export async function submitOrder(
   deps: SubmitDeps,
 ): Promise<SubmitResult> {
   const now = deps.now?.() ?? new Date()
+  const nowIso = now.toISOString()
   if (!UUID_RE.test(input.requestId) || input.lines.length === 0 || input.comment.length > COMMENT_MAX) return { ok: false, status: 400, error: 'bad_request' }
   if (pricing.status === 'no-contract') return { ok: false, status: 409, error: 'no_contract' }
   if (pricing.status !== 'ok') return { ok: false, status: 503, error: 'crm_unavailable' }
   const client = deps.clients.get(pricing.clientGuid)
-  if (!client?.contractGuid) return { ok: false, status: 409, error: 'no_contract' }
-  const address: DeliveryAddress | undefined = client.addresses.find(a => a.guid === input.addressGuid.toLowerCase())
+  if (!client?.contractGuid || client.deleted) return { ok: false, status: 409, error: 'no_contract' }
+  const address = client.addresses.find(a => a.guid === input.addressGuid.toLowerCase())
   if (!address) return { ok: false, status: 400, error: 'bad_address' }
+
+  // Уже отправленная заявка с тем же requestId — ответ из базы, без пересчёта и без CRM.
+  const existing = deps.orders.get(input.requestId)
+  if (existing && existing.company_id !== session.companyId) return { ok: false, status: 400, error: 'bad_request' }
 
   const quote = await quoteCart(input.lines, deps.store, pricing, deps.prices)
   if (!quote.ok) return { ok: false, status: quote.priceStatus === 'unavailable' ? 503 : 422, error: 'cart_invalid', quote }
 
   // Рейс — подсказка клиенту и менеджеру, а не условие: сбой «Рейсов» заявку не останавливает.
-  let trip: Trip | null = null
+  let slot: DeliverySlot | null = null
   try {
-    trip = await deps.b24.nearestTrip(address.city, now)
+    slot = nextDelivery(await deps.schedules(), address.city, now)
   }
   catch (e) {
-    console.error(`[orders] trip lookup: ${(e as Error).name}`)
+    console.error(`[orders] schedules: ${(e as Error).name}`)
   }
 
-  const items: OrderItem[] = quote.lines.map(l => ({ guid: l.guid, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty, price: l.price!, vatRate: l.vatRate }))
-  const comment = input.comment.trim()
-  const row = deps.orders.begin({
+  const draft: OrderDraft = {
     requestId: input.requestId, companyId: session.companyId, contactId: session.contactId, clientGuid: client.guid,
-    contractGuid: client.contractGuid, addressGuid: address.guid, addressText: addressLine(address.city, address.address),
-    deliveryAt: trip?.departureAt ?? null, items, total: quote.total, currency: quote.currency!, comment, now: now.toISOString(),
-  })
-  // Чужой requestId (другая компания) не открывает чужую заявку.
+    contractGuid: client.contractGuid, addressGuid: address.guid, addressText: addressLine(address.city, address.address), slot,
+    items: quote.lines.map(l => ({ guid: l.guid, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty, price: l.price!, vatRate: l.vatRate })),
+    total: quote.total, currency: quote.currency!, comment: input.comment.trim(),
+  }
+  const hash = payloadHash(draft)
+  let row = deps.orders.begin(draft, hash, nowIso)
   if (row.company_id !== session.companyId) return { ok: false, status: 400, error: 'bad_request' }
-  if (row.deal_id) return { ok: true, orderId: row.id, dealId: row.deal_id, deliveryAt: trip?.departureAt ?? null }
+  if (row.payload_hash !== hash) {
+    // Тот же requestId, другое содержимое: пока сделки нет — обновляем черновик, после — это новая заявка.
+    if (row.deal_id || !deps.orders.replace(row.id, draft, hash, nowIso)) return { ok: false, status: 409, error: 'already_sent' }
+    row = deps.orders.get(input.requestId)!
+  }
+  const done = (dealId: number): SubmitResult => ({ ok: true, orderId: row.id, dealId, deliveryFrom: row.delivery_from, deliveryTo: row.delivery_to })
+  if (row.deal_id) return done(row.deal_id)
+  if (!deps.orders.claim(row.id, now)) return { ok: false, status: 409, error: 'in_progress' }
 
-  const lines = [
-    `Заявка из личного кабинета №${row.id}.`,
-    `Адрес доставки: ${neutralizeBb(addressLine(address.city, address.address))}`,
-    trip ? `Ближайший рейс: ${humanDateTime(trip.departureAt)}` : 'Ближайший рейс не найден — уточните дату с клиентом.',
-    comment ? `Комментарий клиента: ${neutralizeBb(comment)}` : '',
-  ].filter(Boolean)
+  // Сделка — из сохранённой строки: что в базе, то и у менеджера.
+  const items = JSON.parse(row.items) as OrderItem[]
   try {
     const dealId = await deps.b24.createDeal({
       requestId: input.requestId,
       companyId: session.companyId,
-      contactId: session.contactId,
-      title: `Заявка ЛК №${row.id}: ${client.name}`,
-      comments: lines.join('\n'),
-      total: quote.total,
-      currency: quote.currency!,
-      rows: items.map(i => ({ name: `${i.name} (${i.sku})`, price: i.price, qty: i.qty, unit: i.unit, vatRate: i.vatRate })),
+      contactId: row.contact_id,
+      title: `Заявка ЛК №${row.id}: ${neutralizeBb(client.name)}`,
+      comments: dealComments(row.id, row, slot?.cutoffAt),
+      total: row.total,
+      currency: row.currency,
+      rows: items.map(i => ({ name: neutralizeBb(`${i.name} (${i.sku})`), price: i.price, qty: i.qty, unit: i.unit, vatRate: i.vatRate })),
     })
-    deps.orders.sent(row.id, dealId, now.toISOString())
-    return { ok: true, orderId: row.id, dealId, deliveryAt: trip?.departureAt ?? null }
+    deps.orders.sent(row.id, dealId, nowIso)
+    return done(dealId)
   }
   catch (e) {
-    // Черновик остаётся: повтор с тем же requestId дошлёт ту же заявку, а не создаст новую.
-    deps.orders.failed(row.id, (e as Error).message, now.toISOString())
-    console.error(`[orders] deal: ${(e as Error).message}`)
+    // Черновик остаётся: повтор с тем же requestId дошлёт ту же заявку. В журнал — только класс
+    // ошибки: текст транспорта может содержать адрес вебхука (секрет).
+    const kind = (e as Error).name || 'Error'
+    deps.orders.failed(row.id, kind, nowIso)
+    console.error(`[orders] deal for order ${row.id}: ${kind}`)
     return { ok: false, status: 503, error: 'crm_unavailable' }
   }
 }

@@ -7,6 +7,7 @@ import type { CartLineInput } from '~~/shared/cart'
 import { CART_LINES_MAX } from '~~/shared/cart'
 
 const KEY = 'wcp-cart'
+let listening = false
 
 export function useCart() {
   const lines = useState<CartLineInput[]>('cart-lines', () => [])
@@ -18,7 +19,25 @@ export function useCart() {
   }
 
   function persist() {
-    if (import.meta.client) localStorage.setItem(storageKey(), JSON.stringify(lines.value))
+    if (!import.meta.client) return
+    try {
+      localStorage.setItem(storageKey(), JSON.stringify(lines.value))
+    }
+    catch {
+      // Приватный режим или нет места: корзина живёт до закрытия вкладки — это лучше, чем ошибка на клике.
+    }
+  }
+
+  function read(): CartLineInput[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem(storageKey()) ?? '[]')
+      return Array.isArray(raw)
+        ? raw.filter(l => typeof l?.guid === 'string' && Number(l?.qty) > 0).map(l => ({ guid: l.guid, qty: Number(l.qty) })).slice(0, CART_LINES_MAX)
+        : []
+    }
+    catch {
+      return []
+    }
   }
 
   /** Привязать корзину к компании вошедшего и прочитать сохранённую. Только в браузере. */
@@ -26,14 +45,13 @@ export function useCart() {
     if (!import.meta.client) return
     if (loaded.value && owner.value === companyId) return
     owner.value = companyId
-    try {
-      const raw = JSON.parse(localStorage.getItem(storageKey()) ?? '[]')
-      lines.value = Array.isArray(raw)
-        ? raw.filter(l => typeof l?.guid === 'string' && Number(l?.qty) > 0).map(l => ({ guid: l.guid, qty: Number(l.qty) })).slice(0, CART_LINES_MAX)
-        : []
-    }
-    catch {
-      lines.value = []
+    lines.value = read()
+    if (!listening) {
+      listening = true
+      // Другая вкладка поменяла корзину — подхватываем, а не затираем её своим старым списком.
+      window.addEventListener('storage', (e) => {
+        if (e.key === storageKey()) lines.value = read()
+      })
     }
     loaded.value = true
   }
@@ -43,8 +61,11 @@ export function useCart() {
   }
 
   function setQty(guid: string, qty: number) {
-    const rest = lines.value.filter(l => l.guid !== guid)
-    lines.value = qty > 0 ? [...rest, { guid, qty }].slice(-CART_LINES_MAX) : rest
+    // Строка остаётся на своём месте: карточки в корзине не прыгают при «+» и «−».
+    const i = lines.value.findIndex(l => l.guid === guid)
+    if (qty <= 0) lines.value = lines.value.filter(l => l.guid !== guid)
+    else if (i >= 0) lines.value = lines.value.map(l => (l.guid === guid ? { guid, qty } : l))
+    else if (lines.value.length < CART_LINES_MAX) lines.value = [...lines.value, { guid, qty }]
     persist()
   }
 
@@ -53,6 +74,19 @@ export function useCart() {
     persist()
   }
 
+  /** Выход: корзина не остаётся следующему на общем компьютере. */
+  function forget() {
+    if (import.meta.client) {
+      try {
+        for (const k of Object.keys(localStorage)) if (k.startsWith(`${KEY}:`)) localStorage.removeItem(k)
+      }
+      catch { /* хранилище недоступно — чистить нечего */ }
+    }
+    lines.value = []
+    owner.value = null
+    loaded.value = false
+  }
+
   const count = computed(() => lines.value.length)
-  return { lines, count, load, qtyOf, setQty, clear }
+  return { lines, count, load, qtyOf, setQty, clear, forget }
 }

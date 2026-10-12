@@ -4,14 +4,14 @@
  * Транспорт — `call(method, params)` (B24Hook), в тестах — подделка.
  */
 import { DEAL_CATEGORY_NAME, SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
+import { parseDates, parseTime, parseWeekdays, type TripSchedule } from '../../shared/delivery'
 import { resolveFieldKey, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
 export const DEAL_ORIGINATOR = 'wholesale-portal'
 const TRIPS_TITLE = SMART_PROCESSES.find(sp => sp.title === 'Рейсы')!.title
-const TRIPS_SCAN_MAX = 50
-
-export interface Trip { id: number, city: string, departureAt: string, cutoffAt: string }
+/** Записей расписания — по одной на город; больше сотни — это уже не расписание, а ошибка ввода. */
+const SCHEDULES_MAX = 100
 
 export interface DealRow { name: string, price: number, qty: number, unit: string, vatRate: number }
 
@@ -26,17 +26,8 @@ export interface DealInput {
   rows: DealRow[]
 }
 
-const sameCity = (a: string, b: string) => a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е')
-
-/** Ближайший рейс в город: приём заявок ещё открыт; среди открытых — с самой ранней отсечкой. */
-export function nearestTrip(trips: Trip[], city: string, now: Date): Trip | null {
-  return trips
-    .filter(t => sameCity(t.city, city) && Date.parse(t.cutoffAt) > now.getTime() && Date.parse(t.departureAt) >= Date.parse(t.cutoffAt))
-    .sort((a, b) => Date.parse(a.cutoffAt) - Date.parse(b.cutoffAt))[0] ?? null
-}
-
 export function createB24Orders(call: B24Call) {
-  let tripsMeta: Promise<{ entityTypeId: number, city: string, departureAt: string, cutoffAt: string }> | undefined
+  let tripsMeta: Promise<{ entityTypeId: number, fields: Record<'city' | 'weekdays' | 'cutoffTime' | 'cutoffDays' | 'arrivalFrom' | 'arrivalTo' | 'exceptions', string> }> | undefined
   let categoryId: Promise<number> | undefined
   // Ошибка не кэшируется: после pnpm b24:setup следующий вызов найдёт смарт-процесс и воронку.
   const retryable = <T>(get: () => Promise<T> | undefined, set: (v: Promise<T> | undefined) => void, load: () => Promise<T>) => {
@@ -60,7 +51,13 @@ export function createB24Orders(call: B24Call) {
       if (!key) throw new Error(`Field ${spFieldName(Number(type.id), postfix)} not found — run pnpm b24:setup`)
       return key
     }
-    return { entityTypeId: Number(type.entityTypeId), city: pick('CITY'), departureAt: pick('DEPARTURE_AT'), cutoffAt: pick('CUTOFF_AT') }
+    return {
+      entityTypeId: Number(type.entityTypeId),
+      fields: {
+        city: pick('CITY'), weekdays: pick('WEEKDAYS'), cutoffTime: pick('CUTOFF_TIME'), cutoffDays: pick('CUTOFF_DAYS'),
+        arrivalFrom: pick('ARRIVAL_FROM'), arrivalTo: pick('ARRIVAL_TO'), exceptions: pick('EXCEPTIONS'),
+      },
+    }
   })
 
   const getCategoryId = () => retryable(() => categoryId, v => (categoryId = v), async () => {
@@ -71,19 +68,29 @@ export function createB24Orders(call: B24Call) {
   })
 
   return {
-    async nearestTrip(city: string, now = new Date()): Promise<Trip | null> {
+    /**
+     * Расписание рейсов. Запись без дней недели или с непонятным временем пропускается — и пишется в
+     * журнал: менеджер видит, какую строку «Рейсов» поправить, а клиенту дату согласуют вручную.
+     */
+    async schedules(): Promise<TripSchedule[]> {
       const m = await getTripsMeta()
-      const { items } = await call('crm.item.list', {
-        entityTypeId: m.entityTypeId,
-        filter: { [`>${m.cutoffAt}`]: now.toISOString() },
-        order: { [m.cutoffAt]: 'ASC' },
-        select: ['id', m.city, m.departureAt, m.cutoffAt],
-      }) as { items: Record<string, unknown>[] }
-      // Фильтр и город перепроверяем сами: непонятый фильтр REST игнорирует и отдаёт всё.
-      const trips = items.slice(0, TRIPS_SCAN_MAX).map(i => ({
-        id: Number(i.id), city: String(i[m.city] ?? ''), departureAt: String(i[m.departureAt] ?? ''), cutoffAt: String(i[m.cutoffAt] ?? ''),
-      }))
-      return nearestTrip(trips, city, now)
+      const f = m.fields
+      const { items } = await call('crm.item.list', { entityTypeId: m.entityTypeId, select: ['id', ...Object.values(f)] }) as { items: Record<string, unknown>[] }
+      const out: TripSchedule[] = []
+      for (const i of items.slice(0, SCHEDULES_MAX)) {
+        const str = (k: keyof typeof f) => String(i[f[k]] ?? '')
+        const cutoff = parseTime(str('cutoffTime'))
+        const from = parseTime(str('arrivalFrom'))
+        const to = parseTime(str('arrivalTo'))
+        const weekdays = parseWeekdays(str('weekdays'))
+        const days = Number(i[f.cutoffDays] ?? 1)
+        if (!str('city').trim() || !weekdays.length || cutoff === null || from === null || to === null || to < from || !Number.isInteger(days) || days < 0 || days > 14) {
+          console.warn(`[trips] schedule ${String(i.id)} skipped: fill city, weekdays, times HH:MM, cutoff days 0–14`)
+          continue
+        }
+        out.push({ city: str('city'), weekdays, cutoffDaysBefore: days, cutoffMinutes: cutoff, arrivalFromMinutes: from, arrivalToMinutes: to, exceptions: parseDates(str('exceptions')) })
+      }
+      return out
     },
 
     /** Сделка с товарами. Повтор с тем же requestId находит прежнюю сделку и перезаписывает товары. */

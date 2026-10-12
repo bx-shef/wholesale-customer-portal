@@ -9,16 +9,18 @@ export const COMMENT_MAX = 2000
 
 /** Количество кратно упаковке и не меньше минимума: ближайшее допустимое не меньше запрошенного. */
 export function normalizeQty(qty: number, packQty: number, minQty: number): number {
-  const pack = packQty > 0 ? packQty : 1
-  const want = Math.max(qty, minQty, pack)
-  // Округление с допуском: 0.1 × 3 в двоичной арифметике — 0.30000000000000004.
-  const packs = Math.ceil(want / pack - 1e-9)
-  return Math.round(packs * pack * 1000) / 1000
+  // В целых тысячных: 0.1 × 3 в двоичной арифметике — 0.30000000000000004, и ceil добавил бы упаковку.
+  const pack = Math.max(Math.round((packQty > 0 ? packQty : 1) * 1000), 1)
+  const want = Math.max(Math.round(qty * 1000), Math.round(minQty * 1000), pack)
+  return (Math.ceil(want / pack) * pack) / 1000
 }
 
 export function isValidQty(qty: number, packQty: number, minQty: number): boolean {
-  return Number.isFinite(qty) && qty > 0 && Math.abs(normalizeQty(qty, packQty, minQty) - qty) < 1e-9
+  return Number.isFinite(qty) && qty > 0 && normalizeQty(qty, packQty, minQty) === roundQty(qty)
 }
+
+/** Количество — до тысячных: сумма дробных упаковок не тянет хвост двоичной погрешности. */
+export const roundQty = (qty: number) => Math.round(qty * 1000) / 1000
 
 /** Сумма строки до копеек. */
 export const lineTotal = (price: number, qty: number) => Math.round(price * qty * 100) / 100

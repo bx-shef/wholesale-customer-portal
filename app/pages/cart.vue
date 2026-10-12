@@ -1,13 +1,14 @@
 <!-- Корзина: количество с кратностью, итог по ценам договора, адрес, ближайший рейс, комментарий, «Отправить заявку». -->
 <script setup lang="ts">
 import CartIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
-import { addressLine, COMMENT_MAX } from '~~/shared/cart'
+import { COMMENT_MAX } from '~~/shared/cart'
+import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Корзина' })
 
 interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
-interface Address { guid: string, city: string, address: string, trip: { departureAt: string, cutoffAt: string } | null, tripStatus: 'ok' | 'unavailable' }
+interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
 const headers = useRequestHeaders(['cookie'])
 const { error: meError } = await useFetch('/api/auth/me', { headers, key: 'me' })
@@ -23,7 +24,7 @@ watch(delivery, (d) => {
   if (!addressGuid.value && d?.addresses[0]) addressGuid.value = d.addresses[0].guid
 }, { immediate: true })
 const address = computed(() => delivery.value?.addresses.find(a => a.guid === addressGuid.value))
-const addressItems = computed(() => (delivery.value?.addresses ?? []).map(a => ({ label: addressLine(a.city, a.address), value: a.guid })))
+const addressItems = computed(() => (delivery.value?.addresses ?? []).map(a => ({ label: a.label, value: a.guid })))
 
 let seq = 0
 async function refresh() {
@@ -49,7 +50,7 @@ watch(cart.lines, refresh, { deep: true })
 const comment = ref('')
 const sending = ref(false)
 const sendError = ref('')
-const sent = ref<{ orderId: number, deliveryAt: string | null } | null>(null)
+const sent = ref<{ orderId: number, deliveryFrom: string | null, deliveryTo: string | null } | null>(null)
 // Один UUID на попытку: повтор после обрыва связи — та же заявка, а не вторая сделка.
 const requestId = ref('')
 
@@ -65,24 +66,31 @@ async function submit() {
   sending.value = true
   sendError.value = ''
   try {
-    const r = await $fetch<{ ok: true, orderId: number, deliveryAt: string | null }>('/api/orders', {
+    const r = await $fetch<{ ok: true, orderId: number, deliveryFrom: string | null, deliveryTo: string | null }>('/api/orders', {
       method: 'POST',
       body: { requestId: requestId.value, items: cart.lines.value, addressGuid: addressGuid.value, comment: comment.value },
     })
-    sent.value = { orderId: r.orderId, deliveryAt: r.deliveryAt }
+    sent.value = { orderId: r.orderId, deliveryFrom: r.deliveryFrom, deliveryTo: r.deliveryTo }
     cart.clear()
     comment.value = ''
     requestId.value = ''
   }
   catch (e) {
     const status = (e as { statusCode?: number }).statusCode
+    const code = (e as { data?: { error?: string } }).data?.error
     if (status === 401) return navigateTo('/login')
     sendError.value = status === 422
       ? 'Корзина изменилась: проверьте строки с пометками и отправьте снова.'
-      : status === 409
-        ? 'Договор ещё не подключён — обратитесь к менеджеру.'
-        : 'Не удалось отправить заявку: учётная система не ответила. Нажмите «Отправить» ещё раз — дубля не будет.'
-    if (status === 422) {
+      : code === 'in_progress'
+        ? 'Заявка уже отправляется — подождите несколько секунд и обновите раздел «Заявки».'
+        : code === 'already_sent'
+          ? 'Эта заявка уже отправлена. Изменения уйдут новой заявкой — нажмите «Отправить» ещё раз.'
+          : status === 409
+            ? 'Договор ещё не подключён — обратитесь к менеджеру.'
+            : status === 429
+              ? 'Слишком много заявок подряд. Попробуйте через несколько минут или позвоните менеджеру.'
+              : 'Не удалось отправить заявку: учётная система не ответила. Нажмите «Отправить» ещё раз — дубля не будет.'
+    if (status === 422 || code === 'already_sent') {
       requestId.value = ''
       await refresh()
     }
@@ -92,7 +100,6 @@ async function submit() {
   }
 }
 
-const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 </script>
 
 <template>
@@ -100,7 +107,7 @@ const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { weekda
     <AppHeader title="Корзина" />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
-        <B24Alert v-if="sent" color="air-primary-success" :title="`Заявка №${sent.orderId} отправлена`" :description="sent.deliveryAt ? `Ближайший рейс: ${dateTime(sent.deliveryAt)}. Менеджер подтвердит заявку, статус — в разделе «Заявки».` : 'Менеджер подтвердит заявку и согласует дату доставки. Статус — в разделе «Заявки».'" />
+        <B24Alert v-if="sent" color="air-primary-success" :title="`Заявка №${sent.orderId} отправлена`" :description="sent.deliveryFrom && sent.deliveryTo ? `Машина приедет: ${formatSlot({ arrivalFrom: sent.deliveryFrom, arrivalTo: sent.deliveryTo })}. Менеджер подтвердит заявку, статус — в разделе «Заявки».` : 'Менеджер подтвердит заявку и согласует дату доставки. Статус — в разделе «Заявки».'" />
 
         <B24Empty
           v-if="cart.lines.value.length === 0"
@@ -150,10 +157,10 @@ const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { weekda
                 </p>
               </B24FormField>
               <p v-if="address" class="text-sm">
-                <template v-if="address.trip">
-                  Ближайший рейс: <b>{{ dateTime(address.trip.departureAt) }}</b>. Заявки на него — до {{ dateTime(address.trip.cutoffAt) }}.
+                <template v-if="address.slot">
+                  Машина приедет: <b>{{ formatSlot(address.slot) }}</b>, если заявка будет подтверждена до {{ formatCutoff(address.slot.cutoffAt) }}.
                 </template>
-                <template v-else-if="address.tripStatus === 'unavailable'">
+                <template v-else-if="address.slotStatus === 'unavailable'">
                   Расписание рейсов сейчас недоступно — дату доставки согласует менеджер.
                 </template>
                 <template v-else>

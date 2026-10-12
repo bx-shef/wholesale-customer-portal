@@ -15,9 +15,17 @@ export function createClientStore(db: DatabaseSync) {
   const get = db.prepare('SELECT guid, name, contract_guid, addresses, deleted FROM onec_client WHERE guid = ?')
   return {
     save(clients: ClientT[]) {
-      for (const c of clients) {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        for (const c of clients) {
         const addresses = c.deliveryAddresses.map(a => ({ guid: a.guid.toLowerCase(), city: a.city, address: a.address }))
         upsert.run(c.guid.toLowerCase(), c.name, c.contractGuid?.toLowerCase() ?? null, JSON.stringify(addresses), c.deleted ? 1 : 0, c.changedAt)
+        }
+        db.exec('COMMIT')
+      }
+      catch (e) {
+        db.exec('ROLLBACK')
+        throw e
       }
     },
     get(guid: string): StoredClient | null {

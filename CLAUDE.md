@@ -50,10 +50,12 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/tasks/sync/{catalog,stock}.ts`, `server/plugins/catalogWarmup.ts` | каталог раз в час, остатки раз в 5 минут, первый прогон при старте |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса) |
+| `shared/delivery.ts` | расписание рейсов (§8 спецификации): ближайший рейс и окно прибытия по Минску |
+| `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |
 | `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), ближайший рейс, дело «перезвонить» |
-| `server/api/{cart/quote,delivery,orders,callback}` | корзина, адреса и рейсы, заявки, звонок — только с сессией |
+| `server/api/{cart/quote,delivery,orders,callback}` | корзина, адреса и рейсы, заявки (статусы 1С — этап 4б), звонок — только с сессией |
 | `server/api/catalog/*` | список, фильтры, карточка — только с сессией, цены по компании сессии |
-| `server/db/sqlite.ts`, `server/utils/db.ts` | база SQLite на томе `/data`: курсоры, журналы, каталог и остатки; миграции дописываются в конец |
+| `server/db/sqlite.ts`, `server/utils/db.ts` | база SQLite на томе `/data`: курсоры, журналы, каталог и остатки, клиенты 1С, заявки; миграции дописываются в конец |
 | `server/utils/env.ts` | единственное чтение окружения (имена без `NUXT_`) |
 | `server/utils/bearer.ts` | разбор и сверка Bearer за постоянное время |
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |

@@ -13,6 +13,7 @@ watch(me, (v) => {
 
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
+  cart.forget()
   await navigateTo('/login')
 }
 </script>

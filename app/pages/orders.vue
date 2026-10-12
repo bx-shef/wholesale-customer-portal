@@ -1,6 +1,7 @@
 <!-- «Мои заявки»: статус и дата машины — только по компании из сессии. -->
 <script setup lang="ts">
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
+import { formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Заявки' })
 
@@ -8,7 +9,8 @@ interface Order {
   id: number
   createdAt: string
   status: string
-  deliveryAt: string | null
+  deliveryFrom: string | null
+  deliveryTo: string | null
   address: string
   total: number
   currency: string
@@ -21,8 +23,7 @@ const headers = useRequestHeaders(['cookie'])
 const { data, error } = await useFetch<{ items: Order[] }>('/api/orders', { headers })
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
-const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
-const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
 </script>
 
 <template>
@@ -56,8 +57,8 @@ const dateTime = (iso: string) => new Date(iso).toLocaleString('ru-RU', { weekda
               <template v-if="o.shipmentDate">
                 Отгрузка: <b>{{ date(o.shipmentDate) }}</b>
               </template>
-              <template v-else-if="o.deliveryAt">
-                Машина: <b>{{ dateTime(o.deliveryAt) }}</b>
+              <template v-else-if="o.deliveryFrom && o.deliveryTo">
+                Машина: <b>{{ formatSlot({ arrivalFrom: o.deliveryFrom, arrivalTo: o.deliveryTo }) }}</b>
               </template>
               <template v-else>
                 Дату доставки согласует менеджер

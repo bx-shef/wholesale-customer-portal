@@ -27,7 +27,7 @@
 | `crm.category.add` | `shared/b24Setup.ts` | вебхук | 📄 | воронка сделок «Заявки ЛК», `entityTypeId: 2` |
 | `crm.item.fields` | `server/services/b24Access.ts`, `b24Orders.ts` | вебхук | 📄 | ключи UF в `crm.item.*` — camelCase, правило не описано: ищем по исходному коду поля |
 | `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | вебхук | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект; телефон шлём в двух записях (с «+» и без) — как CRM хранит «+», не описано |
-| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts`, `b24Orders.ts` | вебхук | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по `UF_CRM_1C_GUID`; «Рейсы» с отсечкой позже текущего момента; результат перепроверяем |
+| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts`, `b24Orders.ts` | вебхук | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по `UF_CRM_1C_GUID`; «Рейсы» — всё расписание (одна запись на город), пропуск кривых строк с записью в журнал; результат перепроверяем |
 | `crm.item.get` | `server/services/b24Access.ts`, `server/api/callback.post.ts` | вебхук | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID`. «Нет записи» — только NOT_FOUND; прочие сбои пробрасываются (иначе простой CRM = отзыв ключа); контакт (`entityTypeId: 3`) — имя для «Заказать звонок» |
 | `crm.item.add` | `server/services/b24Access.ts`, `b24Companies.ts` | вебхук | 📄 | новая запись доступа с `contactId`, `companyId`; новая компания из 1С |
 | `crm.item.update` | `server/services/b24Access.ts` | вебхук | 📄 | перевыпуск, отзыв, последний вход |
