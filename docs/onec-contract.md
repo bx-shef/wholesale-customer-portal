@@ -1,6 +1,6 @@
 # Задание программисту 1С: HTTP-сервис для ЛК
 
-> Last reviewed: 2026-10-11
+> Last reviewed: 2026-10-12
 
 Сервис (расширение конфигурации) отдаёт данные ЛК и принимает заказы. В прототипе этот же контракт реализует мок `server/routes/mock-1c/*`; приёмка — прохождение тех же контрактных тестов на тестовой базе 1С.
 
@@ -21,7 +21,7 @@
 | `GET /client/{guid}/contract` | — | `guid`, `number`, `date`, `priceTypeGuid`, `paymentDelayDays`, `creditLimit`, `debt`, `currency` |
 | `GET /catalog` | `changedSince`, `page` | `sections[]` (`guid`, `parentGuid`, `name`); `items[]` (`guid`, `sku`, `name`, `sectionGuid`, `brand`, `unit`, `packQty`, `minQty`, `description`, `properties{}`, `images[]`, `analogs[]`, `changedAt`, `deleted`) |
 | `POST /prices` | `clientGuid`, `items[]` (GUID, до 500) | `[{itemGuid, price, currency, vatRate}]` — цена по договору клиента, с НДС; неизвестного товара в ответе просто нет |
-| `GET /stock` | `changedSince`, `page` | `items[]`: `[{itemGuid, warehouseGuid, warehouseName, available, changedAt}]` — свободный остаток без резервов |
+| `GET /stock` | `changedSince`, `page` | `items[]`: `[{itemGuid, warehouseGuid, warehouseName, available, changedAt}]` — свободный остаток без резервов. Товар ушёл со склада — строка с `available: 0` и новым `changedAt`, а не пропажа строки: ЛК обновляет только пришедшее |
 | `POST /order` | `externalId` (ID сделки Б24), `clientGuid`, `contractGuid`, `deliveryAddressGuid`, `deliveryDate`, `comment`, `items[]` (`itemGuid`, `qty`, `price`) | `orderGuid`, `number`, `status`; 201 — создан. Повтор с тем же `externalId` — 200 и уже созданный заказ (**обязательно**: ЛК повторяет запрос после таймаута). Тот же `externalId` от другого клиента — 409. Договор или адрес не этого клиента — 400 |
 | `GET /orders/status` | `changedSince`, `page` | `items[]`: `[{orderGuid, externalId, number, status, shipmentDate, changedAt}]`; `status`: `new`, `confirmed`, `assembled`, `shipped`, `delivered`, `cancelled` |
 
@@ -66,7 +66,7 @@ ONEC_CONTRACT_URL=https://<1С>/hs/lk ONEC_CONTRACT_TOKEN=<токен> pnpm test
 ## Порядок сдачи
 
 1. `GET /clients`, `GET /client/{guid}/contract` — к концу этапа 2 ЛК.
-2. `GET /catalog`, `POST /prices`, `GET /stock` — этап 3.
+2. `GET /catalog`, `POST /prices`, `GET /stock` — этап 3 (ЛК их уже вызывает, на моке).
 3. `POST /order`, `GET /orders/status` — этап 4.
 4. Прогон контрактных тестов на тестовой базе — этап 5–6.
 

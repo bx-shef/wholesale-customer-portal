@@ -1,11 +1,120 @@
-<!-- Каталог (этап 3). Пока — кто вошёл и выход; без сессии уводит на /login. -->
+<!-- Каталог: поиск, фильтры в шторке, подгрузка при прокрутке, цены договора клиента. Состояние — в адресе. -->
 <script setup lang="ts">
 import ProductIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
+import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
 
 useHead({ title: 'Каталог' })
 
-const { data: me, error } = await useFetch('/api/auth/me', { headers: useRequestHeaders(['cookie']) })
-if (error.value?.statusCode === 401) await navigateTo('/login')
+const PAGE = 30
+const route = useRoute()
+const router = useRouter()
+const headers = useRequestHeaders(['cookie'])
+
+const { data: me, error: meError } = await useFetch('/api/auth/me', { headers })
+if (meError.value?.statusCode === 401) await navigateTo('/login')
+
+const { data: options } = await useFetch('/api/catalog/filters', { headers })
+
+// Адрес — источник правды: «назад» и ссылка с фильтрами работают без отдельной синхронизации.
+const filters = computed(() => filtersFromQuery(route.query))
+function setFilters(patch: Partial<CatalogFilters>) {
+  router.push({ query: filtersToQuery({ ...filters.value, ...patch }) })
+}
+
+// Первая страница — на сервере и в payload: при гидратации повторного запроса (и цен из 1С) нет.
+const { data: first, error: firstError, status } = await useAsyncData(
+  'catalog-first',
+  () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...filtersToQuery(filters.value), limit: PAGE } }),
+  { watch: [filters] },
+)
+if (firstError.value?.statusCode === 401) await navigateTo('/login')
+
+const extra = ref<CatalogItemView[]>([])
+const items = computed(() => [...(first.value?.items ?? []), ...extra.value])
+const total = computed(() => first.value?.total ?? 0)
+const priceStatus = computed(() => first.value?.priceStatus ?? 'ok')
+const loadingMore = ref(false)
+const moreFailed = ref(false)
+const loading = computed(() => status.value === 'pending' || loadingMore.value)
+watch(first, () => {
+  extra.value = []
+  moreFailed.value = false
+})
+
+// Номер выборки: ответ подгрузки, пришедший после смены фильтров, отбрасывается.
+let generation = 0
+watch(filters, () => generation++)
+
+async function loadMore() {
+  if (loadingMore.value || items.value.length >= total.value) return
+  const gen = generation
+  loadingMore.value = true
+  moreFailed.value = false
+  try {
+    const page = await $fetch<CatalogPageView>('/api/catalog', {
+      query: { ...filtersToQuery(filters.value), offset: items.value.length, limit: PAGE },
+    })
+    if (gen === generation) extra.value = [...extra.value, ...page.items]
+  }
+  catch (e) {
+    if ((e as { statusCode?: number }).statusCode === 401) return navigateTo('/login')
+    moreFailed.value = true
+  }
+  finally {
+    loadingMore.value = false
+  }
+}
+
+const search = ref(filters.value.q)
+watch(() => filters.value.q, (q) => {
+  if (q !== search.value.trim()) search.value = q
+})
+// Поиск — после паузы в наборе, а не на каждую букву.
+let timer: ReturnType<typeof setTimeout> | undefined
+watch(search, (v) => {
+  clearTimeout(timer)
+  timer = setTimeout(() => {
+    if (v.trim() !== filters.value.q) setFilters({ q: v })
+  }, 300)
+})
+
+const more = computed(() => items.value.length < total.value)
+const sentinel = ref<HTMLElement>()
+let sentinelVisible = false
+onMounted(() => {
+  const io = new IntersectionObserver((entries) => {
+    sentinelVisible = entries.some(e => e.isIntersecting)
+    if (sentinelVisible && !moreFailed.value) loadMore()
+  }, { rootMargin: '400px' })
+  watch(sentinel, (el, old) => {
+    if (old) io.unobserve(old)
+    if (el) io.observe(el)
+  }, { immediate: true })
+  // Страница пришла, а метка всё ещё видна (высокий экран) — событие пересечения не повторится, грузим сами.
+  watch(loading, (now) => {
+    if (!now && sentinelVisible && more.value && !moreFailed.value) loadMore()
+  })
+  onBeforeUnmount(() => {
+    io.disconnect()
+    clearTimeout(timer)
+  })
+})
+
+const filtersOpen = ref(false)
+const sorts = [
+  { label: 'По названию', value: 'name' },
+  { label: 'По артикулу', value: 'sku' },
+  { label: 'Сначала в наличии', value: 'available' },
+]
+const sectionItems = computed(() => [{ label: 'Все разделы', value: '' }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
+const brandItems = computed(() => [{ label: 'Все бренды', value: '' }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
+const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
+const activeCount = computed(() => [filters.value.section, filters.value.brand, filters.value.inStock].filter(Boolean).length)
+
+function reset() {
+  search.value = ''
+  router.push({ query: {} })
+}
 
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -14,25 +123,93 @@ async function logout() {
 </script>
 
 <template>
-  <div>
-    <B24Header :title="me?.company.title || 'Личный кабинет'">
+  <div class="pb-16 md:pb-0">
+    <B24Header :title="me?.company.title || 'Каталог'">
       <template #right>
-        <div v-if="me" class="flex gap-2">
+        <div v-if="me" class="hidden md:flex gap-2">
           <B24Button to="/profile" color="air-tertiary" label="Профиль" />
           <B24Button color="air-tertiary" label="Выйти" @click="logout" />
         </div>
       </template>
     </B24Header>
     <B24Main>
-      <B24Container class="py-8">
-        <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-warning" title="Не удалось загрузить кабинет. Обновите страницу." />
+      <B24Container class="py-4 flex flex-col gap-3">
+        <div class="flex gap-2">
+          <B24Input v-model="search" type="search" placeholder="Название или артикул" class="flex-1" aria-label="Поиск по каталогу" />
+          <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
+        </div>
+
+        <div v-if="activeCount" class="flex flex-wrap gap-2">
+          <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '' })" />
+          <B24Button v-if="filters.brand" size="sm" color="air-secondary-accent" :label="`${filters.brand} ✕`" :aria-label="`Убрать фильтр: ${filters.brand}`" @click="setFilters({ brand: '' })" />
+          <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
+        </div>
+
+        <B24Alert v-if="priceStatus === 'unavailable'" color="air-primary-warning" title="Цены временно недоступны" description="Каталог и остатки показываем, цены появятся, как только ответит учётная система. Обновите страницу через минуту." />
+        <B24Alert v-else-if="priceStatus === 'no-contract'" color="air-primary-warning" title="Цены пока не подключены" description="Ваша компания ещё не связана с договором в учётной системе. Обратитесь к менеджеру — после подключения цены появятся здесь." />
+        <B24Alert v-if="firstError && firstError.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить каталог" description="Проверьте связь и обновите страницу." />
+
+        <p v-if="items.length" class="text-sm text-(--ui-color-design-plain-na-content-secondary)">
+          Найдено: {{ total }}
+        </p>
+
         <B24Empty
-          v-else
+          v-if="!loading && !firstError && items.length === 0"
           :icon="ProductIcon"
-          title="Каталог скоро появится"
-          description="Здесь будут товары с вашей ценой и остатками, корзина и заявки."
+          title="Ничего не нашлось"
+          :description="filters.q || activeCount ? 'Измените запрос или сбросьте фильтры.' : 'Каталог ещё загружается из учётной системы. Обновите страницу через пару минут.'"
+          :actions="filters.q || activeCount ? [{ label: 'Сбросить', onClick: reset }] : []"
         />
+
+        <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <li v-for="it in items" :key="it.guid">
+            <NuxtLink :to="`/product/${it.guid}`" class="block h-full">
+              <B24Card class="h-full">
+                <div class="flex flex-col gap-1">
+                  <p class="font-medium leading-snug">
+                    {{ it.name }}
+                  </p>
+                  <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                    {{ it.sku }} · {{ it.brand }}
+                  </p>
+                  <div class="flex items-center justify-between gap-2 pt-1">
+                    <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }}</span></span>
+                    <StockBadge :available="it.available" :unit="it.unit" />
+                  </div>
+                </div>
+              </B24Card>
+            </NuxtLink>
+          </li>
+        </ul>
+
+        <div ref="sentinel" />
+        <B24Alert v-if="moreFailed" color="air-primary-alert" title="Не удалось загрузить следующие товары" description="Нажмите «Показать ещё», чтобы повторить." />
+        <B24Button v-if="more && !loading" color="air-tertiary" block label="Показать ещё" @click="loadMore" />
+        <B24Skeleton v-if="loading" class="h-20 w-full" />
       </B24Container>
     </B24Main>
+
+    <B24Slideover v-model:open="filtersOpen" title="Фильтры" side="bottom">
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <B24FormField label="Раздел">
+            <B24Select :model-value="filters.section" :items="sectionItems" class="w-full" @update:model-value="v => setFilters({ section: String(v ?? '') })" />
+          </B24FormField>
+          <B24FormField label="Бренд">
+            <B24Select :model-value="filters.brand" :items="brandItems" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
+          </B24FormField>
+          <B24FormField label="Сортировка">
+            <B24Select :model-value="filters.sort" :items="sorts" class="w-full" @update:model-value="v => setFilters({ sort: v as CatalogFilters['sort'] })" />
+          </B24FormField>
+          <B24Switch :model-value="filters.inStock" label="Только в наличии" @update:model-value="v => setFilters({ inStock: !!v })" />
+          <div class="flex gap-2">
+            <B24Button color="air-tertiary" label="Сбросить" class="flex-1 justify-center" @click="reset" />
+            <B24Button color="air-primary" :label="`Показать ${total}`" class="flex-1 justify-center" @click="filtersOpen = false" />
+          </div>
+        </div>
+      </template>
+    </B24Slideover>
+
+    <BottomNav />
   </div>
 </template>
