@@ -124,10 +124,14 @@ export interface OrderDraft {
   comment: string
 }
 
-interface OrderRowDb {
+export interface OrderRowDb {
   id: number
+  request_id: string
   company_id: number
   contact_id: number
+  client_guid: string
+  contract_guid: string
+  address_guid: string
   address_text: string
   delivery_from: string | null
   delivery_to: string | null
@@ -139,6 +143,7 @@ interface OrderRowDb {
   deal_id: number | null
   status: string
   sending_at: string | null
+  onec_order_guid: string | null
 }
 
 export interface OrderListRow {
@@ -181,6 +186,17 @@ export function createOrderStore(db: DatabaseSync) {
     WHERE id = ? AND deal_id IS NULL AND (status = 'pending' OR (status = 'sending' AND sending_at < ?))`)
   const setDeal = db.prepare(`UPDATE order_request SET deal_id = ?, status = 'sent', sending_at = NULL, error = NULL, updated_at = ? WHERE id = ?`)
   const setError = db.prepare(`UPDATE order_request SET status = 'pending', sending_at = NULL, error = ?, updated_at = ? WHERE id = ?`)
+  const toResend = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NULL
+    AND ((status = 'pending' AND updated_at < ?) OR (status = 'sending' AND sending_at < ?)) ORDER BY id LIMIT ?`)
+  const awaiting = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NOT NULL AND status = 'sent' ORDER BY id LIMIT ?`)
+  const byId = db.prepare('SELECT * FROM order_request WHERE id = ?')
+  const setStatus = db.prepare('UPDATE order_request SET status = ?, error = NULL, updated_at = ? WHERE id = ?')
+  const setOnec = db.prepare(`UPDATE order_request SET onec_order_guid = ?, onec_number = ?, status = ?, error = NULL, updated_at = ?
+    WHERE id = ? AND onec_order_guid IS NULL`)
+  const setNote = db.prepare('UPDATE order_request SET error = ?, updated_at = ? WHERE id = ?')
+  const byOnec = db.prepare('SELECT * FROM order_request WHERE onec_order_guid = ? OR (onec_order_guid IS NULL AND deal_id = ?) LIMIT 1')
+  const applyOnec = db.prepare(`UPDATE order_request SET status = ?, shipment_date = ?, onec_number = COALESCE(?, onec_number),
+      onec_order_guid = COALESCE(onec_order_guid, ?), updated_at = ? WHERE id = ?`)
   const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
       address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, items
     FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
@@ -206,6 +222,31 @@ export function createOrderStore(db: DatabaseSync) {
       return byRequest.get(requestId) as unknown as OrderRowDb | undefined
     },
     sent(id: number, dealId: number, now: string) { setDeal.run(dealId, now, id) },
+    /** Застрявшие без сделки: CRM упала, а клиент закрыл вкладку. */
+    toResend(now: Date, limit = 20): OrderRowDb[] {
+      const old = new Date(now.getTime() - 60_000).toISOString()
+      const stale = new Date(now.getTime() - SENDING_STALE_MS).toISOString()
+      return toResend.all(old, stale, limit) as unknown as OrderRowDb[]
+    },
+    /** Сделка есть, заказа в 1С ещё нет — ждём подтверждения менеджера. */
+    awaitingConfirmation(limit = 50): OrderRowDb[] {
+      return awaiting.all(limit) as unknown as OrderRowDb[]
+    },
+    byId(id: number): OrderRowDb | undefined { return byId.get(id) as unknown as OrderRowDb | undefined },
+    setStatus(id: number, status: string, now: string) { setStatus.run(status, now, id) },
+    /** Заказ в 1С создан: true — записали (повтор не перезаписывает). */
+    setOnecOrder(id: number, guid: string, number: string, status: string, now: string): boolean {
+      return Number(setOnec.run(guid.toLowerCase(), number, status, now, id).changes) === 1
+    },
+    note(id: number, error: string, now: string) { setNote.run(error.slice(0, 200), now, id) },
+    /** Строка 1С о статусе → заявка ЛК: по GUID заказа или по externalId (= ID сделки). */
+    findForStatus(orderGuid: string, externalId: string): OrderRowDb | undefined {
+      const dealId = /^\d+$/.test(externalId) ? Number(externalId) : -1
+      return byOnec.get(orderGuid.toLowerCase(), dealId) as unknown as OrderRowDb | undefined
+    },
+    applyStatus(id: number, status: string, shipmentDate: string | null, number: string | null, orderGuid: string, now: string) {
+      applyOnec.run(status, shipmentDate, number, orderGuid.toLowerCase(), now, id)
+    },
     failed(id: number, error: string, now: string) { setError.run(error.slice(0, 200), now, id) },
     list(companyId: number, limit = 20, offset = 0): OrderListRow[] {
       const lim = Math.min(Math.max(Math.trunc(limit) || 20, 1), 50)
@@ -297,28 +338,41 @@ export async function submitOrder(
   if (row.deal_id) return done(row.deal_id)
   if (!deps.orders.claim(row.id, now)) return { ok: false, status: 409, error: 'in_progress' }
 
-  // Сделка — из сохранённой строки: что в базе, то и у менеджера.
+  const dealId = await sendToCrm(row, client.name, deps, now, slot?.cutoffAt)
+  return dealId ? done(dealId) : { ok: false, status: 503, error: 'crm_unavailable' }
+}
+
+/**
+ * Сделка из сохранённой строки заявки (вызывающий уже захватил отправку): что в базе, то и у
+ * менеджера. Отказ CRM — null и черновик снова `pending`; в журнал — только класс ошибки: текст
+ * транспорта может содержать адрес вебхука (секрет).
+ */
+export async function sendToCrm(
+  row: OrderRowDb,
+  clientName: string,
+  deps: Pick<SubmitDeps, 'orders' | 'b24'>,
+  now: Date,
+  cutoffAt?: string,
+): Promise<number | null> {
   const items = JSON.parse(row.items) as OrderItem[]
   try {
     const dealId = await deps.b24.createDeal({
-      requestId: input.requestId,
-      companyId: session.companyId,
+      requestId: row.request_id,
+      companyId: row.company_id,
       contactId: row.contact_id,
-      title: `Заявка ЛК №${row.id}: ${neutralizeBb(client.name)}`,
-      comments: dealComments(row.id, row, slot?.cutoffAt),
+      title: `Заявка ЛК №${row.id}: ${neutralizeBb(clientName)}`,
+      comments: dealComments(row.id, row, cutoffAt),
       total: row.total,
       currency: row.currency,
       rows: items.map(i => ({ name: neutralizeBb(`${i.name} (${i.sku})`), price: i.price, qty: i.qty, unit: i.unit, vatRate: i.vatRate })),
     })
-    deps.orders.sent(row.id, dealId, nowIso)
-    return done(dealId)
+    deps.orders.sent(row.id, dealId, now.toISOString())
+    return dealId
   }
   catch (e) {
-    // Черновик остаётся: повтор с тем же requestId дошлёт ту же заявку. В журнал — только класс
-    // ошибки: текст транспорта может содержать адрес вебхука (секрет).
     const kind = (e as Error).name || 'Error'
-    deps.orders.failed(row.id, kind, nowIso)
+    deps.orders.failed(row.id, kind, now.toISOString())
     console.error(`[orders] deal for order ${row.id}: ${kind}`)
-    return { ok: false, status: 503, error: 'crm_unavailable' }
+    return null
   }
 }

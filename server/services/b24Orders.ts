@@ -5,13 +5,15 @@
  */
 import { DEAL_CATEGORY_NAME, SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
 import { parseDates, parseTime, parseWeekdays, type TripSchedule } from '../../shared/delivery'
-import { resolveFieldKey, type B24Call } from './b24Access'
+import { isNotFound, resolveFieldKey, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
 export const DEAL_ORIGINATOR = 'wholesale-portal'
 const TRIPS_TITLE = SMART_PROCESSES.find(sp => sp.title === 'Рейсы')!.title
 /** Записей расписания — по одной на город; больше сотни — это уже не расписание, а ошибка ввода. */
 const SCHEDULES_MAX = 100
+
+export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' }
 
 export interface DealRow { name: string, price: number, qty: number, unit: string, vatRate: number }
 
@@ -131,6 +133,41 @@ export function createB24Orders(call: B24Call) {
         })),
       })
       return dealId
+    },
+
+    /**
+     * Стадии воронки «Заявки ЛК» по порядку: первая рабочая — «новая заявка», остальные рабочие —
+     * «подтверждена менеджером»; успех и провал — закрытие. Семантику отдаёт портал, не угадываем.
+     */
+    async stages(): Promise<DealStage[]> {
+      const cat = await getCategoryId()
+      const rows = await call('crm.status.list', { filter: { ENTITY_ID: `DEAL_STAGE_${cat}` }, order: { SORT: 'ASC' } }) as Record<string, unknown>[]
+      return rows.map((r) => {
+        const extra = (r.EXTRA ?? {}) as Record<string, unknown>
+        const sem = String(r.SEMANTICS ?? extra.SEMANTICS ?? '').toLowerCase()
+        const semantics: DealStage['semantics'] = sem === 's' || sem === 'success' ? 'success' : sem === 'f' || sem === 'failure' ? 'failure' : 'process'
+        return { id: String(r.STATUS_ID), name: String(r.NAME ?? ''), sort: Number(r.SORT ?? 0), semantics }
+      }).sort((a, b) => a.sort - b.sort)
+    },
+
+    /** Стадия сделки; сделки нет — null. */
+    async dealStage(dealId: number): Promise<string | null> {
+      try {
+        const { item } = await call('crm.item.get', { entityTypeId: 2, id: dealId }) as { item?: Record<string, unknown> }
+        return item?.stageId ? String(item.stageId) : null
+      }
+      catch (e) {
+        if (isNotFound(e)) return null
+        throw e
+      }
+    },
+
+    async moveDeal(dealId: number, stageId: string): Promise<void> {
+      await call('crm.item.update', { entityTypeId: 2, id: dealId, fields: { stageId } })
+    },
+
+    async comment(dealId: number, text: string): Promise<void> {
+      await call('crm.timeline.comment.add', { fields: { ENTITY_ID: dealId, ENTITY_TYPE: 'deal', COMMENT: text } })
     },
 
     /** «Заказать звонок»: дело на компании ответственному, срок — через час. */
