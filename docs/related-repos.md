@@ -18,7 +18,7 @@
 | [adminsite-standartnoby/base](https://github.com/adminsite-standartnoby/base) | Репозиторий коробки: деплой и обновление Б24 | Схема деплоя `www/local/`, стражи дерева, правило «ядро не правим» |
 | [bx-shef/haschangefiles](https://github.com/bx-shef/haschangefiles) | Учёт правок ядра | Только соглашение и CLI-проверку — если всё же придётся править ядро |
 | [bx-shef/insync](https://github.com/bx-shef/insync) | Заготовки синхронизаций (PHP) | Паттерны: очередь со статусами, стратегии ошибок, идемпотентность по внешнему ключу |
-| [bx-shef/currency](https://github.com/bx-shef/currency) | Курсы НБРБ → модуль «Валюты» | Логика строгого разбора; аналог для НБКР (Бишкек) |
+| [bx-shef/currency](https://github.com/bx-shef/currency) | Курсы НБРБ → модуль «Валюты» | Логика строгого разбора |
 | [bx-shef/ai-price-import](https://github.com/bx-shef/ai-price-import) | Разбор файлов ИИ → CRM, контур обратной связи | Извлечение текста, LLM-шлюз с DeepSeek, `crmWrite`, виджет оценки |
 | [bx-shef/skills-standard](https://github.com/bx-shef/skills-standard) | Стандарт навыков и приёмник отзывов | Формат обратной связи, `feedback/server.js`, навыки проекта + `bxshef lint/eval` |
 | [bitrix-tools/env-docker](https://github.com/bitrix-tools/env-docker) | Официальное Docker-окружение Битрикс (команда 1С-Битрикс) | Локальный/тестовый стенд коробки Б24 для разработки и смоук-тестов |
