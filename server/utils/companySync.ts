@@ -19,6 +19,8 @@ export function syncCompanies(): Promise<SyncRun & { summary?: UpsertSummary }> 
       key: c => c.guid,
       load: p => onec.clients(p),
       consume: async (items) => {
+        // Договор и адреса доставки — в базу ЛК для корзины и заявок (до CRM: сбой Б24 их не теряет).
+        createClientStore(useDb()).save(items)
         summary = await sync.upsert(items)
       },
     }, sqliteSyncStore(useDb()))

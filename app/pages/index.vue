@@ -10,7 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const headers = useRequestHeaders(['cookie'])
 
-const { data: me, error: meError } = await useFetch('/api/auth/me', { headers })
+const { error: meError } = await useFetch('/api/auth/me', { headers, key: 'me' })
 if (meError.value?.statusCode === 401) await navigateTo('/login')
 
 const { data: options } = await useFetch('/api/catalog/filters', { headers })
@@ -116,22 +116,11 @@ function reset() {
   router.push({ query: {} })
 }
 
-async function logout() {
-  await $fetch('/api/auth/logout', { method: 'POST' })
-  await navigateTo('/login')
-}
 </script>
 
 <template>
   <div class="pb-16 md:pb-0">
-    <B24Header :title="me?.company.title || 'Каталог'">
-      <template #right>
-        <div v-if="me" class="hidden md:flex gap-2">
-          <B24Button to="/profile" color="air-tertiary" label="Профиль" />
-          <B24Button color="air-tertiary" label="Выйти" @click="logout" />
-        </div>
-      </template>
-    </B24Header>
+    <AppHeader />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-3">
         <div class="flex gap-2">

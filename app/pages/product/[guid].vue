@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import type { CatalogItemDetailsView, PriceStatus } from '~~/shared/catalogView'
 import { missingPriceText } from '~~/shared/catalogView'
+import { normalizeQty } from '~~/shared/cart'
 
 const route = useRoute()
 const headers = useRequestHeaders(['cookie'])
@@ -11,11 +12,13 @@ if (error.value?.statusCode === 401) await navigateTo('/login')
 useHead({ title: () => data.value?.item.name ?? 'Товар' })
 
 const item = computed(() => data.value?.item)
+const cart = useCart()
+const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
 </script>
 
 <template>
   <div class="pb-16 md:pb-0">
-    <B24Header :title="item?.name || 'Товар'" to="/" />
+    <AppHeader :title="item?.name || 'Товар'" back="/" />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
         <B24Alert v-if="error?.statusCode === 404" color="air-primary-warning" title="Товар не найден" description="Его могли убрать из каталога. Вернитесь в каталог и найдите похожий." />
@@ -36,6 +39,13 @@ const item = computed(() => data.value?.item)
                 <span v-else class="text-base font-normal">{{ missingPriceText(data?.priceStatus ?? 'ok') }}</span>
               </p>
               <StockBadge :available="item.available" :unit="item.unit" class="self-start" />
+              <div v-if="item.price" class="flex flex-wrap items-center gap-3 pt-2">
+                <B24Button v-if="!inCart" color="air-primary" label="В корзину" class="min-h-11" @click="cart.setQty(item.guid, normalizeQty(item.minQty, item.packQty, item.minQty))" />
+                <template v-else>
+                  <QtyStepper :qty="inCart" :pack-qty="item.packQty" :min-qty="item.minQty" :unit="item.unit" @update:qty="v => cart.setQty(item!.guid, v)" />
+                  <B24Button to="/cart" color="air-tertiary" label="Перейти в корзину" />
+                </template>
+              </div>
               <p class="text-sm">
                 Кратность: {{ formatQty(item.packQty, item.unit) }}<template v-if="item.minQty > item.packQty">
                   , минимум {{ formatQty(item.minQty, item.unit) }}

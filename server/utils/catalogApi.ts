@@ -12,5 +12,5 @@ export async function catalogContext(event: H3Event) {
   setResponseHeader(event, 'Cache-Control', 'private, no-store')
   const pricing = await resolvePricing(session, resolver)
   const prices = (guid: string, items: string[]) => usePrices().get(guid, items)
-  return { pricing, prices, store: useCatalog() }
+  return { session, pricing, prices, store: useCatalog() }
 }
