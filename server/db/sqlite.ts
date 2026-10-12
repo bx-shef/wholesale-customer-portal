@@ -73,6 +73,40 @@ export const MIGRATIONS: string[] = [
      changed_at TEXT NOT NULL,
      PRIMARY KEY (item_guid, warehouse_guid)
    );`,
+  // Этап 4: клиенты 1С (договор и адреса доставки) и заявки ЛК — по ним «Мои заявки» и заказ в 1С.
+  `CREATE TABLE onec_client (
+     guid TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     contract_guid TEXT,
+     addresses TEXT NOT NULL,
+     deleted INTEGER NOT NULL,
+     changed_at TEXT NOT NULL
+   );
+   CREATE TABLE order_request (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     request_id TEXT NOT NULL UNIQUE,
+     company_id INTEGER NOT NULL,
+     contact_id INTEGER NOT NULL,
+     client_guid TEXT NOT NULL,
+     contract_guid TEXT NOT NULL,
+     address_guid TEXT NOT NULL,
+     address_text TEXT NOT NULL,
+     delivery_at TEXT,
+     items TEXT NOT NULL,
+     total REAL NOT NULL,
+     currency TEXT NOT NULL,
+     comment TEXT NOT NULL,
+     deal_id INTEGER,
+     status TEXT NOT NULL,
+     onec_order_guid TEXT,
+     onec_number TEXT,
+     shipment_date TEXT,
+     error TEXT,
+     created_at TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );
+   CREATE INDEX order_request_company ON order_request (company_id, created_at);
+   CREATE INDEX order_request_status ON order_request (status);`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

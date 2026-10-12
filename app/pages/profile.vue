@@ -7,11 +7,29 @@ if (error.value?.statusCode === 401) await navigateTo('/login')
 
 const money = (v: number, currency: string) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency }).format(v)
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU')
+
+const calling = ref(false)
+const callbackSent = ref(false)
+const callbackError = ref('')
+async function requestCallback() {
+  calling.value = true
+  callbackError.value = ''
+  try {
+    await $fetch('/api/callback', { method: 'POST' })
+    callbackSent.value = true
+  }
+  catch {
+    callbackError.value = 'Не удалось передать просьбу. Позвоните менеджеру или попробуйте позже.'
+  }
+  finally {
+    calling.value = false
+  }
+}
 </script>
 
 <template>
   <div class="pb-16 md:pb-0">
-    <B24Header :title="data?.company.title || 'Профиль'" to="/" />
+    <AppHeader title="Профиль" />
     <B24Main>
       <B24Container class="py-6 flex flex-col gap-4 max-w-xl">
         <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-warning" title="Не удалось загрузить профиль. Обновите страницу." />
@@ -44,6 +62,8 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU')
                 {{ data.manager.email }}
               </p>
               <B24Button v-if="data.manager.phone" :to="`tel:${data.manager.phone}`" color="air-primary" block label="Позвонить" />
+              <B24Button color="air-secondary" block :loading="calling" :disabled="callbackSent" :label="callbackSent ? 'Менеджер перезвонит' : 'Заказать звонок'" @click="requestCallback" />
+              <B24Alert v-if="callbackError" color="air-primary-alert" :title="callbackError" />
             </div>
             <p v-else class="text-sm">
               Менеджер не назначен.
