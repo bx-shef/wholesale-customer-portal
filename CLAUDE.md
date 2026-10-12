@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-11
+> Last reviewed: 2026-10-12
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -46,7 +46,9 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
-| `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts` | индекс каталога и остатков, синхронизация, кэш цен клиента, каталог глазами клиента |
+| `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, кэш цен клиента, каталог глазами клиента, обвязка маршрутов |
+| `server/tasks/sync/{catalog,stock}.ts`, `server/plugins/catalogWarmup.ts` | каталог раз в час, остатки раз в 5 минут, первый прогон при старте |
+| `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `server/api/catalog/*` | список, фильтры, карточка — только с сессией, цены по компании сессии |
 | `server/db/sqlite.ts`, `server/utils/db.ts` | база SQLite на томе `/data`: курсоры, журналы, каталог и остатки; миграции дописываются в конец |
 | `server/utils/env.ts` | единственное чтение окружения (имена без `NUXT_`) |

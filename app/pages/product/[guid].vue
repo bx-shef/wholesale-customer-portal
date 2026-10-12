@@ -1,23 +1,16 @@
 <!-- Карточка товара: цена договора, кратность, остатки по складам, свойства, аналоги. -->
 <script setup lang="ts">
+import type { CatalogItemDetailsView, PriceStatus } from '~~/shared/catalogView'
+import { missingPriceText } from '~~/shared/catalogView'
+
 const route = useRoute()
 const headers = useRequestHeaders(['cookie'])
 
-interface Priced { guid: string, sku: string, name: string, brand: string, unit: string, packQty: number, minQty: number, available: number, price: { value: number, currency: string, vatRate: number } | null }
-interface Details extends Priced {
-  description: string
-  properties: Record<string, string>
-  images: string[]
-  stock: { warehouseGuid: string, warehouseName: string, available: number }[]
-  analogs: Priced[]
-}
-
-const { data, error } = await useFetch<{ item: Details, pricesAvailable: boolean }>(() => `/api/catalog/${route.params.guid}`, { headers })
+const { data, error } = await useFetch<{ item: CatalogItemDetailsView, priceStatus: PriceStatus }>(() => `/api/catalog/${route.params.guid}`, { headers })
 if (error.value?.statusCode === 401) await navigateTo('/login')
 useHead({ title: () => data.value?.item.name ?? 'Товар' })
 
 const item = computed(() => data.value?.item)
-const stock = computed(() => (item.value ? stockLabel(item.value.available, item.value.unit) : null))
 </script>
 
 <template>
@@ -40,9 +33,9 @@ const stock = computed(() => (item.value ? stockLabel(item.value.available, item
                 <template v-if="item.price">
                   {{ formatMoney(item.price.value, item.price.currency) }}<span class="text-sm font-normal"> / {{ item.unit }}, НДС {{ item.price.vatRate }}%</span>
                 </template>
-                <span v-else class="text-base font-normal">{{ data?.pricesAvailable ? 'Цена по запросу у менеджера' : 'Цена временно недоступна' }}</span>
+                <span v-else class="text-base font-normal">{{ missingPriceText(data?.priceStatus ?? 'ok') }}</span>
               </p>
-              <B24Badge v-if="stock" :color="stock.color" :label="stock.text" class="self-start" />
+              <StockBadge :available="item.available" :unit="item.unit" class="self-start" />
               <p class="text-sm">
                 Кратность: {{ formatQty(item.packQty, item.unit) }}<template v-if="item.minQty > item.packQty">
                   , минимум {{ formatQty(item.minQty, item.unit) }}
@@ -99,7 +92,7 @@ const stock = computed(() => (item.value ? stockLabel(item.value.available, item
                     <p class="font-semibold">
                       {{ a.price ? formatMoney(a.price.value, a.price.currency) : '—' }}
                     </p>
-                    <B24Badge size="sm" :color="stockLabel(a.available, a.unit).color" :label="stockLabel(a.available, a.unit).text" />
+                    <StockBadge :available="a.available" :unit="a.unit" />
                   </div>
                 </div>
               </B24Card>

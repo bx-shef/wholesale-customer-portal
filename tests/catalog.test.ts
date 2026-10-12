@@ -2,8 +2,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createCatalogStore } from '../server/utils/catalog'
-import { createPriceCache, PRICE_TTL_MS } from '../server/utils/prices'
-import { catalogItem, catalogPage, createCompanyGuidResolver, parseCatalogQuery } from '../server/utils/catalogView'
+import { createPriceCache, PRICE_FAILURE_PAUSE_MS, PRICE_TTL_MS, PricesUnavailableError } from '../server/utils/prices'
+import { catalogItem, catalogPage, COMPANY_NO_GUID_TTL_MS, createCompanyGuidResolver, parseCatalogQuery, resolvePricing } from '../server/utils/catalogView'
 import { generateSeed } from '../server/mocks/onec/seed'
 import type { ItemT, PriceT } from '../shared/onec/schemas'
 
@@ -61,6 +61,49 @@ describe('индекс каталога', () => {
     expect(store.search({ inStock: true }).total).toBe(0)
   })
 
+  it('limit 0 и отрицательный — не «без лимита»', () => {
+    store.saveCatalog([], Array.from({ length: 70 }, (_, i) => item(i + 1)))
+    expect(store.search({ limit: 0 }).items.length).toBe(1)
+    expect(store.search({ limit: -5 }).items.length).toBe(1)
+  })
+
+  it('длинный запрос обрезается, лишние слова не превращаются в десятки LIKE', () => {
+    store.saveCatalog([], [item(1, { name: 'Болт' })])
+    expect(store.search({ q: 'болт ' + 'x'.repeat(500) }).total).toBe(0)
+    // Слова сверх пяти отбрасываются: шестое «я» не нашлось бы, но до него поиск не доходит.
+    expect(store.search({ q: 'болт о л т б я' }).total).toBe(1)
+  })
+
+  it('сортировка по названию — без регистра, ё рядом с е; при равенстве — по GUID', () => {
+    store.saveCatalog([], [item(3, { name: 'ёлка' }), item(1, { name: 'Ель' }), item(2, { name: 'ежевика' }), item(4, { name: 'Дуб' })])
+    expect(store.search({ sort: 'name' }).items.map(i => i.name)).toEqual(['Дуб', 'ежевика', 'ёлка', 'Ель'])
+    store.saveCatalog([], [item(5, { name: 'Same', sku: 'S' }), item(6, { name: 'Same', sku: 'S' })])
+    const ids = store.search({ q: 'same', sort: 'sku' }).items.map(i => i.guid)
+    expect(ids).toEqual([g(5), g(6)])
+  })
+
+  it('«сначала в наличии»: по убыванию остатка', () => {
+    store.saveCatalog([], [item(1), item(2), item(3)])
+    const st = (n: number, available: number) => ({ itemGuid: g(n), warehouseGuid: g(500), warehouseName: 'Минск', available, changedAt: at })
+    store.saveStock([st(1, 1), st(2, 50), st(3, 0)])
+    expect(store.search({ sort: 'available' }).items.map(i => i.guid)).toEqual([g(2), g(1), g(3)])
+  })
+
+  it('удалённый товар уносит остатки; остаток товара не из витрины не хранится', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const s2 = createCatalogStore(db)
+    const st = (n: number) => ({ itemGuid: g(n), warehouseGuid: g(500), warehouseName: 'Минск', available: 9, changedAt: at })
+    s2.saveCatalog([], [item(1)])
+    s2.saveStock([st(1), st(2)])
+    const count = () => (db.prepare('SELECT COUNT(*) AS n FROM stock').get() as { n: number }).n
+    expect(count()).toBe(1)
+    s2.saveCatalog([], [item(1, { deleted: true })])
+    expect(count()).toBe(0)
+    s2.saveCatalog([], [item(1)])
+    expect(s2.item(g(1))!.available).toBe(0)
+  })
+
   it('страницы: limit не больше 60, сортировка устойчива', () => {
     store.saveCatalog([], Array.from({ length: 70 }, (_, i) => item(i + 1, { name: 'Одинаковое' })))
     const a = store.search({ limit: 1000 })
@@ -102,6 +145,48 @@ describe('цены клиента', () => {
     expect(load).toHaveBeenCalledTimes(4)
   })
 
+  it('одновременные одинаковые запросы ждут один ответ 1С', async () => {
+    let release!: () => void
+    const load = vi.fn((_c: string, items: string[]) => new Promise<PriceT[]>((r) => {
+      release = () => r(items.map(i => price(i)))
+    }))
+    const cache = createPriceCache(load, () => 0)
+    const a = cache.get(g(100), [g(1)])
+    const b = cache.get(g(100), [g(1)])
+    release()
+    expect((await a).size).toBe(1)
+    expect((await b).size).toBe(1)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('1С упала — пауза: 30 секунд её не спрашиваем, потом снова', async () => {
+    let t = 0
+    let down = true
+    const load = vi.fn(async (_c: string, items: string[]) => {
+      if (down) throw new Error('503')
+      return items.map(i => price(i))
+    })
+    const cache = createPriceCache(load, () => t)
+    await expect(cache.get(g(100), [g(1)])).rejects.toBeInstanceOf(PricesUnavailableError)
+    await expect(cache.get(g(100), [g(1)])).rejects.toBeInstanceOf(PricesUnavailableError)
+    expect(load).toHaveBeenCalledTimes(1)
+    down = false
+    t = PRICE_FAILURE_PAUSE_MS + 1
+    expect((await cache.get(g(100), [g(1)])).size).toBe(1)
+  })
+
+  it('переполнение вытесняет старые записи, а цены текущего ответа не теряются', async () => {
+    const load = vi.fn(async (_c: string, items: string[]) => items.map(i => price(i)))
+    const cache = createPriceCache(load, () => 0, 3)
+    await cache.get(g(100), [g(1), g(2)])
+    const r = await cache.get(g(100), [g(3), g(4)])
+    expect(r.size).toBe(2)
+    await cache.get(g(100), [g(2)])
+    expect(load).toHaveBeenCalledTimes(2)
+    await cache.get(g(100), [g(1)])
+    expect(load).toHaveBeenCalledTimes(3)
+  })
+
   it('«нет цены» тоже кэшируется и не превращается в ноль', async () => {
     const load = vi.fn(async () => [] as PriceT[])
     const cache = createPriceCache(load, () => 0)
@@ -122,30 +207,51 @@ describe('каталог глазами клиента', () => {
 
   it('цены запрашиваются по GUID клиента из сессии, а не из запроса', async () => {
     const prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, { itemGuid: i, price: 5, currency: 'BYN', vatRate: 20 }])))
-    const page = await catalogPage(store, parseCatalogQuery({ clientGuid: g(666) }), g(100), prices)
+    const page = await catalogPage(store, parseCatalogQuery({ clientGuid: g(666) }), await resolvePricing({ companyId: 7 }, async () => g(100)), prices)
     expect(prices.mock.calls[0]![0]).toBe(g(100))
     expect(page.items[0]!.price).toEqual({ value: 5, currency: 'BYN', vatRate: 20 })
   })
 
   it('1С упала — каталог без цен и с флагом, а не 500 и не нули', async () => {
-    const page = await catalogPage(store, {}, g(100), async () => { throw new Error('503') })
-    expect(page.pricesAvailable).toBe(false)
+    const page = await catalogPage(store, {}, { status: 'ok', clientGuid: g(100) }, async () => { throw new Error('503') })
+    expect(page.priceStatus).toBe('unavailable')
     expect(page.items.every(i => i.price === null)).toBe(true)
   })
 
   it('карточка: цена товара и аналогов одним запросом', async () => {
-    const prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, { itemGuid: i, price: 7, currency: 'BYN', vatRate: 20 }])))
-    const r = await catalogItem(store, g(1), g(100), prices)
+    // Разные цены: перепутать цену товара и аналога тест не даст.
+    const prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, { itemGuid: i, price: i === g(1) ? 7 : 9, currency: 'BYN', vatRate: 20 }])))
+    const ok = { status: 'ok' as const, clientGuid: g(100) }
+    const r = await catalogItem(store, g(1), ok, prices)
     expect(prices).toHaveBeenCalledTimes(1)
     expect(r!.item.price!.value).toBe(7)
-    expect(r!.item.analogs[0]!.price!.value).toBe(7)
-    expect(await catalogItem(store, g(9), g(100), prices)).toBeNull()
+    expect(r!.item.analogs[0]!.price!.value).toBe(9)
+    expect(await catalogItem(store, g(9), ok, prices)).toBeNull()
+  })
+
+  it('у компании нет GUID 1С — цен нет, 1С не спрашиваем, статус «нет договора»', async () => {
+    const prices = vi.fn(async () => new Map())
+    const pricing = await resolvePricing({ companyId: 7 }, async () => null)
+    const page = await catalogPage(store, {}, pricing, prices)
+    expect(page.priceStatus).toBe('no-contract')
+    expect(page.items.every(i => i.price === null)).toBe(true)
+    expect(prices).not.toHaveBeenCalled()
+  })
+
+  it('без сессии — 401 до запроса в CRM; CRM упала — «недоступны», а не «нет договора»', async () => {
+    const resolve = vi.fn(async () => g(100))
+    await expect(resolvePricing(null, resolve)).rejects.toMatchObject({ statusCode: 401 })
+    expect(resolve).not.toHaveBeenCalled()
+    expect(await resolvePricing({ companyId: 7 }, async () => { throw new Error('ECONNRESET') })).toEqual({ status: 'unavailable' })
+    expect(await resolvePricing({ companyId: 7 }, resolve)).toEqual({ status: 'ok', clientGuid: g(100) })
+    expect(resolve).toHaveBeenCalledWith(7)
   })
 
   it('разбор запроса: кривое отбрасывается', () => {
     expect(parseCatalogQuery({ section: 'x; DROP', sort: 'price', offset: '-5', limit: 'abc', inStock: 'yes' }))
       .toEqual({ q: undefined, section: undefined, brand: undefined, inStock: false, sort: undefined, offset: undefined, limit: undefined })
     expect(parseCatalogQuery({ sort: 'sku', inStock: '1', offset: '30' })).toMatchObject({ sort: 'sku', inStock: true, offset: 30 })
+    expect(parseCatalogQuery({ limit: '0', section: '-'.repeat(36) })).toMatchObject({ limit: undefined, section: undefined })
   })
 
   it('GUID компании кэшируется 10 минут', async () => {
@@ -158,5 +264,18 @@ describe('каталог глазами клиента', () => {
     t = 10 * 60_000 + 1
     await resolve(7)
     expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('«GUID нет» живёт минуту: только что привязанный клиент быстро видит цены', async () => {
+    let t = 0
+    let guid: string | null = null
+    const get = vi.fn(async () => ({ onecGuid: guid }))
+    const resolve = createCompanyGuidResolver(get, () => t)
+    expect(await resolve(7)).toBeNull()
+    guid = g(100)
+    t = COMPANY_NO_GUID_TTL_MS - 1
+    expect(await resolve(7)).toBeNull()
+    t = COMPANY_NO_GUID_TTL_MS + 1
+    expect(await resolve(7)).toBe(g(100))
   })
 })

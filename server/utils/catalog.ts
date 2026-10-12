@@ -45,6 +45,12 @@ export interface CatalogQuery {
 export const CATALOG_PAGE_MAX = 60
 /** Аналогов в карточке: больше — это уже раздел, а не подсказка. Сначала те, что в наличии. */
 export const ANALOGS_MAX = 12
+/** Сколько GUID аналогов храним: 1С может отдать сколько угодно, а в `IN (…)` SQLite есть предел. */
+const ANALOGS_STORED_MAX = 50
+/** Слов в поиске: каждое — условие LIKE по всему каталогу. */
+const SEARCH_WORDS_MAX = 5
+/** Раздел с подразделами: больше — это уже весь каталог, и `IN (…)` упёрся бы в предел SQLite. */
+const SECTION_TREE_MAX = 1000
 const SEARCH_MAX = 100
 
 const lower = (s: string) => s.toLowerCase()
@@ -55,14 +61,15 @@ export function createCatalogStore(db: DatabaseSync) {
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)
   const upsertItem = db.prepare(`INSERT INTO catalog_item
-      (guid, sku, name, section_guid, brand, unit, pack_qty, min_qty, description, properties, images, analogs, search, changed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (guid, sku, name, section_guid, brand, unit, pack_qty, min_qty, description, properties, images, analogs, search, name_sort, changed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET sku = excluded.sku, name = excluded.name, section_guid = excluded.section_guid,
       brand = excluded.brand, unit = excluded.unit, pack_qty = excluded.pack_qty, min_qty = excluded.min_qty,
       description = excluded.description, properties = excluded.properties, images = excluded.images,
-      analogs = excluded.analogs, search = excluded.search, changed_at = excluded.changed_at`)
+      analogs = excluded.analogs, search = excluded.search, name_sort = excluded.name_sort, changed_at = excluded.changed_at`)
   const deleteItem = db.prepare('DELETE FROM catalog_item WHERE guid = ?')
   const deleteItemStock = db.prepare('DELETE FROM stock WHERE item_guid = ?')
+  const itemExists = db.prepare('SELECT 1 FROM catalog_item WHERE guid = ?')
   const upsertStock = db.prepare(`INSERT INTO stock (item_guid, warehouse_guid, warehouse_name, available, changed_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT (item_guid, warehouse_guid) DO UPDATE SET warehouse_name = excluded.warehouse_name,
       available = excluded.available, changed_at = excluded.changed_at`)
@@ -74,7 +81,7 @@ export function createCatalogStore(db: DatabaseSync) {
   /** Раздел включает подразделы: клиент выбирает «Крепёж», а товары лежат в «Крепёж / Болты». */
   function sectionWithChildren(guid: string): string[] {
     const rows = db.prepare(`WITH RECURSIVE tree(g) AS (SELECT ? UNION SELECT s.guid FROM catalog_section s JOIN tree ON s.parent_guid = tree.g)
-      SELECT g FROM tree`).all(lower(guid)) as { g: string }[]
+      SELECT g FROM tree LIMIT ${SECTION_TREE_MAX}`).all(lower(guid)) as { g: string }[]
     return rows.map(r => r.g)
   }
 
@@ -92,6 +99,11 @@ export function createCatalogStore(db: DatabaseSync) {
 
   return {
     /** Разделы приходят целиком на первой странице каталога, товары — постранично. */
+    /**
+     * Разделы и товары одной выборки. Удалённый в 1С товар уходит из витрины вместе с остатками.
+     * Разделы, исчезнувшие из 1С, не удаляем: контракт не передаёт пометку удаления раздела, а
+     * пустой раздел безвреден — фильтр по нему просто ничего не найдёт.
+     */
     saveCatalog(sections: SectionT[], items: ItemT[]) {
       transaction(() => {
         for (const s of sections) upsertSection.run(lower(s.guid), s.parentGuid ? lower(s.parentGuid) : null, s.name)
@@ -104,15 +116,16 @@ export function createCatalogStore(db: DatabaseSync) {
             continue
           }
           upsertItem.run(guid, i.sku, i.name, lower(i.sectionGuid), i.brand, i.unit, i.packQty, i.minQty, i.description,
-            JSON.stringify(i.properties), JSON.stringify(i.images), JSON.stringify(i.analogs.map(lower)),
-            searchText(`${i.name} ${i.sku}`), i.changedAt)
+            JSON.stringify(i.properties), JSON.stringify(i.images), JSON.stringify(i.analogs.slice(0, ANALOGS_STORED_MAX).map(lower)),
+            searchText(`${i.name} ${i.sku}`), searchText(i.name), i.changedAt)
         }
       })
     },
 
     saveStock(rows: StockT[]) {
       transaction(() => {
-        for (const r of rows) upsertStock.run(lower(r.itemGuid), lower(r.warehouseGuid), r.warehouseName, r.available, r.changedAt)
+        // Остаток товара, которого нет в витрине (удалён в 1С или ещё не пришёл), не храним: он бы осиротел.
+        for (const r of rows) if (itemExists.get(lower(r.itemGuid))) upsertStock.run(lower(r.itemGuid), lower(r.warehouseGuid), r.warehouseName, r.available, r.changedAt)
       })
     },
 
@@ -131,7 +144,7 @@ export function createCatalogStore(db: DatabaseSync) {
       const params: (string | number)[] = []
       const q = searchText((query.q ?? '').trim()).slice(0, SEARCH_MAX)
       // Каждое слово — отдельное условие: «болт 10» находит «Болт М10 оцинк.».
-      for (const word of q.split(/\s+/).filter(Boolean)) {
+      for (const word of q.split(/\s+/).filter(Boolean).slice(0, SEARCH_WORDS_MAX)) {
         where.push('i.search LIKE ? ESCAPE \'\\\'')
         params.push(`%${word.replace(/[\\%_]/g, c => `\\${c}`)}%`)
       }
@@ -146,7 +159,7 @@ export function createCatalogStore(db: DatabaseSync) {
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-      const order = { name: 'i.name, i.guid', sku: 'i.sku, i.guid', available: 'available DESC, i.name, i.guid' }[query.sort ?? 'name']
+      const order = { name: 'i.name_sort, i.guid', sku: 'i.sku, i.guid', available: 'available DESC, i.name_sort, i.guid' }[query.sort ?? 'name']
       const limit = Math.min(Math.max(query.limit ?? 30, 1), CATALOG_PAGE_MAX)
       const offset = Math.max(query.offset ?? 0, 0)
       const total = (db.prepare(`SELECT COUNT(*) AS n FROM catalog_item i ${clause}`).get(...params) as { n: number }).n
@@ -161,8 +174,8 @@ export function createCatalogStore(db: DatabaseSync) {
       if (!row) return null
       const analogGuids = JSON.parse(row.analogs) as string[]
       const analogs = analogGuids.length
-        ? db.prepare(`SELECT ${COLUMNS} FROM catalog_item i WHERE i.guid IN (${analogGuids.map(() => '?').join(',')}) ORDER BY available DESC, i.name LIMIT ${ANALOGS_MAX}`)
-          .all(...analogGuids) as unknown as CatalogItem[]
+        ? db.prepare(`SELECT ${COLUMNS} FROM catalog_item i WHERE i.guid IN (${analogGuids.map(() => '?').join(',')}) ORDER BY available DESC, i.name_sort LIMIT ?`)
+          .all(...analogGuids, ANALOGS_MAX) as unknown as CatalogItem[]
         : []
       const stock = db.prepare('SELECT warehouse_guid AS warehouseGuid, warehouse_name AS warehouseName, available FROM stock WHERE item_guid = ? ORDER BY warehouse_name')
         .all(row.guid) as never

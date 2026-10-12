@@ -59,10 +59,12 @@ export const MIGRATIONS: string[] = [
      images TEXT NOT NULL,
      analogs TEXT NOT NULL,
      search TEXT NOT NULL,
+     name_sort TEXT NOT NULL,
      changed_at TEXT NOT NULL
    );
    CREATE INDEX catalog_item_section ON catalog_item (section_guid);
    CREATE INDEX catalog_item_brand ON catalog_item (brand);
+   CREATE INDEX catalog_item_name_sort ON catalog_item (name_sort);
    CREATE TABLE stock (
      item_guid TEXT NOT NULL,
      warehouse_guid TEXT NOT NULL,

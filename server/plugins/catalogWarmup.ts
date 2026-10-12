@@ -5,8 +5,9 @@ export default defineNitroPlugin(() => {
   const env = readServerEnv()
   if (!env.onecMock && !(env.onecUrl && env.onecToken)) return
   setTimeout(() => {
+    // Остатки — только поверх каталога: без товаров в индексе они не сохраняются.
     syncCatalog()
-      .then(() => syncStock())
+      .then(run => (run.status === 'done' ? syncStock() : undefined))
       .catch(e => console.error(`[catalog] warmup: ${(e as Error).message}`))
-  }, 1000)
+  }, 1000).unref()
 })

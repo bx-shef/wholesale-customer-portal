@@ -33,16 +33,16 @@ export function syncCatalog(): Promise<SyncRun> {
     const onec = useOnec()
     const catalog = useCatalog()
     // Разделы приходят только вместе со страницами каталога — копим их рядом с товарами.
-    const sections: SectionT[] = []
+    const sections = new Map<string, SectionT>()
     const run = await runFlow<ItemT>({
       name: 'catalog',
       key: i => i.guid.toLowerCase(),
       load: async (p) => {
         const page = await onec.catalog(p)
-        sections.push(...page.sections)
+        for (const s of page.sections) sections.set(s.guid.toLowerCase(), s)
         return page
       },
-      consume: async items => catalog.saveCatalog(sections, items),
+      consume: async items => catalog.saveCatalog([...sections.values()], items),
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:catalog] ${run.error}`)
     return run
