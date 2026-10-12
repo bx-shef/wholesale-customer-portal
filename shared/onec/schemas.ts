@@ -101,12 +101,12 @@ export const OrderRequest = z.object({
   comment: z.string().max(2000).default(''),
   items: z.array(z.object({ itemGuid: Guid, qty: z.number().positive(), price: Money })).min(1).max(PAGE_SIZE_MAX),
 })
-export const OrderCreated = z.object({ orderGuid: Guid, number: z.string(), status: OrderStatus })
+export const OrderCreated = z.object({ orderGuid: Guid, number: z.string().min(1).max(64), status: OrderStatus })
 
 export const OrderStatusRow = z.object({
   orderGuid: Guid,
   externalId: z.string(),
-  number: z.string(),
+  number: z.string().min(1).max(64),
   status: OrderStatus,
   shipmentDate: DateOnly.nullable(),
   changedAt: DateTime,
