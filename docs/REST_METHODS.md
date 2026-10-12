@@ -33,12 +33,21 @@
 | `crm.item.update` | `server/services/b24Access.ts`, `b24Orders.ts` | вебхук | 📄 | перевыпуск, отзыв, последний вход; стадия сделки при закрытии заказа 1С |
 | `crm.contact.company.items.get` | `server/services/b24Access.ts` | вебхук | 📄 | ключ выдаётся только контакту, привязанному к компании |
 | `user.get` | `server/services/b24Companies.ts` | вебхук | 📄 | ответственный по email менеджера из 1С; результат перепроверяем — фильтр могут проигнорировать |
-| `crm.deal.list` | `server/services/b24Orders.ts` | вебхук | 📄 | ⚠ `crm.deal.*` помечены в документации устаревшими (развитие остановлено) — заменить на `crm.item.*` (`entityTypeId: 2`) и `crm.item.productrow.set` при проверке на коробке. поиск сделки по `ORIGINATOR_ID` + `ORIGIN_ID` — повторная отправка заявки не плодит сделок; совпадение перепроверяем |
+| `crm.deal.list` | `server/services/b24Orders.ts` | вебхук | 📄 | поиск сделки по `ORIGINATOR_ID` + `ORIGIN_ID` — повторная отправка заявки не плодит сделок; совпадение перепроверяем |
 | `crm.deal.add` | `server/services/b24Orders.ts` | вебхук | 📄 | заявка: воронка «Заявки ЛК», `COMPANY_ID`, `CONTACT_IDS`; `COMMENTS` поддерживает BB-коды — текст клиента обезврежен (`neutralizeBb`) |
 | `crm.deal.productrows.set` | `server/services/b24Orders.ts` | вебхук | 📄 | товары без каталога Б24 (`PRODUCT_ID: 0`), цена 1С с НДС — `TAX_INCLUDED: 'Y'`; перезаписывает строки целиком, повтор безопасен |
 | `crm.activity.todo.add` | `server/services/b24Orders.ts` | вебхук | 📄 | «Заказать звонок»: дело на компании (`ownerTypeId: 4`) ответственному, срок +1 ч; ответ `{ id }` |
 | `crm.status.list` | `server/services/b24Orders.ts` | вебхук | 📄 | стадии воронки «Заявки ЛК»: `ENTITY_ID: DEAL_STAGE_<id воронки>`, семантика из `SEMANTICS` / `EXTRA.SEMANTICS` (рабочая, успех, провал) — по ней, а не по шаблону ID стадии, решаем «подтверждена» и «закрыта» |
 | `crm.timeline.comment.add` | `server/services/b24Orders.ts` | вебхук | 📄 | комментарий в ленте сделки: заказ 1С создан, статус из 1С (`ENTITY_TYPE: 'deal'`) |
+
+## Долг: устаревшие методы
+
+Документация (MCP `b24-dev-mcp`, карточки `crm.deal.get`, `crm.deal.fields`) помечает `crm.deal.*`
+как DEPRECATED: «развитие метода остановлено», рекомендован `crm.item.*`. Заявки этапа 4а создаются
+через `crm.deal.list`, `crm.deal.add`, `crm.deal.productrows.set` — они работают, но это долг:
+перейти на `crm.item.list`/`crm.item.add` с `entityTypeId: 2` и `crm.item.productrow.set` с проверкой
+на коробке и тестом идемпотентности по `originatorId`/`originId` — до пилота (этап 7). Новые вызовы
+этапа 4б (стадия сделки, перевод стадии) уже идут через `crm.item.*`.
 
 ## Что вебхуком не делается
 

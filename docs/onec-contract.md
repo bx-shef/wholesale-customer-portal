@@ -67,7 +67,7 @@ ONEC_CONTRACT_URL=https://<1С>/hs/lk ONEC_CONTRACT_TOKEN=<токен> pnpm test
 
 1. `GET /clients`, `GET /client/{guid}/contract` — к концу этапа 2 ЛК.
 2. `GET /catalog`, `POST /prices`, `GET /stock` — этап 3 (ЛК их уже вызывает, на моке).
-3. `POST /order`, `GET /orders/status` — этап 4.
+3. `POST /order`, `GET /orders/status` — этап 4 (ЛК их уже вызывает на моке: заказ — после подтверждения сделки, `externalId` = ID сделки; статусы — по курсору `changedSince`, поток `orders`).
 4. Прогон контрактных тестов на тестовой базе — этап 5–6.
 
 Вопросы и расхождения с контрактом — issue в этом репозитории с меткой контракта; контракт меняется только PR.

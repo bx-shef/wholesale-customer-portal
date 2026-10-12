@@ -142,8 +142,14 @@ export interface OrderRowDb {
   comment: string
   deal_id: number | null
   status: string
+  updated_at: string
   sending_at: string | null
   onec_order_guid: string | null
+  onec_number: string | null
+  shipment_date: string | null
+  crm_status: string | null
+  checked_at: string | null
+  attempts: number
 }
 
 export interface OrderListRow {
@@ -159,6 +165,8 @@ export interface OrderListRow {
   shipmentDate: string | null
   items: OrderItem[]
 }
+
+export const resendPauseMs = (attempts: number) => Math.min(2 ** Math.max(attempts - 1, 0), 60) * 60_000
 
 /** Захват отправки протухает: упавшая попытка не держит заявку дольше этого. */
 export const SENDING_STALE_MS = 2 * 60_000
@@ -185,18 +193,23 @@ export function createOrderStore(db: DatabaseSync) {
   const claim = db.prepare(`UPDATE order_request SET status = 'sending', sending_at = ?, updated_at = ?
     WHERE id = ? AND deal_id IS NULL AND (status = 'pending' OR (status = 'sending' AND sending_at < ?))`)
   const setDeal = db.prepare(`UPDATE order_request SET deal_id = ?, status = 'sent', sending_at = NULL, error = NULL, updated_at = ? WHERE id = ?`)
-  const setError = db.prepare(`UPDATE order_request SET status = 'pending', sending_at = NULL, error = ?, updated_at = ? WHERE id = ?`)
+  const setError = db.prepare(`UPDATE order_request SET status = 'pending', sending_at = NULL, error = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?`)
   const toResend = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NULL
-    AND ((status = 'pending' AND updated_at < ?) OR (status = 'sending' AND sending_at < ?)) ORDER BY id LIMIT ?`)
-  const awaiting = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NOT NULL AND status = 'sent' ORDER BY id LIMIT ?`)
+    AND ((status = 'pending' AND updated_at < ?) OR (status = 'sending' AND sending_at < ?)) ORDER BY updated_at LIMIT 100`)
+  // По кругу: давно не проверенные — первыми, чтобы «молчащие» сделки не занимали очередь навсегда.
+  const awaiting = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NOT NULL AND status = 'sent'
+    ORDER BY checked_at IS NOT NULL, checked_at, id LIMIT ?`)
+  const setChecked = db.prepare('UPDATE order_request SET checked_at = ? WHERE id = ?')
+  const crmBehind = db.prepare(`SELECT * FROM order_request WHERE deal_id IS NOT NULL AND onec_order_guid IS NOT NULL
+    AND (crm_status IS NULL OR crm_status <> status) ORDER BY updated_at LIMIT ?`)
+  const setCrm = db.prepare('UPDATE order_request SET crm_status = ? WHERE id = ?')
   const byId = db.prepare('SELECT * FROM order_request WHERE id = ?')
   const setStatus = db.prepare('UPDATE order_request SET status = ?, error = NULL, updated_at = ? WHERE id = ?')
-  const setOnec = db.prepare(`UPDATE order_request SET onec_order_guid = ?, onec_number = ?, status = ?, error = NULL, updated_at = ?
-    WHERE id = ? AND onec_order_guid IS NULL`)
+  const setOnec = db.prepare(`UPDATE order_request SET onec_order_guid = ?, onec_number = ?, status = ?, delivery_from = ?,
+      delivery_to = ?, error = NULL, updated_at = ? WHERE id = ? AND onec_order_guid IS NULL`)
   const setNote = db.prepare('UPDATE order_request SET error = ?, updated_at = ? WHERE id = ?')
-  const byOnec = db.prepare('SELECT * FROM order_request WHERE onec_order_guid = ? OR (onec_order_guid IS NULL AND deal_id = ?) LIMIT 1')
-  const applyOnec = db.prepare(`UPDATE order_request SET status = ?, shipment_date = ?, onec_number = COALESCE(?, onec_number),
-      onec_order_guid = COALESCE(onec_order_guid, ?), updated_at = ? WHERE id = ?`)
+  const byOnec = db.prepare('SELECT * FROM order_request WHERE onec_order_guid = ?')
+  const applyOnec = db.prepare('UPDATE order_request SET status = ?, shipment_date = ?, onec_number = ?, updated_at = ? WHERE id = ?')
   const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
       address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, items
     FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
@@ -223,29 +236,41 @@ export function createOrderStore(db: DatabaseSync) {
     },
     sent(id: number, dealId: number, now: string) { setDeal.run(dealId, now, id) },
     /** Застрявшие без сделки: CRM упала, а клиент закрыл вкладку. */
+    /** Пауза между попытками растёт: 1, 2, 4 … 60 минут — долгий простой CRM не долбится каждые 2 минуты. */
     toResend(now: Date, limit = 20): OrderRowDb[] {
       const old = new Date(now.getTime() - 60_000).toISOString()
       const stale = new Date(now.getTime() - SENDING_STALE_MS).toISOString()
-      return toResend.all(old, stale, limit) as unknown as OrderRowDb[]
+      return (toResend.all(old, stale) as unknown as OrderRowDb[])
+        .filter(r => r.status === 'sending' || Date.parse(r.updated_at) <= now.getTime() - resendPauseMs(r.attempts))
+        .slice(0, limit)
     },
     /** Сделка есть, заказа в 1С ещё нет — ждём подтверждения менеджера. */
     awaitingConfirmation(limit = 50): OrderRowDb[] {
       return awaiting.all(limit) as unknown as OrderRowDb[]
     },
+    checked(id: number, now: string) { setChecked.run(now, id) },
+    /** Статус из 1С ещё не сообщён в сделку (сбой CRM прошлых запусков не теряется). */
+    crmBehind(limit = 50): OrderRowDb[] {
+      return crmBehind.all(limit) as unknown as OrderRowDb[]
+    },
+    crmReported(id: number, status: string) { setCrm.run(status, id) },
     byId(id: number): OrderRowDb | undefined { return byId.get(id) as unknown as OrderRowDb | undefined },
     setStatus(id: number, status: string, now: string) { setStatus.run(status, now, id) },
     /** Заказ в 1С создан: true — записали (повтор не перезаписывает). */
-    setOnecOrder(id: number, guid: string, number: string, status: string, now: string): boolean {
-      return Number(setOnec.run(guid.toLowerCase(), number, status, now, id).changes) === 1
+    setOnecOrder(id: number, guid: string, number: string, status: string, slot: { from: string | null, to: string | null }, now: string): boolean {
+      return Number(setOnec.run(guid.toLowerCase(), number, status, slot.from, slot.to, now, id).changes) === 1
     },
     note(id: number, error: string, now: string) { setNote.run(error.slice(0, 200), now, id) },
-    /** Строка 1С о статусе → заявка ЛК: по GUID заказа или по externalId (= ID сделки). */
-    findForStatus(orderGuid: string, externalId: string): OrderRowDb | undefined {
-      const dealId = /^\d+$/.test(externalId) ? Number(externalId) : -1
-      return byOnec.get(orderGuid.toLowerCase(), dealId) as unknown as OrderRowDb | undefined
+    /**
+     * Строка 1С о статусе → заявка ЛК только по GUID заказа, который ЛК сам записал при создании.
+     * По externalId не ищем: строка 1С с чужим GUID и совпавшим номером сделки привязала бы чужой
+     * заказ. Окно «заказ создан, GUID не записан» закрывает повтор POST /order — он идемпотентен.
+     */
+    findForStatus(orderGuid: string): OrderRowDb | undefined {
+      return byOnec.get(orderGuid.toLowerCase()) as unknown as OrderRowDb | undefined
     },
-    applyStatus(id: number, status: string, shipmentDate: string | null, number: string | null, orderGuid: string, now: string) {
-      applyOnec.run(status, shipmentDate, number, orderGuid.toLowerCase(), now, id)
+    applyStatus(id: number, status: string, shipmentDate: string | null, number: string, now: string) {
+      applyOnec.run(status, shipmentDate, number, now, id)
     },
     failed(id: number, error: string, now: string) { setError.run(error.slice(0, 200), now, id) },
     list(companyId: number, limit = 20, offset = 0): OrderListRow[] {

@@ -13,7 +13,8 @@ const TRIPS_TITLE = SMART_PROCESSES.find(sp => sp.title === 'Рейсы')!.title
 /** Записей расписания — по одной на город; больше сотни — это уже не расписание, а ошибка ввода. */
 const SCHEDULES_MAX = 100
 
-export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' }
+/** `unknown` — портал отдал семантику, которую мы не знаем: по такой стадии заказ не создаём. */
+export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' | 'unknown' }
 
 export interface DealRow { name: string, price: number, qty: number, unit: string, vatRate: number }
 
@@ -145,7 +146,8 @@ export function createB24Orders(call: B24Call) {
       return rows.map((r) => {
         const extra = (r.EXTRA ?? {}) as Record<string, unknown>
         const sem = String(r.SEMANTICS ?? extra.SEMANTICS ?? '').toLowerCase()
-        const semantics: DealStage['semantics'] = sem === 's' || sem === 'success' ? 'success' : sem === 'f' || sem === 'failure' ? 'failure' : 'process'
+        // Рабочая стадия у портала — пустая семантика или «P»/«process»; всё прочее незнакомое — unknown.
+        const semantics: DealStage['semantics'] = sem === 's' || sem === 'success' ? 'success' : sem === 'f' || sem === 'failure' ? 'failure' : sem === '' || sem === 'p' || sem === 'process' ? 'process' : 'unknown'
         return { id: String(r.STATUS_ID), name: String(r.NAME ?? ''), sort: Number(r.SORT ?? 0), semantics }
       }).sort((a, b) => a.sort - b.sort)
     },

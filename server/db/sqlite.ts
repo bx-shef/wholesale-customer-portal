@@ -110,6 +110,11 @@ export const MIGRATIONS: string[] = [
    );
    CREATE INDEX order_request_company ON order_request (company_id, created_at);
    CREATE INDEX order_request_status ON order_request (status);`,
+  // Этап 4б: что уже сообщено в сделку (повтор после сбоя CRM) и когда сделку проверяли (очередь по кругу).
+  `ALTER TABLE order_request ADD COLUMN crm_status TEXT;
+   ALTER TABLE order_request ADD COLUMN checked_at TEXT;
+   ALTER TABLE order_request ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+   CREATE INDEX order_request_checked ON order_request (status, checked_at);`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {
