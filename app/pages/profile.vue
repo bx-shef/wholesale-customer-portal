@@ -10,7 +10,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU')
 </script>
 
 <template>
-  <div>
+  <div class="pb-16 md:pb-0">
     <B24Header :title="data?.company.title || 'Профиль'" to="/" />
     <B24Main>
       <B24Container class="py-6 flex flex-col gap-4 max-w-xl">
@@ -52,5 +52,6 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU')
         </template>
       </B24Container>
     </B24Main>
+    <BottomNav />
   </div>
 </template>

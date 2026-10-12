@@ -1,0 +1,113 @@
+<!-- Карточка товара: цена договора, кратность, остатки по складам, свойства, аналоги. -->
+<script setup lang="ts">
+const route = useRoute()
+const headers = useRequestHeaders(['cookie'])
+
+interface Priced { guid: string, sku: string, name: string, brand: string, unit: string, packQty: number, minQty: number, available: number, price: { value: number, currency: string, vatRate: number } | null }
+interface Details extends Priced {
+  description: string
+  properties: Record<string, string>
+  images: string[]
+  stock: { warehouseGuid: string, warehouseName: string, available: number }[]
+  analogs: Priced[]
+}
+
+const { data, error } = await useFetch<{ item: Details, pricesAvailable: boolean }>(() => `/api/catalog/${route.params.guid}`, { headers })
+if (error.value?.statusCode === 401) await navigateTo('/login')
+useHead({ title: () => data.value?.item.name ?? 'Товар' })
+
+const item = computed(() => data.value?.item)
+const stock = computed(() => (item.value ? stockLabel(item.value.available, item.value.unit) : null))
+</script>
+
+<template>
+  <div class="pb-16 md:pb-0">
+    <B24Header :title="item?.name || 'Товар'" to="/" />
+    <B24Main>
+      <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
+        <B24Alert v-if="error?.statusCode === 404" color="air-primary-warning" title="Товар не найден" description="Его могли убрать из каталога. Вернитесь в каталог и найдите похожий." />
+        <B24Alert v-else-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить товар. Обновите страницу." />
+        <template v-else-if="item">
+          <B24Card>
+            <div class="flex flex-col gap-2">
+              <h1 class="text-lg font-semibold leading-snug">
+                {{ item.name }}
+              </h1>
+              <p class="text-sm text-(--ui-color-design-plain-na-content-secondary)">
+                Артикул {{ item.sku }} · {{ item.brand }}
+              </p>
+              <p class="text-2xl font-semibold">
+                <template v-if="item.price">
+                  {{ formatMoney(item.price.value, item.price.currency) }}<span class="text-sm font-normal"> / {{ item.unit }}, НДС {{ item.price.vatRate }}%</span>
+                </template>
+                <span v-else class="text-base font-normal">{{ data?.pricesAvailable ? 'Цена по запросу у менеджера' : 'Цена временно недоступна' }}</span>
+              </p>
+              <B24Badge v-if="stock" :color="stock.color" :label="stock.text" class="self-start" />
+              <p class="text-sm">
+                Кратность: {{ formatQty(item.packQty, item.unit) }}<template v-if="item.minQty > item.packQty">
+                  , минимум {{ formatQty(item.minQty, item.unit) }}
+                </template>
+              </p>
+            </div>
+          </B24Card>
+
+          <B24Card v-if="item.stock.length">
+            <template #header>
+              <h2 class="font-semibold">
+                Остатки по складам
+              </h2>
+            </template>
+            <dl class="grid grid-cols-2 gap-2 text-sm">
+              <template v-for="s in item.stock" :key="s.warehouseGuid">
+                <dt>{{ s.warehouseName }}</dt><dd>{{ formatQty(s.available, item.unit) }}</dd>
+              </template>
+            </dl>
+          </B24Card>
+
+          <B24Card v-if="item.description || Object.keys(item.properties).length">
+            <template #header>
+              <h2 class="font-semibold">
+                Описание
+              </h2>
+            </template>
+            <p v-if="item.description" class="text-sm mb-3">
+              {{ item.description }}
+            </p>
+            <dl class="grid grid-cols-2 gap-2 text-sm">
+              <template v-for="(v, k) in item.properties" :key="k">
+                <dt>{{ k }}</dt><dd>{{ v }}</dd>
+              </template>
+            </dl>
+          </B24Card>
+
+          <section v-if="item.analogs.length" class="flex flex-col gap-2">
+            <h2 class="font-semibold">
+              Аналоги
+            </h2>
+            <NuxtLink v-for="a in item.analogs" :key="a.guid" :to="`/product/${a.guid}`">
+              <B24Card>
+                <div class="flex items-center justify-between gap-2">
+                  <div>
+                    <p class="font-medium">
+                      {{ a.name }}
+                    </p>
+                    <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                      {{ a.sku }} · {{ a.brand }}
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-semibold">
+                      {{ a.price ? formatMoney(a.price.value, a.price.currency) : '—' }}
+                    </p>
+                    <B24Badge size="sm" :color="stockLabel(a.available, a.unit).color" :label="stockLabel(a.available, a.unit).text" />
+                  </div>
+                </div>
+              </B24Card>
+            </NuxtLink>
+          </section>
+        </template>
+      </B24Container>
+    </B24Main>
+    <BottomNav />
+  </div>
+</template>

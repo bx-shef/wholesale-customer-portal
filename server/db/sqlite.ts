@@ -39,6 +39,38 @@ export const MIGRATIONS: string[] = [
    );
    CREATE INDEX login_journal_login ON login_journal (login_hash, at);
    CREATE INDEX login_journal_ip ON login_journal (ip, at);`,
+  // Этап 3: индекс каталога и остатков из 1С. Цены не храним — они по клиенту, в кэше процесса.
+  `CREATE TABLE catalog_section (
+     guid TEXT PRIMARY KEY,
+     parent_guid TEXT,
+     name TEXT NOT NULL
+   );
+   CREATE TABLE catalog_item (
+     guid TEXT PRIMARY KEY,
+     sku TEXT NOT NULL,
+     name TEXT NOT NULL,
+     section_guid TEXT NOT NULL,
+     brand TEXT NOT NULL,
+     unit TEXT NOT NULL,
+     pack_qty REAL NOT NULL,
+     min_qty REAL NOT NULL,
+     description TEXT NOT NULL,
+     properties TEXT NOT NULL,
+     images TEXT NOT NULL,
+     analogs TEXT NOT NULL,
+     search TEXT NOT NULL,
+     changed_at TEXT NOT NULL
+   );
+   CREATE INDEX catalog_item_section ON catalog_item (section_guid);
+   CREATE INDEX catalog_item_brand ON catalog_item (brand);
+   CREATE TABLE stock (
+     item_guid TEXT NOT NULL,
+     warehouse_guid TEXT NOT NULL,
+     warehouse_name TEXT NOT NULL,
+     available REAL NOT NULL,
+     changed_at TEXT NOT NULL,
+     PRIMARY KEY (item_guid, warehouse_guid)
+   );`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {
