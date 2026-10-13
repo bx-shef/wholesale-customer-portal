@@ -1,0 +1,17 @@
+# Оверлей поверх docker-compose.prod.yml для виртуальной машины Битрикс24 (docs/DEPLOY_BITRIXVM.md).
+# Схема — bx-shef/client-bank-alfa-by (deploy/bitrixvm), там она проверена на боевой ВМ.
+#
+# Отличие от стенда одно: TLS терминирует nginx самой ВМ, а не nginx-proxy, поэтому контейнер
+# публикуется на 127.0.0.1 и наружу не смотрит. Make сам добавляет этот файл, если он лежит рядом
+# с docker-compose.prod.yml.
+#
+# ⚠ Сеть proxy-net в базовом файле внешняя — на ВМ её создают пустой: docker network create proxy-net.
+#   Убрать её оверлеем нельзя (списки сетей при слиянии объединяются). Пустая сеть, VIRTUAL_HOST и
+#   метки Watchtower без nginx-proxy и Watchtower инертны — их некому читать.
+
+services:
+  app:
+    # ⚠ Строго loopback: без адреса docker слушал бы 0.0.0.0 и сам открыл бы порт в iptables в
+    # обход firewalld — приложение стало бы доступно по IP сервера мимо TLS.
+    ports:
+      - "127.0.0.1:${APP_BIND_PORT:-3000}:3000"

@@ -1,6 +1,6 @@
 # Выкат ЛК
 
-> Last reviewed: 2026-10-12
+> Last reviewed: 2026-10-13
 
 Схема выката собрана из трёх рабочих примеров флота. Код выката пишем на этапе 0 (CI, образ, compose, `Makefile`) и этапе 7 (ВМ клиента); здесь — что берём и почему.
 
@@ -49,6 +49,8 @@ make prod-up && make doctor
 Откат и пауза автообновлений — `:latest` → `:sha-<7 знаков>` в compose на сервере, `make prod-up`.
 
 ### Таргет 2. Бой — ВМ Битрикс24 клиента
+
+Порядок первого запуска — [DEPLOY_BITRIXVM.md](DEPLOY_BITRIXVM.md), файлы — `deploy/bitrixvm/`.
 
 ЛК живёт рядом с коробкой поставщика. Берём `deploy/bitrixvm/` из client-bank-alfa-by (более зрелый, чем в toolsai-mp3-txt: учтены операции меню bitrix-env, статика, docroot). Главное:
 

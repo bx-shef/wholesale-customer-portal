@@ -1,6 +1,7 @@
 # ЛК. Один Makefile на два места: корень репозитория и каталог на сервере, где лежат только
 # docker-compose.prod.yml, этот Makefile и .env (docs/DEPLOY.md). Схема — bx-shef/skills-site и
-# bx-shef/invoice-from-tasks. Выкат на ВМ клиента (deploy/bitrixvm) — этап 7.
+# bx-shef/invoice-from-tasks. На ВМ Битрикс24 рядом лежит docker-compose.bitrixvm.yml — make
+# подключает его сам (docs/DEPLOY_BITRIXVM.md).
 
 .DEFAULT_GOAL := help
 .PHONY: help build-local prod-up prod-down prod-pull prod-redeploy logs ps health doctor self-update
@@ -8,7 +9,7 @@
 # Прод-переменные — только из .env: экспортированный соседним проектом DOMAIN на общем хосте
 # не должен увести ЛК на чужой адрес. COMPOSE_PROJECT_NAME / COMPOSE_FILE хоста тоже снимаем.
 override COMPOSE = env -u DOMAIN -u LETSENCRYPT_EMAIL -u COMPOSE_PROJECT_NAME -u COMPOSE_FILE \
-	docker compose -f docker-compose.prod.yml
+	docker compose -f docker-compose.prod.yml $(if $(wildcard docker-compose.bitrixvm.yml),-f docker-compose.bitrixvm.yml)
 override CONTAINER := wholesale-customer-portal
 override RAW := https://raw.githubusercontent.com/bx-shef/wholesale-customer-portal/main
 override IMAGE_SOURCE := https://github.com/bx-shef/wholesale-customer-portal
@@ -62,6 +63,7 @@ doctor:
 self-update:
 	curl -fsSL $(RAW)/docker-compose.prod.yml -o docker-compose.prod.yml.new && mv docker-compose.prod.yml.new docker-compose.prod.yml
 	curl -fsSL $(RAW)/Makefile -o Makefile.new && mv Makefile.new Makefile
+	@if [ -f docker-compose.bitrixvm.yml ]; then curl -fsSL $(RAW)/deploy/bitrixvm/docker-compose.bitrixvm.yml -o docker-compose.bitrixvm.yml.new && mv docker-compose.bitrixvm.yml.new docker-compose.bitrixvm.yml; fi
 	@echo "обновлено; make prod-up"
 
 ## Эта справка
