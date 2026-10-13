@@ -15,3 +15,6 @@ services:
     # обход firewalld — приложение стало бы доступно по IP сервера мимо TLS.
     ports:
       - "127.0.0.1:${APP_BIND_PORT:-3000}:3000"
+    # Откат и пауза обновлений — в .env: APP_IMAGE=ghcr.io/bx-shef/wholesale-customer-portal:sha-<7 знаков>.
+    # Правка в compose пропала бы при make self-update.
+    image: ${APP_IMAGE:-ghcr.io/bx-shef/wholesale-customer-portal:latest}

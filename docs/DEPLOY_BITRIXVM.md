@@ -9,6 +9,8 @@
 Как это устроено: nginx ВМ держит домен и сертификат и проксирует его в docker-контейнер ЛК на
 `127.0.0.1:3000`. Наружу контейнер не смотрит. Образ — публичный `ghcr.io/bx-shef/wholesale-customer-portal`.
 
+⚠ Команды скачивают файлы из `main` репозитория — шаги 3–6 выполнимы после того, как PR с ними влит.
+
 Кто что делает: шаг 1 — владелец портала в меню bitrix-env, 2–4 — root, 5–6 — `bitrix`.
 Строки с `←` замените своими значениями; переменные задавайте в каждом блоке заново — блоки
 выполняются в разных сессиях.
@@ -25,7 +27,7 @@ DNS: A-запись домена (`wsp.algena.by`) → IP ВМ. Затем в м
 ```bash
 dnf -y install dnf-plugins-core make
 dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin
+dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin   # конфликт с podman/runc — добавить --allowerasing
 systemctl enable --now docker
 docker network create proxy-net        # пустая: так требует базовый compose, наружу не ведёт
 usermod -aG docker bitrix              # ⚠ группа docker ≈ root на машине — осознанный размен
@@ -35,12 +37,14 @@ usermod -aG docker bitrix              # ⚠ группа docker ≈ root на �
 
 ```bash
 DOMAIN=wsp.algena.by                   # ←
-curl -fsSL https://raw.githubusercontent.com/bx-shef/wholesale-customer-portal/main/deploy/bitrixvm/00-app-proxy.conf \
-  -o "/etc/nginx/bx/site_settings/$DOMAIN/00-app-proxy.conf" \
-  && nginx -t && systemctl reload nginx
+F=/etc/nginx/bx/site_settings/$DOMAIN/00-app-proxy.conf
+curl -fsSL https://raw.githubusercontent.com/bx-shef/wholesale-customer-portal/main/deploy/bitrixvm/00-app-proxy.conf -o /tmp/00-app-proxy.conf \
+  && install -m 644 -o root -g root /tmp/00-app-proxy.conf "$F" \
+  && { nginx -t && systemctl reload nginx || { rm -f "$F"; echo "nginx -t не прошёл — файл убран, nginx не перезапускался"; }; }
 ```
 
-⚠ `nginx -t` — до перезапуска и в одной цепочке: битый конфиг уронит nginx вместе с порталом.
+⚠ `nginx -t` — до перезапуска, а при ошибке файл сразу убирается: оставленный битый конфиг уронит
+nginx вместе с порталом при следующем перезапуске, в том числе из меню bitrix-env.
 Почему не свой `server`-блок и почему статику перехватываем руками — в шапке самого файла.
 
 ## 4. Docroot — заглушка (root)
@@ -91,14 +95,33 @@ curl -s https://wsp.algena.by/api/health      # то же снаружи, чер
 curl -sI https://wsp.algena.by/_nuxt/ | head -1   # не страница ошибки BitrixEnv
 ```
 
+**Кто стоит перед ВМ** — от этого зависит лимит входа (шапка `00-app-proxy.conf`). С внешней
+машины сделайте одну заведомо неверную попытку входа на `https://wsp.algena.by/login` и посмотрите,
+какой адрес записан в журнал входов:
+
+```bash
+docker exec wholesale-customer-portal node -e "const d=new (require('node:sqlite').DatabaseSync)('/data/wholesale.sqlite');console.log(d.prepare('SELECT at, ip, reason FROM login_journal ORDER BY id DESC LIMIT 3').all())"
+```
+
+Должен быть внешний адрес вашей машины. Если там адрес балансировщика или NAT — перед ВМ прокси,
+и в `00-app-proxy.conf` нужен `real_ip` (там же написано как).
+
 Когда сертификат работает — HTTP→HTTPS штатным способом bitrix-env (root):
-`touch /home/bitrix/ext_www/wsp.algena.by/.htsecure && chown bitrix:bitrix …/.htsecure`.
+
+```bash
+DOMAIN=wsp.algena.by                   # ←
+touch "/home/bitrix/ext_www/$DOMAIN/.htsecure" && chown bitrix:bitrix "/home/bitrix/ext_www/$DOMAIN/.htsecure"
+curl -sSI "http://$DOMAIN/" | head -3  # ожидаем 301 на https
+```
+
 ⚠ Не раньше: иначе редирект на несуществующий https отрежет и проверку Let's Encrypt.
 
 ## Обновление
 
-Пока вручную: `make self-update && make prod-redeploy` под `bitrix`. Откат — в `.env` или в
-compose `:latest` → `:sha-<7 знаков>` и `make prod-up`. Автообновление с проверкой здоровья и
+Пока вручную: `make self-update && make prod-redeploy` под `bitrix`. Откат и пауза — в `.env`:
+`APP_IMAGE=ghcr.io/bx-shef/wholesale-customer-portal:sha-<7 знаков>` и `make prod-up`; вернуть
+обновления — удалить строку. `self-update` обновляет compose, оверлей и `Makefile`; изменения
+`00-app-proxy.conf` и docroot применяются вручную под root (шаги 3–4). Автообновление с проверкой здоровья и
 откатом (cron + `git-poll-deploy.sh` из client-bank-alfa-by) — следующим PR.
 
 ## После каждой операции в меню bitrix-env

@@ -51,9 +51,14 @@ health:
 
 ## Что не так: сеть, прокси, Watchtower, .env, контейнер
 doctor:
-	@docker network inspect proxy-net >/dev/null 2>&1 && echo "[ok] сеть proxy-net" || echo "[!!] нет сети proxy-net — поднять nginx-proxy (docs/DEPLOY.md)"
-	@docker ps --format '{{.Names}}' | grep -qx nginx-proxy && echo "[ok] nginx-proxy" || echo "[!!] контейнер nginx-proxy не запущен"
-	@docker ps --format '{{.Names}}' | grep -qi watchtower && echo "[ok] watchtower" || echo "[..] watchtower не найден — обновлять через make prod-redeploy"
+	@docker network inspect proxy-net >/dev/null 2>&1 && echo "[ok] сеть proxy-net" || echo "[!!] нет сети proxy-net — docker network create proxy-net (docs/DEPLOY.md)"
+	@if [ -f docker-compose.bitrixvm.yml ]; then \
+		echo "[ok] ВМ Битрикс24: TLS у nginx ВМ, обновление — make self-update && make prod-redeploy"; \
+		curl -fsS -o /dev/null http://127.0.0.1:$${APP_BIND_PORT:-3000}/api/health && echo "[ok] контейнер отвечает на 127.0.0.1" || echo "[!!] нет ответа на 127.0.0.1 — make logs"; \
+	else \
+		docker ps --format '{{.Names}}' | grep -qx nginx-proxy && echo "[ok] nginx-proxy" || echo "[!!] контейнер nginx-proxy не запущен"; \
+		docker ps --format '{{.Names}}' | grep -qi watchtower && echo "[ok] watchtower" || echo "[..] watchtower не найден — обновлять через make prod-redeploy"; \
+	fi
 	@test -f .env && echo "[ok] .env" || echo "[!!] нет .env — шаблон .env.example"
 	@for v in DOMAIN B24_WEBHOOK_URL SESSION_SECRET MCP_ADMIN_TOKEN; do grep -qE "^$$v=.+" .env 2>/dev/null && echo "[ok] $$v задан" || echo "[!!] $$v пуст"; done
 	@grep -qE '^ONEC_MOCK=false' .env 2>/dev/null && echo "[ok] 1С: реальная база" || echo "[..] 1С: мок (ONEC_MOCK не false)"
