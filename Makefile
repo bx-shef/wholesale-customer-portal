@@ -4,7 +4,7 @@
 # подключает его сам (docs/DEPLOY_BITRIXVM.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help build-local prod-up prod-down prod-pull prod-redeploy logs ps health doctor self-update
+.PHONY: help build-local prod-up prod-down prod-pull prod-redeploy logs ps health doctor self-update b24-setup
 
 # Прод-переменные — только из .env: экспортированный соседним проектом DOMAIN на общем хосте
 # не должен увести ЛК на чужой адрес. COMPOSE_PROJECT_NAME / COMPOSE_FILE хоста тоже снимаем.
@@ -48,6 +48,10 @@ ps:
 health:
 	@for i in $$(seq 1 30); do docker exec $(CONTAINER) node -e "$(HEALTH)" >/dev/null 2>&1 && break; sleep 1; done
 	docker exec $(CONTAINER) node -e "$(HEALTH)"
+
+## Что ЛК не хватает в CRM (только показать); записать — APPLY=1 make b24-setup
+b24-setup:
+	docker exec $(CONTAINER) node .output/b24-setup.mjs $$( [ -n "$${APPLY:-}" ] && echo --apply )
 
 ## Что не так: сеть, прокси, Watchtower, .env, контейнер
 doctor:

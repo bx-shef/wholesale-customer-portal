@@ -17,6 +17,7 @@
     "typecheck": "vue-tsc --noEmit && tsc --ignoreConfig --noEmit --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --types node scripts/*.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "b24:setup": "tsx scripts/b24-setup.ts",
+    "b24:setup:bundle": "esbuild scripts/b24-setup.ts --bundle --platform=node --format=esm --target=node22 --log-level=warning --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\" --outfile=.output/b24-setup.mjs",
     "postinstall": "nuxt prepare",
     "test:contract": "vitest run tests/contract",
     "onec:openapi": "tsx scripts/onec-openapi.ts"
