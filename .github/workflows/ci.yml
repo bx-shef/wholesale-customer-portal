@@ -124,6 +124,9 @@ jobs:
           # Мок 1С без ONEC_TOKEN закрыт снаружи (случайный токен процесса), но ЛК им пользуется.
           check 401 localhost:3000/mock-1c/clients
           check 401 -X POST localhost:3000/mock-1c/_admin/reset
+          # `make b24-setup` на ВМ: скрипт есть в образе и без вебхука отказывает кодом 2, ничего не трогая.
+          rc=0; docker exec app node .output/b24-setup.mjs || rc=$?
+          [ "$rc" = 2 ] || { echo "b24-setup.mjs: код $rc, ждали 2"; exit 1; }
 
       - name: Container log
         if: always()

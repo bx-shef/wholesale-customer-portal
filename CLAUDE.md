@@ -18,7 +18,7 @@ pnpm check            # lint + typecheck + test — перед каждым PR
 pnpm build            # сборка .output/server/index.mjs
 pnpm test:contract    # контрактные тесты 1С: мок; ONEC_CONTRACT_URL=… — тестовая база
 pnpm onec:openapi     # пересобрать contracts/onec.openapi.yaml из shared/onec/schemas.ts
-pnpm b24:setup        # план настройки коробки по B24_WEBHOOK_URL; --apply — записать (docs/TEST_STAND.md)
+pnpm b24:setup        # план настройки коробки по B24_WEBHOOK_URL; --apply — записать (docs/TEST_STAND.md); на сервере — make b24-setup
 make help             # цели сервера (docs/DEPLOY.md)
 ```
 

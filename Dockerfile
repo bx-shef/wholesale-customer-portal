@@ -7,6 +7,9 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
+# Настройка CRM (`make b24-setup`) — тот же scripts/b24-setup.ts одним файлом рядом с сервером:
+# на ВМ нет ни исходников, ни pnpm.
+RUN pnpm b24:setup:bundle
 
 FROM node:22-slim AS runner
 WORKDIR /app
