@@ -60,7 +60,15 @@ export function useB24Call(): B24Call {
   }
   const b24 = client.b24
   return async (method, params) => {
-    const response = await b24.actions.v2.call.make({ method, params })
+    // SDK бросает на отказах вроде нехватки прав (insufficient_scope) — без имени метода причину
+    // не найти, поэтому оборачиваем и броски, и неуспешный ответ.
+    let response
+    try {
+      response = await b24.actions.v2.call.make({ method, params })
+    }
+    catch (e) {
+      throw new Error(`B24 ${method}: ${(e as Error).message}`, { cause: e })
+    }
     if (!response.isSuccess) throw new Error(`B24 ${method}: ${response.getErrorMessages().join('; ')}`)
     return response.getData()!.result
   }
