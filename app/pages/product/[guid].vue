@@ -13,6 +13,7 @@ useHead({ title: () => data.value?.item.name ?? 'Товар' })
 
 const item = computed(() => data.value?.item)
 const cart = useCart()
+const ai = useAiChat()
 const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
 </script>
 
@@ -49,6 +50,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
                   <B24Button to="/cart" color="air-tertiary" label="Перейти в корзину" />
                 </template>
               </div>
+              <B24Button color="air-secondary-accent" class="self-start" label="Обсудить с ИИ" @click="ai.discuss({ guid: item.guid, name: item.name })" />
               <p class="text-sm">
                 Кратность: {{ formatQty(item.packQty, item.unit) }}<template v-if="item.minQty > item.packQty">
                   , минимум {{ formatQty(item.minQty, item.unit) }}

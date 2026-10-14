@@ -11,7 +11,7 @@ import { Chat } from '@ai-sdk/vue'
 import type { CatalogItemView } from '~~/shared/catalogView'
 import { normalizeQty } from '~~/shared/cart'
 
-const { open } = useAiChat()
+const { open, topic, pending } = useAiChat()
 const cart = useCart()
 const KEY = 'wcp-ai-messages'
 function readStored(): UIMessage[] {
@@ -34,7 +34,8 @@ const examples = ['Нужна финишная шпатлёвка в налич�
 
 const chat = new Chat({
   messages: readStored(),
-  transport: new DefaultChatTransport({ api: '/api/ai/chat' }),
+  // topic — обсуждаемый товар: сервер кладёт его карточку в контекст модели
+  transport: new DefaultChatTransport({ api: '/api/ai/chat', body: () => ({ product: topic.value?.guid }) }),
   onFinish: () => persist([...chat.messages]),
 })
 const messages = computed(() => chat.messages)
@@ -62,7 +63,16 @@ function send(text: string) {
 function clear() {
   chat.messages = []
   persist([])
+  topic.value = null
 }
+
+// «Обсудить с ИИ» из карточки: панель открылась с готовым вопросом — отправляем сразу.
+watch(() => [open.value, pending.value] as const, ([isOpen, q]) => {
+  if (isOpen && q) {
+    send(q)
+    pending.value = ''
+  }
+}, { immediate: true })
 
 type Part = UIMessage['parts'][number]
 const toolState = (p: Part) => (p as { state?: string }).state
@@ -153,6 +163,10 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
     </div>
 
     <div class="flex shrink-0 flex-col gap-1 border-t border-(--ui-color-divider-default) p-3">
+      <div v-if="topic" class="flex items-center justify-between gap-2 text-xs text-(--ui-color-design-plain-na-content-secondary)">
+        <span class="min-w-0 truncate">Обсуждаем: <NuxtLink :to="`/product/${topic.guid}`" class="underline">{{ topic.name }}</NuxtLink></span>
+        <B24Button color="air-tertiary" size="xs" label="Не обсуждать" @click="topic = null" />
+      </div>
       <B24ChatPrompt v-model="draft" placeholder="Например: клей для плитки в наличии" :maxlength="1000" @submit="send(draft)">
         <B24ChatPromptSubmit :status="chat.status" @stop="chat.stop()" @reload="chat.regenerate()" />
       </B24ChatPrompt>

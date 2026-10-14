@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CatalogItemView } from '../shared/catalogView'
-import { AI_MESSAGE_MAX, chatToolHandlers, sanitizeHistory } from '../server/utils/aiChat'
+import { AI_MESSAGE_MAX, chatToolHandlers, sanitizeHistory, topicPrompt } from '../server/utils/aiChat'
 
 const item = (guid: string, value = 10): CatalogItemView => ({ guid, sku: 'A', name: `Товар ${guid}`, sectionGuid: 's', brand: 'B', unit: 'шт', packQty: 1, minQty: 1, available: 5, image: null, price: { value, currency: 'BYN', vatRate: 20 } })
 const catalog = () => ({
@@ -47,5 +47,17 @@ describe('ИИ-помощник: история из браузера', () => {
     expect(sanitizeHistory([])).toBeNull()
     expect(sanitizeHistory([{ role: 'user', parts: [{ type: 'text', text: 'x'.repeat(AI_MESSAGE_MAX + 1) }] }])).toBeNull()
     expect(sanitizeHistory([{ role: 'assistant', parts: [{ type: 'text', text: 'а' }] }])).toBeNull()
+  })
+})
+
+describe('ИИ-помощник: «Обсудить с ИИ»', () => {
+  it('карточка товара — в контекст, товар и аналоги можно показать; кривой GUID — без контекста', async () => {
+    const guid = '11111111-1111-4111-8111-111111111111'
+    const h = chatToolHandlers({ search: async () => [], details: async g => (g === guid ? { item: { ...item(guid), description: 'шпатлёвка' }, analogs: [item('g3')] } : null) })
+    expect(await topicPrompt('x; drop', h)).toBe('')
+    expect(await topicPrompt('22222222-2222-4222-8222-222222222222', h)).toBe('')
+    const p = await topicPrompt(guid, h)
+    expect(p).toContain('шпатлёвка')
+    expect((await h.show({ guids: [guid, 'g3'] })).items.map(i => i.guid)).toEqual([guid, 'g3'])
   })
 })

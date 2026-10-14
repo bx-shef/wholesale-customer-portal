@@ -81,7 +81,20 @@ watch(search, (v) => {
 const more = computed(() => items.value.length < total.value)
 const sentinel = ref<HTMLElement>()
 let sentinelVisible = false
+// Поиск и фильтры запоминаются: вернулся в каталог из карточки или корзины — всё как было.
+const SAVED_KEY = 'wcp-catalog-filters'
 onMounted(() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '{}') as Record<string, string>
+    if (Object.keys(route.query).length === 0 && Object.keys(saved).length > 0) router.replace({ query: saved })
+  }
+  catch { /* хранилище недоступно — каталог просто без сохранённых фильтров */ }
+  watch(filters, (f) => {
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify(filtersToQuery({ ...f, sort: 'name' })))
+    }
+    catch { /* приватный режим */ }
+  })
   const io = new IntersectionObserver((entries) => {
     sentinelVisible = entries.some(e => e.isIntersecting)
     if (sentinelVisible && !moreFailed.value) loadMore()
@@ -101,11 +114,6 @@ onMounted(() => {
 })
 
 const filtersOpen = ref(false)
-const sorts = [
-  { label: 'По названию', value: 'name' },
-  { label: 'По артикулу', value: 'sku' },
-  { label: 'Сначала в наличии', value: 'available' },
-]
 const sectionItems = computed(() => [{ label: 'Все разделы', value: '' }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
 const brandItems = computed(() => [{ label: 'Все бренды', value: '' }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
@@ -190,9 +198,6 @@ function reset() {
           </B24FormField>
           <B24FormField label="Бренд">
             <B24Select :model-value="filters.brand" :items="brandItems" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
-          </B24FormField>
-          <B24FormField label="Сортировка">
-            <B24Select :model-value="filters.sort" :items="sorts" class="w-full" @update:model-value="v => setFilters({ sort: v as CatalogFilters['sort'] })" />
           </B24FormField>
           <B24Switch :model-value="filters.inStock" label="Только в наличии" @update:model-value="v => setFilters({ inStock: !!v })" />
           <div class="flex gap-2">
