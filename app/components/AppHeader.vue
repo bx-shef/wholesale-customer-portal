@@ -4,6 +4,7 @@ const props = defineProps<{ title?: string, back?: string }>()
 const headers = useRequestHeaders(['cookie'])
 const { data: me } = await useFetch('/api/auth/me', { headers, key: 'me' })
 const cart = useCart()
+const ai = useAiChat()
 onMounted(() => {
   if (me.value) cart.load(me.value.company.id)
 })
@@ -29,7 +30,7 @@ async function logout() {
     <template #right>
       <div v-if="me" class="hidden md:flex gap-2">
         <B24Button to="/" color="air-tertiary" label="Каталог" />
-        <B24Button to="/assistant" color="air-tertiary" label="Помощник" />
+        <B24Button :color="ai.open.value ? 'air-primary' : 'air-tertiary'" label="Помощник" @click="ai.toggle()" />
         <B24Button to="/cart" color="air-tertiary" :label="cart.count.value ? `Корзина · ${cart.count.value}` : 'Корзина'" />
         <B24Button to="/orders" color="air-tertiary" label="Заявки" />
         <B24Button to="/profile" color="air-tertiary" label="Профиль" />

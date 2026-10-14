@@ -2,9 +2,9 @@
 <script setup lang="ts">
 const route = useRoute()
 const { count } = useCart()
+const ai = useAiChat()
 const links = [
   { to: '/', label: 'Каталог' },
-  { to: '/assistant', label: 'ИИ' },
   { to: '/cart', label: 'Корзина' },
   { to: '/orders', label: 'Заявки' },
   { to: '/profile', label: 'Профиль' },
@@ -21,10 +21,12 @@ const active = (to: string) => (to === '/' ? route.path === '/' || route.path.st
       :color="active(l.to) ? 'air-primary' : 'air-tertiary'"
       size="sm"
       class="min-h-11 justify-center gap-1 rounded-none px-1"
+      :class="l.to === '/' ? 'order-1' : 'order-3'"
       :aria-label="l.to === '/cart' && count ? `Корзина, товаров: ${count}` : l.label"
     >
       {{ l.label }}
       <B24Badge v-if="l.to === '/cart' && count" size="xs" color="air-primary-alert" :label="String(count)" />
     </B24Button>
+    <B24Button :color="ai.open.value ? 'air-primary' : 'air-tertiary'" size="sm" class="order-2 min-h-11 justify-center rounded-none px-1" label="ИИ" @click="ai.toggle()" />
   </nav>
 </template>
