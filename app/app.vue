@@ -14,6 +14,7 @@ const { open: aiOpen } = useAiChat()
     <!-- Открытый чат на компьютере сдвигает страницу влево, а не закрывает её (как в skills-site). -->
     <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
       <NuxtPage />
+      <AppFooter v-if="!$route.path.startsWith('/b24')" />
     </div>
     <ClientOnly>
       <AiChatPanel />

@@ -26,7 +26,14 @@ async function submit() {
 
 <template>
   <div>
-    <B24Header title="Личный кабинет" />
+    <B24Header title="Личный кабинет" :toggle="false">
+      <template #title>
+        <span class="flex items-center gap-3">
+          <img src="/logo.png" alt="Алгена" class="h-7 w-auto">
+          <span>Личный кабинет</span>
+        </span>
+      </template>
+    </B24Header>
     <B24Main>
       <B24Container class="py-8 max-w-md">
         <B24Card>

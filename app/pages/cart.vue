@@ -122,6 +122,8 @@ async function submit() {
           <B24Alert v-else-if="quote?.priceStatus === 'unavailable'" color="air-primary-warning" title="Цены временно недоступны" description="Отправить заявку можно, когда ответит учётная система. Обновите страницу через минуту." />
           <B24Alert v-else-if="quote?.priceStatus === 'no-contract'" color="air-primary-warning" title="Договор не подключён" description="Обратитесь к менеджеру — после подключения можно будет отправлять заявки." />
 
+          <BuildLoader v-if="!quote && !quoteFailed" title="Пересчитываем корзину по вашему договору…" />
+
           <B24Card v-for="l in quote?.lines ?? []" :key="l.guid">
             <div class="flex flex-col gap-2">
               <div class="flex justify-between gap-2">
@@ -174,6 +176,7 @@ async function submit() {
           </B24Card>
         </template>
         <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-0 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:border-0 md:bg-transparent md:p-0">
+          <BuildLoader v-if="sending" compact title="Передаём заявку менеджеру…" />
           <B24Alert v-if="sendError" color="air-primary-alert" :title="sendError" class="mb-2" />
           <div class="flex items-center justify-between gap-3">
             <div>

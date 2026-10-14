@@ -40,6 +40,12 @@ async function logout() {
 
 <template>
   <B24Header v-model:open="menuOpen" :title="shortTitle" :to="props.back">
+    <template #title>
+      <span class="flex min-w-0 items-center gap-3">
+        <img src="/logo.png" alt="Алгена" class="h-7 w-auto shrink-0">
+        <span class="truncate">{{ shortTitle }}</span>
+      </span>
+    </template>
     <template #right>
       <div v-if="me" class="hidden md:flex gap-2">
         <B24Button to="/" color="air-tertiary" label="Каталог" />

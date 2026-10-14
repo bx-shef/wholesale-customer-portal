@@ -7,8 +7,11 @@ import { normalizeQty } from '~~/shared/cart'
 const route = useRoute()
 const headers = useRequestHeaders(['cookie'])
 
-const { data, error } = await useFetch<{ item: CatalogItemDetailsView, priceStatus: PriceStatus }>(() => `/api/catalog/${route.params.guid}`, { headers })
-if (error.value?.statusCode === 401) await navigateTo('/login')
+// В браузере и без ожидания: пока 1С отвечает по ценам, на экране — загрузчик, а не пустота.
+const { data, error, status } = await useFetch<{ item: CatalogItemDetailsView, priceStatus: PriceStatus }>(() => `/api/catalog/${route.params.guid}`, { headers, server: false, lazy: true })
+watch(error, (e) => {
+  if (e?.statusCode === 401) navigateTo('/login')
+})
 useHead({ title: () => data.value?.item.name ?? 'Товар' })
 
 const item = computed(() => data.value?.item)
@@ -24,6 +27,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
       <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
         <B24Alert v-if="error?.statusCode === 404" color="air-primary-warning" title="Товар не найден" description="Его могли убрать из каталога. Вернитесь в каталог и найдите похожий." />
         <B24Alert v-else-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить товар. Обновите страницу." />
+        <BuildLoader v-else-if="!item && status !== 'error'" title="Загружаем товар, цену и остатки…" />
         <template v-else-if="item">
           <B24Card>
             <div class="flex flex-col gap-2">
