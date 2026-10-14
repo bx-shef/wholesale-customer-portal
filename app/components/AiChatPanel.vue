@@ -106,7 +106,7 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
 
 <template>
   <aside
-    class="ai-panel fixed inset-y-0 right-0 z-[110] flex w-full flex-col border-l border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) md:w-(--ai-chat-width)"
+    class="ai-panel fixed inset-y-0 right-0 z-[110] flex flex-col border-l border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary)"
     :class="{ 'is-open': open }"
     :aria-hidden="!open"
     aria-label="ИИ-помощник"
@@ -197,8 +197,10 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
 
 <style scoped>
 /* Выезд справа, как в skills-site: закрытая панель уезжает за край и не ловит фокус. */
-.ai-panel { transform: translateX(100%); visibility: hidden; transition: transform .25s ease, visibility .25s ease; }
+.ai-panel { width: 100%; max-width: 100vw; transform: translateX(100%); visibility: hidden; transition: transform .25s ease, visibility .25s ease; }
 .ai-panel.is-open { transform: none; visibility: visible; }
+/* Ширина на компьютере — жёстко: длинный ответ или карточки не должны растягивать панель. */
+@media (min-width: 768px) { .ai-panel { width: var(--ai-chat-width); max-width: var(--ai-chat-width); } }
 /* Вопрос — серым пузырём справа, ответ — без пузыря, во всю ширину панели. */
 .ai-list :deep(article), .ai-list :deep([data-slot="container"]), .ai-list :deep([data-slot="body"]) { min-width: 0; max-width: 100%; }
 .ai-list :deep([data-role="user"] [data-slot="container"]) { max-width: 85%; margin-left: auto; }
