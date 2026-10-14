@@ -125,7 +125,10 @@ describe('вкладка компании: чистые правила', () => {
   it('хост: только имя и порт', () => {
     expect(normalizeHost(' B24.Algena.by ')).toBe('b24.algena.by')
     expect(normalizeHost('b24.algena.by:8443')).toBe('b24.algena.by:8443')
-    for (const bad of ['https://b24.algena.by', 'b24.algena.by/x', 'a@b24.algena.by', '']) expect(normalizeHost(bad)).toBeNull()
+    // Так домен отдаёт SDK фрейма (getTargetOrigin) — найдено на коробке: вкладка отвечала «не подключён».
+    expect(normalizeHost('https://b24.algena.by')).toBe('b24.algena.by')
+    expect(normalizeHost('https://b24.algena.by:443/')).toBe('b24.algena.by')
+    for (const bad of ['http://b24.algena.by', 'b24.algena.by/x', 'https://b24.algena.by/x', 'a@b24.algena.by', 'https://a@b24.algena.by', '']) expect(normalizeHost(bad)).toBeNull()
   })
 
   it('доверенные хосты: явный список, иначе портал установки', () => {
