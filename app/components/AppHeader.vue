@@ -23,6 +23,7 @@ async function logout() {
     <template #right>
       <div v-if="me" class="hidden md:flex gap-2">
         <B24Button to="/" color="air-tertiary" label="Каталог" />
+        <B24Button to="/assistant" color="air-tertiary" label="Помощник" />
         <B24Button to="/cart" color="air-tertiary" :label="cart.count.value ? `Корзина · ${cart.count.value}` : 'Корзина'" />
         <B24Button to="/orders" color="air-tertiary" label="Заявки" />
         <B24Button to="/profile" color="air-tertiary" label="Профиль" />
