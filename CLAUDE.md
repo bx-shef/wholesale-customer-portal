@@ -26,7 +26,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 
 | Где | Что |
 |---|---|
-| `app/` | страницы на Bitrix24 UI: `login`, `index` (каталог), `product/[guid]`, `cart`, `orders`, `profile`, `help` (справка из Nuxt Content); `AppHeader`, `BottomNav`, `useCart` (корзина в localStorage по компании) |
+| `app/` | страницы на Bitrix24 UI: `login`, `index` (каталог), `product/[guid]`, `cart`, `orders`, `profile`, `help` (справка из Nuxt Content); `AppHeader` (разделы; на телефоне — в меню-бургере), `useCart` (корзина в localStorage по компании) |
 | `content/help/` | справка ЛК (коллекция `help`, `content.config.ts`) |
 | `server/mcp/handlers/admin` | `/mcp/admin` — Bearer `MCP_ADMIN_TOKEN`, без токена закрыт для всех |
 | `server/mcp/handlers/client` | `/mcp/client` — по сессии клиента (cookie или тот же токен Bearer) |

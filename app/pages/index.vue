@@ -127,7 +127,7 @@ function reset() {
 </script>
 
 <template>
-  <div class="pb-16 md:pb-0">
+  <div>
     <AppHeader />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-3">
@@ -207,7 +207,5 @@ function reset() {
         </div>
       </template>
     </B24Drawer>
-
-    <BottomNav />
   </div>
 </template>

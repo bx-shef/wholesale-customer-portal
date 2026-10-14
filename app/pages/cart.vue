@@ -103,7 +103,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="pb-52 md:pb-0">
+  <div class="pb-28 md:pb-0">
     <AppHeader title="Корзина" />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
@@ -173,7 +173,7 @@ async function submit() {
             </div>
           </B24Card>
         </template>
-        <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-11 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:border-0 md:bg-transparent md:p-0">
+        <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-0 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:border-0 md:bg-transparent md:p-0">
           <B24Alert v-if="sendError" color="air-primary-alert" :title="sendError" class="mb-2" />
           <div class="flex items-center justify-between gap-3">
             <div>
@@ -189,7 +189,5 @@ async function submit() {
         </div>
       </B24Container>
     </B24Main>
-
-    <BottomNav />
   </div>
 </template>

@@ -18,7 +18,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
 </script>
 
 <template>
-  <div class="pb-16 md:pb-0">
+  <div>
     <AppHeader :title="item?.name || 'Товар'" back="/" />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
@@ -116,6 +116,5 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
         </template>
       </B24Container>
     </B24Main>
-    <BottomNav />
   </div>
 </template>
