@@ -115,6 +115,18 @@ export const MIGRATIONS: string[] = [
    ALTER TABLE order_request ADD COLUMN checked_at TEXT;
    ALTER TABLE order_request ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
    CREATE INDEX order_request_checked ON order_request (status, checked_at);`,
+  // Локальное приложение коробки вместо входящего вебхука: токены, выданные при установке, и их
+  // продление. Строка одна — портал у ЛК один (docs/spec.md §2).
+  `CREATE TABLE b24_app_auth (
+     id INTEGER PRIMARY KEY CHECK (id = 1),
+     domain TEXT NOT NULL,
+     member_id TEXT NOT NULL,
+     access_token TEXT NOT NULL,
+     refresh_token TEXT NOT NULL,
+     expires_at INTEGER NOT NULL,
+     server_endpoint TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

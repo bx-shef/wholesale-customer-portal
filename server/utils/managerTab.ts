@@ -55,17 +55,12 @@ export function normalizeHost(domain: string): string | null {
   return d
 }
 
-/** Хосты, которым верим: явный список или хост вебхука коробки. */
-export function allowedHosts(explicit: string, webhookUrl: string): string[] {
+/** Хосты, которым верим: B24_PORTAL_HOST, иначе портал, на котором установлено приложение. */
+export function allowedHosts(explicit: string, installedDomain: string | null | undefined): string[] {
   const list = explicit.split(',').map(s => normalizeHost(s)).filter((h): h is string => !!h)
   if (list.length > 0) return list
-  try {
-    const host = new URL(webhookUrl).host.toLowerCase()
-    return host ? [host] : []
-  }
-  catch {
-    return []
-  }
+  const host = normalizeHost(installedDomain ?? '')
+  return host ? [host] : []
 }
 
 export function accessState(r: AccessRecord | undefined, now: Date): TabContact['access'] {
