@@ -2,7 +2,7 @@
 // договора клиента. Только с сессией. Правила безопасности — server/utils/aiChat.ts.
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai'
-import { AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
+import { topicPrompt, AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
 import { createRateLimiter } from '../../utils/rateLimit'
 
 const daily = createRateLimiter(AI_DAILY_LIMIT, 24 * 60 * 60_000)
@@ -11,7 +11,8 @@ export default defineEventHandler(async (event) => {
   const ctx = await catalogContext(event)
   const env = readServerEnv()
   if (!env.deepseekApiKey) throw createError({ statusCode: 503, message: 'Помощник не настроен на сервере' })
-  const history = sanitizeHistory((await readBody(event))?.messages)
+  const body = await readBody(event)
+  const history = sanitizeHistory(body?.messages)
   if (!history) throw createError({ statusCode: 400, message: 'Слишком длинный вопрос' })
   const contact = String(ctx.session.contactId)
   if (!daily.take(contact)) throw createError({ statusCode: 429, message: `Лимит — ${AI_DAILY_LIMIT} вопросов в сутки. Продолжим завтра.` })
@@ -28,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const deepseek = createOpenAICompatible({ name: 'deepseek', baseURL: 'https://api.deepseek.com/v1', apiKey: env.deepseekApiKey })
   const result = streamText({
     model: deepseek(env.deepseekModel),
-    system: SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT + await topicPrompt(body?.product, h),
     messages: await convertToModelMessages(history),
     temperature: 0.3,
     stopWhen: stepCountIs(AI_STEPS_MAX),

@@ -80,6 +80,17 @@ export function chatToolHandlers(catalog: ChatCatalog) {
   }
 }
 
+/**
+ * Обсуждаемый товар («Обсудить с ИИ»): его карточка — в контекст модели, а сам товар и
+ * аналоги можно сразу показать карточками. Чужой или кривой GUID — просто без контекста.
+ */
+export async function topicPrompt(guid: unknown, h: ReturnType<typeof chatToolHandlers>): Promise<string> {
+  if (typeof guid !== 'string' || !/^[0-9a-f-]{36}$/i.test(guid)) return ''
+  const card = await h.product({ guid })
+  if ('error' in card) return ''
+  return `\n\nКлиент открыл карточку товара и обсуждает его. Данные каталога (цены и остатки — по его договору):\n${JSON.stringify(card)}\nСоветуй по этому товару: применение, расход, что взять вместе, аналоги в наличии. Сам товар и подходящие аналоги покажи через show_products.`
+}
+
 interface HistoryMessage { role: 'user' | 'assistant', parts: { type: 'text', text: string }[] }
 
 /**
