@@ -13,7 +13,7 @@ let setupRunning = false
 
 export default defineEventHandler(async (event) => {
   const url = getRequestURL(event)
-  if (!/^\/b24\/(company-tab|install)$/.test(url.pathname)) throw createError({ statusCode: 404 })
+  if (!/^\/b24\/(app|company-tab|install)$/.test(url.pathname)) throw createError({ statusCode: 404 })
   if (url.pathname !== '/b24/install') return sendRedirect(event, url.pathname + url.search, 303)
 
   const payload = parseInstallPayload(await readBody(event).catch(() => null), getQuery(event))
