@@ -200,7 +200,7 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
 .ai-panel { width: 100%; max-width: 100vw; transform: translateX(100%); visibility: hidden; transition: transform .25s ease, visibility .25s ease; }
 .ai-panel.is-open { transform: none; visibility: visible; }
 /* Ширина на компьютере — жёстко: длинный ответ или карточки не должны растягивать панель. */
-@media (min-width: 768px) { .ai-panel { width: var(--ai-chat-width); max-width: var(--ai-chat-width); } }
+@media (min-width: 768px) { .ai-panel { width: 440px; max-width: 440px; } }
 /* Вопрос — серым пузырём справа, ответ — без пузыря, во всю ширину панели. */
 .ai-list :deep(article), .ai-list :deep([data-slot="container"]), .ai-list :deep([data-slot="body"]) { min-width: 0; max-width: 100%; }
 .ai-list :deep([data-role="user"] [data-slot="container"]) { max-width: 85%; margin-left: auto; }
