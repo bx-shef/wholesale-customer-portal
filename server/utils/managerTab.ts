@@ -3,12 +3,14 @@
  * контакты компании, выдаёт, перевыпускает и отзывает ключи. Чистое ядро: транспорт к порталу
  * и справочник доступа приходят зависимостями — тесты гоняют его без сети.
  *
- * Кто менеджер, решает ПОРТАЛ, а не мы: токен фрейма проверяется вызовом `crm.company.get` от
- * имени сотрудника. Прошёл — у сотрудника есть право читать эту компанию; нет — 403. Свой список
- * «кому можно» не заводим: права CRM уже описывают ровно это.
+ * Кто менеджер, решает ПОРТАЛ, а не мы: токеном фрейма от имени сотрудника читаем компанию
+ * (`crm.company.get` — у него есть право её видеть) и пускаем, только если он ОТВЕТСТВЕННЫЙ за неё
+ * или администратор портала (`user.admin`). Права на чтение мало: ключ открывает вход в ЛК от
+ * имени клиента, и выдать его не должен стажёр-наблюдатель (находка ревью PR #11).
+ * Контакты тоже читаются его токеном — вкладка не показывает больше, чем CRM показала бы ему.
  */
 import { z } from 'zod'
-import type { AccessDirectory, AccessRecord } from '../services/b24Access'
+import type { AccessDirectory, AccessRecord, B24Call } from '../services/b24Access'
 import { ACCESS_STATUS } from '../services/b24Access'
 import { issueAccessKey } from './accessAdmin'
 
@@ -31,8 +33,8 @@ export interface TabDeps {
   allowedHosts: string[]
   userCall: UserCall
   dir: AccessDirectory
-  /** Контакты компании с телефонами и почтой — по вебхуку. */
-  listCompanyContacts: (companyId: number) => Promise<ContactInfo[]>
+  /** Контакты компании с телефонами и почтой — через переданный вызов (токен сотрудника). */
+  listCompanyContacts: (companyId: number, call: B24Call) => Promise<ContactInfo[]>
   /** Сбросить кэш проверки ключа: отзыв и перевыпуск действуют сразу. */
   forgetAccess: (accessId?: number) => void
 }
@@ -84,17 +86,23 @@ export async function runTabAction(req: TabRequest, deps: TabDeps, now = new Dat
   if (!host || !deps.allowedHosts.includes(host)) return { status: 403, body: { error: 'Портал не подключён к ЛК' } }
 
   // Право сотрудника на эту компанию — ответом портала. Отказ, протухший токен, чужая компания
-  // и сетевой сбой — один ответ: подробности в лог сервера, наружу не нужны.
+  // и сетевой сбой — один ответ: подробности наружу не нужны.
+  const denied = { status: 403 as const, body: { error: 'Выдавать доступ может ответственный за компанию или администратор' } }
+  const asUser: B24Call = (method, params) => deps.userCall(host, req.authId, method, params)
   try {
-    const company = await deps.userCall(host, req.authId, 'crm.company.get', { id: req.companyId }) as { ID?: string | number } | null
-    if (!company || Number(company.ID) !== req.companyId) return { status: 403, body: { error: 'Нет доступа к компании' } }
+    const company = await asUser('crm.company.get', { id: req.companyId }) as { ID?: string | number, ASSIGNED_BY_ID?: string | number } | null
+    if (!company || Number(company.ID) !== req.companyId) return denied
+    const me = await asUser('user.current', {}) as { ID?: string | number } | null
+    const myId = Number(me?.ID)
+    if (!(myId > 0)) return denied
+    if (Number(company.ASSIGNED_BY_ID) !== myId && (await asUser('user.admin', {})) !== true) return denied
   }
   catch {
-    return { status: 403, body: { error: 'Нет доступа к компании' } }
+    return denied
   }
 
   if (req.action === 'list') {
-    const contacts = await deps.listCompanyContacts(req.companyId)
+    const contacts = await deps.listCompanyContacts(req.companyId, asUser)
     const records = (await deps.dir.listAccessByContacts(contacts.map(c => c.id))).filter(r => r.companyId === req.companyId)
     return {
       status: 200,

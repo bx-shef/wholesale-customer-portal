@@ -23,12 +23,22 @@ function fakeDir(records: AccessRecord[] = [], opts: { inCompany?: boolean, guid
 function deps(over: Partial<TabDeps> = {}): TabDeps & { userCall: ReturnType<typeof vi.fn>, forgetAccess: ReturnType<typeof vi.fn> } {
   return {
     allowedHosts: [HOST],
-    userCall: vi.fn(async (_h: string, _a: string, _m: string, p: Record<string, unknown>) => ({ ID: String(p.id) })),
+    userCall: portal({}),
     dir: fakeDir(),
     listCompanyContacts: async () => [{ id: 5, name: 'Иванов', phones: ['+375291112233'], emails: [] }],
     forgetAccess: vi.fn(),
     ...over,
   } as never
+}
+
+/** Портал глазами сотрудника 7: компания с ответственным `assigned`, админ ли он — `admin`. */
+function portal({ assigned = 7, admin = false, me = 7 }: { assigned?: number, admin?: boolean, me?: number }) {
+  return vi.fn(async (_h: string, _a: string, method: string, p: Record<string, unknown>) => {
+    if (method === 'crm.company.get') return { ID: String(p.id), ASSIGNED_BY_ID: String(assigned) }
+    if (method === 'user.current') return { ID: String(me) }
+    if (method === 'user.admin') return admin
+    throw new Error(`unexpected ${method}`)
+  })
 }
 
 const req = (over: Partial<TabRequest> = {}): TabRequest => ({ domain: HOST, authId: 'tok', companyId: 10, action: 'list', ...over })
@@ -46,12 +56,30 @@ describe('вкладка компании: кто менеджер', () => {
     for (const userCall of [
       vi.fn(async () => { throw new Error('ACCESS_DENIED') }),
       vi.fn(async () => null),
-      vi.fn(async () => ({ ID: '11' })),
+      vi.fn(async () => ({ ID: '11', ASSIGNED_BY_ID: '7' })),
     ]) {
       const d = deps({ userCall })
       expect((await runTabAction(req({ action: 'issue', contactId: 5 }), d, NOW)).status).toBe(403)
       expect(d.dir.upsertAccess).not.toHaveBeenCalled()
     }
+  })
+
+  it('видеть компанию мало: нужен ответственный или администратор', async () => {
+    const stranger = deps({ userCall: portal({ assigned: 8 }) })
+    expect((await runTabAction(req({ action: 'issue', contactId: 5 }), stranger, NOW)).status).toBe(403)
+    expect(stranger.dir.upsertAccess).not.toHaveBeenCalled()
+    expect((await runTabAction(req({ action: 'issue', contactId: 5 }), deps({ userCall: portal({ assigned: 8, admin: true }) }), NOW)).status).toBe(200)
+    expect((await runTabAction(req(), deps({ userCall: portal({ me: 0 }) }), NOW)).status).toBe(403)
+  })
+
+  it('контакты читаются токеном сотрудника, а не вебхуком', async () => {
+    const d = deps({ listCompanyContacts: vi.fn(async (_id, call) => {
+      await call('user.current', {})
+      return []
+    }) })
+    await runTabAction(req(), d, NOW)
+    expect(d.userCall).toHaveBeenCalledWith(HOST, 'tok', 'user.current', {})
+    expect(d.userCall.mock.calls.filter(c => c[2] === 'user.current')).toHaveLength(2)
   })
 
   it('спрашивает портал про ту компанию, что в запросе, токеном из запроса', async () => {

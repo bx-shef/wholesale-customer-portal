@@ -39,7 +39,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
 | `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
-| `app/pages/b24/{company-tab,install}.vue`, `server/api/b24/company-tab.post.ts`, `server/utils/managerTab.ts` | вкладка «Личный кабинет» в карточке компании: менеджер выдаёт и отзывает ключи; права — ответом портала на токен фрейма |
+| `app/pages/b24/{company-tab,install}.vue`, `server/api/b24/company-tab.post.ts`, `server/utils/managerTab.ts` | вкладка «Личный кабинет» в карточке компании: ответственный за компанию или админ выдаёт и отзывает ключи; права — ответом портала на токен фрейма |
 | `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |

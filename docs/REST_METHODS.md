@@ -39,9 +39,11 @@
 | `crm.activity.todo.add` | `server/services/b24Orders.ts` | вебхук | 📄 | «Заказать звонок»: дело на компании (`ownerTypeId: 4`) ответственному, срок +1 ч; ответ `{ id }` |
 | `crm.status.list` | `server/services/b24Orders.ts` | вебхук | 📄 | стадии воронки «Заявки ЛК»: `ENTITY_ID: DEAL_STAGE_<id воронки>`, семантика из `SEMANTICS` / `EXTRA.SEMANTICS` (рабочая, успех, провал) — по ней, а не по шаблону ID стадии, решаем «подтверждена» и «закрыта» |
 | `crm.timeline.comment.add` | `server/services/b24Orders.ts` | вебхук | 📄 | комментарий в ленте сделки: заказ 1С создан, статус из 1С (`ENTITY_TYPE: 'deal'`) |
-| `crm.company.contact.items.get` | `server/services/b24Access.ts` | вебхук | 📄 | контакты компании для вкладки; несуществующая компания — пустой массив, не ошибка |
-| `crm.contact.get` | `server/services/b24Access.ts` | вебхук | 📄 | имя, `PHONE[]`, `EMAIL[]` (мультиполя `{ VALUE }`) контакта для вкладки |
-| `crm.company.get` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | проверка, что сотрудник видит компанию: права CRM решают, кто менеджер; сверяем `ID` в ответе |
+| `crm.company.contact.items.get` | `server/services/b24Access.ts` | токен фрейма сотрудника | 📄 | контакты компании для вкладки; несуществующая компания — пустой массив, не ошибка |
+| `crm.contact.get` | `server/services/b24Access.ts` | токен фрейма сотрудника | 📄 | имя, `PHONE[]`, `EMAIL[]` (мультиполя `{ VALUE }`) контакта для вкладки |
+| `crm.company.get` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | сотрудник видит компанию; сверяем `ID`, `ASSIGNED_BY_ID` — ответственный |
+| `user.current` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | кто открыл вкладку: `ID` сверяем с ответственным за компанию |
+| `user.admin` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | администратор портала выдаёт ключи и не будучи ответственным; ответ — `true`/`false` |
 | `placement.unbind` | `app/pages/b24/install.vue` | приложение (фрейм) | 📄 | перед `bind` при переустановке — сменить обработчик иначе нельзя; ошибку глотаем |
 | `placement.bind` | `app/pages/b24/install.vue` | приложение (фрейм) | 📄 | вкладка `CRM_COMPANY_DETAIL_TAB` «Личный кабинет»; вебхуком нельзя (`WRONG_AUTH_TYPE`) |
 
