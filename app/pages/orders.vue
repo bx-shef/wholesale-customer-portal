@@ -1,6 +1,7 @@
 <!-- «Мои заявки»: статус и дата машины — только по компании из сессии. -->
 <script setup lang="ts">
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
+import { lineTotal } from '~~/shared/cart'
 import { formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Заявки' })
@@ -16,12 +17,23 @@ interface Order {
   currency: string
   onecNumber: string | null
   shipmentDate: string | null
-  items: { name: string, sku: string, qty: number, unit: string }[]
+  items: { name: string, sku: string, qty: number, unit: string, price: number, vatRate: number }[]
 }
 
 const headers = useRequestHeaders(['cookie'])
 const { data, error } = await useFetch<{ items: Order[] }>('/api/orders', { headers })
 if (error.value?.statusCode === 401) await navigateTo('/login')
+
+/** Путь заявки: где она сейчас — от «Новая» до «Доставлена». */
+const STEPS = [
+  { key: 'sent', label: 'Принята' },
+  { key: 'confirmed', label: 'Подтверждена' },
+  { key: 'assembled', label: 'Собрана' },
+  { key: 'shipped', label: 'В пути' },
+  { key: 'delivered', label: 'Доставлена' },
+]
+const stepIndex = (status: string) => STEPS.findIndex(s => s.key === status)
+const open = ref<number | null>(null)
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
 </script>
@@ -65,6 +77,57 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
               </template>
               · {{ o.address }}
             </p>
+            <B24Button
+              color="air-tertiary"
+              size="sm"
+              class="self-start"
+              :label="open === o.id ? 'Скрыть состав' : 'Состав и статус'"
+              @click="open = open === o.id ? null : o.id"
+            />
+            <template v-if="open === o.id">
+              <ol v-if="o.status !== 'cancelled' && o.status !== 'pending'" class="flex flex-wrap gap-1 text-xs" aria-label="Статус доставки">
+                <li v-for="(s, i) in STEPS" :key="s.key">
+                  <B24Badge :color="i <= stepIndex(o.status) ? 'air-primary-success' : 'air-secondary'" :label="s.label" />
+                </li>
+              </ol>
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                    <th class="py-1 font-normal">
+                      Товар
+                    </th>
+                    <th class="py-1 font-normal text-right">
+                      Кол-во
+                    </th>
+                    <th class="py-1 font-normal text-right">
+                      Цена
+                    </th>
+                    <th class="py-1 font-normal text-right">
+                      Сумма
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="it in o.items" :key="it.sku + it.name" class="border-t border-(--ui-color-divider-default)">
+                    <td class="py-1 pr-2">
+                      {{ it.name }}
+                    </td>
+                    <td class="py-1 text-right whitespace-nowrap">
+                      {{ it.qty }} {{ it.unit }}
+                    </td>
+                    <td class="py-1 text-right whitespace-nowrap">
+                      {{ formatMoney(it.price, o.currency) }}
+                    </td>
+                    <td class="py-1 text-right whitespace-nowrap">
+                      {{ formatMoney(lineTotal(it.price, it.qty), o.currency) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                Цены с НДС по договору на момент заявки. Счёт и оплату ведёт менеджер.
+              </p>
+            </template>
           </div>
         </B24Card>
       </B24Container>
