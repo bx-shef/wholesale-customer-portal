@@ -137,6 +137,11 @@ curl -sI https://wsp.algena.by/_nuxt/ | head -1   # не страница оши
    «Готово». Через минуту-две проверить CRM: `make b24-setup` должен ответить
    `Portal is already set up`; если нет — `APPLY=1 make b24-setup`.
 
+Страницы приложения портал показывает во фрейме: `00-app-proxy.conf` снимает для `/b24/` запрет
+bitrix-env (`X-Frame-Options: SAMEORIGIN`), а приложение разрешает встраивание только порталу из
+`B24_PORTAL_HOST` (`frame-ancestors`). Пустой фрейм с грустным значком в портале — значит, на ВМ
+старый `00-app-proxy.conf`: повторите шаг 3.
+
 Сервер принимает установку, только если портал — `B24_PORTAL_HOST` и присланный токен продлевается
 ключами из `.env` (`server/utils/b24AppAuth.ts`). Продление идёт через `oauth.bitrix.info` — ВМ
 нужен выход туда по https. В `make health` — `b24App: true`.
