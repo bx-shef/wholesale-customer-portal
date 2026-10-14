@@ -12,6 +12,14 @@ const state = ref<'work' | 'done' | 'error'>('work')
 const message = ref('')
 
 onMounted(async () => {
+  if (route.query.app === 'setup-error') {
+    state.value = 'error'
+    const reason = String(route.query.reason ?? '')
+    message.value = /higher privileges|insufficient_scope/i.test(reason)
+      ? `У приложения не хватает прав. Добавьте в настройках приложения права crm, user, user_brief, placement, userfieldconfig, сохраните и нажмите «Переустановить». Подробно: ${reason}`
+      : `Приложение подключено, но CRM не настроилась: ${reason}. Нажмите «Переустановить» ещё раз.`
+    return
+  }
   if (route.query.app !== 'ok') {
     state.value = 'error'
     message.value = 'Сервер ЛК не принял установку: проверьте B24_CLIENT_ID, B24_CLIENT_SECRET и B24_PORTAL_HOST в .env, выполните make prod-up и откройте приложение снова. Причина — в make logs.'
@@ -45,7 +53,7 @@ onMounted(async () => {
       v-else-if="state === 'done'"
       color="air-primary-success"
       title="Готово: приложение подключено"
-      description="В карточке компании появилась вкладка «Личный кабинет». Поля и смарт-процессы ЛК в CRM создаются в фоне за минуту-две."
+      description="CRM настроена: поля, смарт-процессы «Доступ в ЛК» и «Рейсы», воронка «Заявки ЛК». В карточке компании появилась вкладка «Личный кабинет»."
     />
     <B24Alert v-else color="air-primary-alert" title="Не удалось установить" :description="message" />
   </B24Container>
