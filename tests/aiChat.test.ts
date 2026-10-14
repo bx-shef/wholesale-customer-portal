@@ -61,3 +61,29 @@ describe('ИИ-помощник: «Обсудить с ИИ»', () => {
     expect((await h.show({ guids: [guid, 'g3'] })).items.map(i => i.guid)).toEqual([guid, 'g3'])
   })
 })
+
+describe('ИИ-помощник: журнал и оценка', () => {
+  it('ответ, товары и оценка пишутся; оценить можно только свою запись', async () => {
+    const { DatabaseSync } = await import('node:sqlite')
+    const { migrate } = await import('../server/db/sqlite')
+    const { createAiJournal } = await import('../server/utils/aiJournal')
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const j = createAiJournal(db, () => new Date('2026-10-14T10:00:00Z'))
+    const me = { companyId: 1, contactId: 5 }
+    const id = j.start({ ...me, question: 'шпатлёвка' })
+    j.finish(id, { answer: 'Вот', products: ['g1'], ok: true })
+    expect(j.rate(id, { companyId: 2, contactId: 5 }, -1)).toBe(false)
+    expect(j.rate(id, me, -1)).toBe(true)
+    expect(j.list({ rating: -1 })).toMatchObject([{ id, question: 'шпатлёвка', answer: 'Вот', products: ['g1'], status: 'done', rating: -1 }])
+    j.rate(id, me, 0)
+    expect(j.list({ rating: -1 })).toEqual([])
+  })
+
+  it('показанные карточки запоминаются для журнала', async () => {
+    const h = chatToolHandlers(catalog())
+    await h.search({ query: 'x' })
+    await h.show({ guids: ['g2', 'g1', 'g2'] })
+    expect(h.shown()).toEqual(['g2', 'g1'])
+  })
+})

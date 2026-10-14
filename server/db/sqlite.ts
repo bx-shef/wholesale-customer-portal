@@ -127,6 +127,21 @@ export const MIGRATIONS: string[] = [
      server_endpoint TEXT NOT NULL,
      updated_at TEXT NOT NULL
    );`,
+  // Этап 5: журнал диалогов ИИ-помощника и оценка ответа клиентом (👍/👎). Хранится 90 дней.
+  `CREATE TABLE ai_dialog (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     created_at TEXT NOT NULL,
+     company_id INTEGER NOT NULL,
+     contact_id INTEGER NOT NULL,
+     question TEXT NOT NULL,
+     answer TEXT,
+     products TEXT NOT NULL DEFAULT '[]',
+     topic TEXT,
+     status TEXT NOT NULL DEFAULT 'started',
+     rating INTEGER,
+     rated_at TEXT
+   );
+   CREATE INDEX ai_dialog_created ON ai_dialog (created_at);`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

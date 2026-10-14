@@ -4,7 +4,7 @@
 # подключает его сам (docs/DEPLOY_BITRIXVM.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help build-local prod-up prod-down prod-pull prod-redeploy logs ps health doctor self-update b24-setup
+.PHONY: help build-local prod-up prod-down prod-pull prod-redeploy logs ps health doctor self-update b24-setup ai-dialogs
 
 # Прод-переменные — только из .env: экспортированный соседним проектом DOMAIN на общем хосте
 # не должен увести ЛК на чужой адрес. COMPOSE_PROJECT_NAME / COMPOSE_FILE хоста тоже снимаем.
@@ -52,6 +52,10 @@ health:
 ## Что ЛК не хватает в CRM (только показать); записать — APPLY=1 make b24-setup
 b24-setup:
 	docker exec $(CONTAINER) node -e 'const apply=process.argv[1]==="1";fetch("http://127.0.0.1:3000/mcp/admin",{method:"POST",headers:{authorization:"Bearer "+process.env.MCP_ADMIN_TOKEN,"content-type":"application/json",accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"b24_setup",arguments:{apply}}})}).then(r=>r.text()).then(t=>{const line=t.split("\n").find(l=>l.startsWith("data: "));const j=JSON.parse(line?line.slice(6):t);const r=j.result;const txt=r&&r.content&&r.content[0]?r.content[0].text:JSON.stringify(j.error||j);if(!r||r.isError){console.log(txt);process.exit(1)}const o=JSON.parse(txt);o.lines.forEach(l=>console.log(l));o.pending.forEach(p=>console.log("pending: "+p));console.log(o.done?"Portal is already set up":apply?"Not finished - run again":"Dry run. Write: APPLY=1 make b24-setup")},e=>{console.log(e.message);process.exit(1)})' "$${APPLY:-0}"
+
+## Журнал ИИ-помощника: последние 20 диалогов; только «не помогло» — RATING=-1 make ai-dialogs
+ai-dialogs:
+	docker exec $(CONTAINER) node -e 'const rating=Number(process.argv[1])||undefined;fetch("http://127.0.0.1:3000/mcp/admin",{method:"POST",headers:{authorization:"Bearer "+process.env.MCP_ADMIN_TOKEN,"content-type":"application/json",accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"ai_dialogs",arguments:{rating,limit:20}}})}).then(r=>r.text()).then(t=>{const line=t.split("\n").find(l=>l.startsWith("data: "));const j=JSON.parse(line?line.slice(6):t);const r=j.result;const txt=r&&r.content&&r.content[0]?r.content[0].text:JSON.stringify(j.error||j);if(!r||r.isError){console.log(txt);process.exit(1)}for(const d of JSON.parse(txt)){const mark=d.rating===1?"+1":d.rating===-1?"-1":"  ";console.log("#"+d.id+" "+d.createdAt.slice(0,16)+" "+mark+" company "+d.companyId+" ["+d.status+"]");console.log("  Q: "+d.question.replace(/\s+/g," ").slice(0,200));console.log("  A: "+(d.answer||"").replace(/\s+/g," ").slice(0,300));if(d.products.length)console.log("  cards: "+d.products.length)}},e=>{console.log(e.message);process.exit(1)})' "$${RATING:-}"
 
 ## Что не так: сеть, прокси, Watchtower, .env, контейнер
 doctor:

@@ -56,7 +56,10 @@ export const showInput = z.object({ guids: z.array(z.string().max(64)).min(1).ma
 export function chatToolHandlers(catalog: ChatCatalog) {
   const seen = new Map<string, CatalogItemView>()
   const remember = (items: CatalogItemView[]) => items.forEach(i => seen.set(i.guid, i))
+  const shown: string[] = []
   return {
+    /** Что показано карточками за ответ — для журнала диалогов. */
+    shown: () => [...shown],
     async search({ query, in_stock }: z.infer<typeof searchInput>) {
       const items = (await catalog.search(query, in_stock === true)).slice(0, AI_SEARCH_LIMIT)
       remember(items)
@@ -75,6 +78,7 @@ export function chatToolHandlers(catalog: ChatCatalog) {
         const it = seen.get(g)
         if (it && !items.some(x => x.guid === g)) items.push(it)
       }
+      for (const it of items) if (!shown.includes(it.guid)) shown.push(it.guid)
       return { items }
     },
   }
@@ -98,6 +102,9 @@ interface HistoryMessage { role: 'user' | 'assistant', parts: { type: 'text', te
  * user/assistant и только текст (выходы инструментов отбрасываются), длина ограничена.
  * Последним должно быть сообщение клиента. Кривой ввод — `null`.
  */
+/** Текст последнего вопроса клиента — для журнала. */
+export const lastQuestion = (h: HistoryMessage[]) => h.at(-1)?.parts.map(p => p.text).join('\n') ?? ''
+
 export function sanitizeHistory(raw: unknown): HistoryMessage[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   const out: HistoryMessage[] = []
