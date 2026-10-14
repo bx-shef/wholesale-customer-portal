@@ -18,3 +18,9 @@ services:
     # Откат и пауза обновлений — в .env: APP_IMAGE=ghcr.io/bx-shef/wholesale-customer-portal:sha-<7 знаков>.
     # Правка в compose пропала бы при make self-update.
     image: ${APP_IMAGE:-ghcr.io/bx-shef/wholesale-customer-portal:latest}
+    # Портал коробки живёт на этой же ВМ: в /etc/hosts машины его домен — 127.0.0.1, а контейнер
+    # этот файл не видит, получает внешний адрес и виснет до таймаута (замерено 14.10.2026).
+    # host-gateway — адрес хоста изнутри docker: запрос идёт в nginx ВМ с верным сертификатом.
+    # Без B24_PORTAL_HOST правило указывает на заведомо несуществующий домен и ни на что не влияет.
+    extra_hosts:
+      - "${B24_PORTAL_HOST:-portal.invalid}:host-gateway"

@@ -5,7 +5,7 @@
  */
 export interface ServerEnv {
   b24WebhookUrl: string
-  /** Хосты портала для вкладки компании (через запятую); пусто — хост из B24_WEBHOOK_URL. */
+  /** Хост портала коробки (вкладка компании доверяет только ему); пусто — хост из B24_WEBHOOK_URL. */
   b24PortalHosts: string
   onecUrl: string
   onecToken: string
@@ -29,7 +29,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
   const get = (key: string) => (source[key] ?? '').trim()
   return {
     b24WebhookUrl: get('B24_WEBHOOK_URL'),
-    b24PortalHosts: get('B24_PORTAL_HOSTS'),
+    b24PortalHosts: get('B24_PORTAL_HOST'),
     onecUrl: get('ONEC_URL'),
     onecToken: get('ONEC_TOKEN'),
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
