@@ -50,7 +50,9 @@ export type TabResult =
 
 /** Хост из домена фрейма: только имя и порт, без схемы, пути и учётных данных. */
 export function normalizeHost(domain: string): string | null {
-  const d = domain.trim().toLowerCase()
+  // SDK фрейма отдаёт домен как origin (`https://crm.example.by`, auth.mjs → getTargetOrigin),
+  // переменные окружения — голым хостом. Сводим к хосту; путь, учётные данные и прочее — отказ.
+  const d = domain.trim().toLowerCase().replace(/^https:\/\//, '').replace(/\/$/, '').replace(/:443$/, '')
   if (!/^[a-z0-9.-]+(:\d{1,5})?$/.test(d)) return null
   return d
 }
