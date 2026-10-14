@@ -21,13 +21,16 @@ function setFilters(patch: Partial<CatalogFilters>) {
   router.push({ query: filtersToQuery({ ...filters.value, ...patch }) })
 }
 
-// Первая страница — на сервере и в payload: при гидратации повторного запроса (и цен из 1С) нет.
+// Первая страница — уже в браузере: цены идут из 1С не мгновенно, и пусть клиент сразу видит
+// каталог с загрузчиком, а не пустую вкладку, пока сервер ждёт 1С.
 const { data: first, error: firstError, status } = await useAsyncData(
   'catalog-first',
   () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...filtersToQuery(filters.value), limit: PAGE } }),
-  { watch: [filters] },
+  { watch: [filters], server: false, lazy: true },
 )
-if (firstError.value?.statusCode === 401) await navigateTo('/login')
+watch(firstError, (e) => {
+  if (e?.statusCode === 401) navigateTo('/login')
+})
 
 const extra = ref<CatalogItemView[]>([])
 const items = computed(() => [...(first.value?.items ?? []), ...extra.value])
@@ -186,7 +189,8 @@ function reset() {
         <div ref="sentinel" />
         <B24Alert v-if="moreFailed" color="air-primary-alert" title="Не удалось загрузить следующие товары" description="Нажмите «Показать ещё», чтобы повторить." />
         <B24Button v-if="more && !loading" color="air-tertiary" block label="Показать ещё" @click="loadMore" />
-        <B24Skeleton v-if="loading" class="h-20 w-full" />
+        <BuildLoader v-if="status === 'pending' && !extra.length" />
+        <BuildLoader v-else-if="loading" compact title="Загружаем ещё товары…" />
       </B24Container>
     </B24Main>
 
