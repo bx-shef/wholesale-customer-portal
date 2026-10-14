@@ -4,6 +4,7 @@ const route = useRoute()
 const { count } = useCart()
 const links = [
   { to: '/', label: 'Каталог' },
+  { to: '/assistant', label: 'ИИ' },
   { to: '/cart', label: 'Корзина' },
   { to: '/orders', label: 'Заявки' },
   { to: '/profile', label: 'Профиль' },
@@ -12,7 +13,7 @@ const active = (to: string) => (to === '/' ? route.path === '/' || route.path.st
 </script>
 
 <template>
-  <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) md:hidden" aria-label="Разделы">
+  <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) md:hidden" aria-label="Разделы">
     <B24Button
       v-for="l in links"
       :key="l.to"

@@ -52,6 +52,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса) |
 | `shared/delivery.ts` | расписание рейсов (§8 спецификации): ближайший рейс и окно прибытия по Минску |
+| `server/utils/aiChat.ts`, `server/api/ai/chat.post.ts`, `app/pages/assistant.vue` | ИИ-помощник: DeepSeek + инструменты каталога с ценами договора; карточки — из данных, не из текста модели |
 | `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |
 | `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), расписание рейсов, стадии воронки, комментарий в ленте, дело «перезвонить» |
 | `server/utils/orderSync.ts`, `orderSyncRun.ts`, `server/tasks/sync/orders.ts` | раз в 2 минуты: досылка заявок без сделки, подтверждение менеджером → заказ 1С, статусы 1С → заявки и сделки; вручную — `sync_orders` |
