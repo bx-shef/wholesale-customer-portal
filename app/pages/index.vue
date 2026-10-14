@@ -181,9 +181,9 @@ function reset() {
       </B24Container>
     </B24Main>
 
-    <B24Slideover v-model:open="filtersOpen" title="Фильтры" side="bottom">
+    <B24Drawer v-model:open="filtersOpen" title="Фильтры" direction="bottom" handle>
       <template #body>
-        <div class="flex flex-col gap-4">
+        <div class="mx-auto flex w-full max-w-xl flex-col gap-4 pb-4">
           <B24FormField label="Раздел">
             <B24Select :model-value="filters.section" :items="sectionItems" class="w-full" @update:model-value="v => setFilters({ section: String(v ?? '') })" />
           </B24FormField>
@@ -200,7 +200,7 @@ function reset() {
           </div>
         </div>
       </template>
-    </B24Slideover>
+    </B24Drawer>
 
     <BottomNav />
   </div>
