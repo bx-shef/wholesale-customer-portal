@@ -93,9 +93,13 @@ describe('вкладка компании: действия', () => {
   it('список: статус доступа по записи этой компании', async () => {
     const d = deps({ dir: fakeDir([rec({ companyId: 99 })]) })
     const r = await runTabAction(req(), d, NOW)
-    expect(r).toEqual({ status: 200, body: { contacts: [{ id: 5, name: 'Иванов', phones: ['+375291112233'], emails: [], access: 'none', expiresAt: null }] } })
+    expect(r).toEqual({ status: 200, body: { contacts: [{ id: 5, name: 'Иванов', phones: ['+375291112233'], emails: [], access: 'none', expiresAt: null }], hasGuid: true } })
     const d2 = deps({ dir: fakeDir([rec({ status: 'revoked', id: 2 }), rec({ id: 3 })]) })
     expect((await runTabAction(req(), d2, NOW)).body).toMatchObject({ contacts: [{ access: 'active' }] })
+  })
+
+  it('список сразу говорит, что у компании нет GUID 1С', async () => {
+    expect((await runTabAction(req(), deps({ dir: fakeDir([], { guid: null }) }), NOW)).body).toMatchObject({ hasGuid: false })
   })
 
   it('выдача: ключ в ответе, кэш проверки сброшен', async () => {

@@ -62,6 +62,9 @@ async function requestCallback() {
                 {{ data.manager.email }}
               </p>
               <B24Button v-if="data.manager.phone" :to="`tel:${data.manager.phone}`" color="air-primary" block label="Позвонить" />
+              <p class="text-sm text-(--ui-color-design-plain-na-content-secondary)">
+                Не дозвонились или нужен совет? Нажмите — менеджер получит в CRM задачу перезвонить вам на номер из карточки.
+              </p>
               <B24Button color="air-secondary" block :loading="calling" :disabled="callbackSent" :label="callbackSent ? 'Менеджер перезвонит' : 'Заказать звонок'" @click="requestCallback" />
               <B24Alert v-if="callbackError" color="air-primary-alert" :title="callbackError" />
             </div>

@@ -26,6 +26,9 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
         <template v-else-if="item">
           <B24Card>
             <div class="flex flex-col gap-2">
+              <div v-if="item.images.length" class="flex gap-2 overflow-x-auto">
+                <img v-for="src in item.images" :key="src" :src="src" :alt="item.name" class="h-48 max-w-full shrink-0 rounded object-contain bg-white">
+              </div>
               <h1 class="text-lg font-semibold leading-snug">
                 {{ item.name }}
               </h1>

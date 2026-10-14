@@ -60,11 +60,14 @@ export function createCompanySync(call: B24Call) {
         const select = ['id', guid, 'originatorId', 'originId']
         const same = (i: Record<string, unknown>) => companyOnecGuid(i, guid) === client.guid.toLowerCase()
         let existing = ((await call('crm.item.list', { entityTypeId: 4, filter: { originatorId: ONEC_ORIGINATOR, originId: client.guid }, select }) as { items: Record<string, unknown>[] }).items).filter(same)
+        // Компанию штатного обмена ведёт сам обмен: название и ответственного не трогаем — иначе
+        // ЛК спорил бы с 1С (а демо-клиент мока переименовал бы настоящую компанию).
+        const fromExchange = existing.length > 0
         if (existing.length === 0) existing = ((await call('crm.item.list', { entityTypeId: 4, filter: { [guid]: client.guid }, select }) as { items: Record<string, unknown>[] }).items).filter(same)
         if (existing.length > 1) console.warn(`[sync:clients] ${existing.length} companies share 1C GUID ${client.guid}; updating id ${existing[0]!.id}`)
-        const assignedById = await userIdByEmail(client.managerEmail, managers)
+        const assignedById = fromExchange ? null : await userIdByEmail(client.managerEmail, managers)
         const fields: Record<string, unknown> = {
-          title: client.name,
+          ...(fromExchange ? {} : { title: client.name }),
           [guid]: client.guid,
           ...(assignedById ? { assignedById } : {}),
         }

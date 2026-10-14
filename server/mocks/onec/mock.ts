@@ -70,8 +70,8 @@ export const ORDER_TIMELINE: [OrderStatusT, number][] = [
 
 const SHIPPED_AFTER_SEC = ORDER_TIMELINE.find(([status]) => status === 'shipped')![1]
 
-export function createMockState(token: string, seed = 1): MockState {
-  const data = generateSeed(seed)
+export function createMockState(token: string, seed = 1, demoClients: string[] = []): MockState {
+  const data = generateSeed(seed, demoClients, new Date().toISOString())
   const epoch = Date.parse(SEED_EPOCH) + 86_400_000
   return {
     token,

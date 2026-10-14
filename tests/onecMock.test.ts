@@ -127,3 +127,23 @@ describe('заказы и страницы мока', () => {
     expect((res.body as { items: unknown[] }).items).toHaveLength(5)
   })
 })
+
+describe('мок 1С: демо-клиенты и витрина algena.by', () => {
+  it('GUID из ONEC_MOCK_CLIENTS получает договор и адрес, остальной сид не меняется', () => {
+    const guid = '3fbebdf8-bd8b-11f1-b86f-00155d008d05'
+    const base = generateSeed(1)
+    const withDemo = generateSeed(1, [guid])
+    const demo = withDemo.clients.find(c => c.guid === guid)!
+    expect(withDemo.contracts.some(c => c.guid === demo.contractGuid)).toBe(true)
+    expect(demo.deliveryAddresses).toHaveLength(1)
+    expect(withDemo.items.map(i => i.guid)).toEqual(base.items.map(i => i.guid))
+  })
+
+  it('первые товары «Сухих смесей» — с algena.by: имя, цена, картинка', () => {
+    const { items, basePrice } = generateSeed(1)
+    const first = items[0]!
+    expect(first.name).toContain('CemTop')
+    expect(basePrice.get(first.guid)).toBe(18.2)
+    expect(items.filter(i => i.images[0]?.startsWith('https://algena.by/')).length).toBeGreaterThan(10)
+  })
+})

@@ -154,7 +154,9 @@ function reset() {
           <li v-for="it in items" :key="it.guid">
             <NuxtLink :to="`/product/${it.guid}`" class="block h-full">
               <B24Card class="h-full">
-                <div class="flex flex-col gap-1">
+                <div class="flex gap-3">
+                  <img v-if="it.image" :src="it.image" alt="" loading="lazy" class="size-16 shrink-0 rounded object-contain bg-white">
+                  <div class="flex min-w-0 flex-1 flex-col gap-1">
                   <p class="font-medium leading-snug">
                     {{ it.name }}
                   </p>
@@ -164,6 +166,7 @@ function reset() {
                   <div class="flex items-center justify-between gap-2 pt-1">
                     <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }}</span></span>
                     <StockBadge :available="it.available" :unit="it.unit" />
+                  </div>
                   </div>
                 </div>
               </B24Card>

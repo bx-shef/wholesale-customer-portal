@@ -39,7 +39,8 @@ describe('клиенты 1С → компании Б24', () => {
     const [a, b] = generateSeed(1).clients
     crm.companies.set(99, { id: 99, title: 'из 1С', originatorId: 'ONE_C', originId: a!.guid, ufCrm1cGuid: '' })
     expect(await createCompanySync(crm.call).upsert([a!, b!])).toEqual({ created: 1, updated: 1, skippedDeleted: 0 })
-    expect(crm.companies.get(99)).toMatchObject({ title: a!.name, ufCrm1cGuid: a!.guid })
+    // Название ведёт штатный обмен: ЛК его не переписывает (демо-клиент мока не переименует настоящую компанию).
+    expect(crm.companies.get(99)).toMatchObject({ title: 'из 1С', ufCrm1cGuid: a!.guid })
     expect([...crm.companies.values()].find(c => c.id !== 99)).toMatchObject({ originatorId: 'ONE_C', originId: b!.guid })
   })
 

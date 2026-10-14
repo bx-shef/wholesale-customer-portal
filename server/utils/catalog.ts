@@ -19,6 +19,8 @@ export interface CatalogItem {
   minQty: number
   /** Сумма остатков по складам. */
   available: number
+  /** Первая картинка — для списка; все картинки — в карточке. */
+  image: string | null
 }
 
 export interface CatalogItemDetails extends CatalogItem {
@@ -76,7 +78,7 @@ export function createCatalogStore(db: DatabaseSync) {
 
   const AVAILABLE = '(SELECT COALESCE(SUM(available), 0) FROM stock s WHERE s.item_guid = i.guid)'
   const COLUMNS = `i.guid, i.sku, i.name, i.section_guid AS sectionGuid, i.brand, i.unit,
-    i.pack_qty AS packQty, i.min_qty AS minQty, ${AVAILABLE} AS available`
+    i.pack_qty AS packQty, i.min_qty AS minQty, ${AVAILABLE} AS available, json_extract(i.images, '$[0]') AS image`
 
   /** Раздел включает подразделы: клиент выбирает «Крепёж», а товары лежат в «Крепёж / Болты». */
   function sectionWithChildren(guid: string): string[] {

@@ -20,7 +20,7 @@ const processToken = randomUUID()
 /** Состояние мока одно на процесс: маршрут `/mock-1c/*` и клиент ЛК видят одни и те же данные. */
 export function getMockState(): MockState {
   const token = readServerEnv().onecToken || processToken
-  if (!mockState || mockState.token !== token) mockState = createMockState(token)
+  if (!mockState || mockState.token !== token) mockState = createMockState(token, 1, readServerEnv().onecMockClients)
   return mockState
 }
 
