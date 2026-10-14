@@ -40,9 +40,9 @@ describe('установка приложения: проверка продле
     const f = oauth(GOOD)
     const r = await acceptInstall(P, { allowedHosts: [P.domain], creds: CREDS, fetch: f, now: 1_000 })
     expect(r).toEqual({ ok: true, auth: { domain: P.domain, memberId: 'm1', accessToken: 'a1', refreshToken: 'r1', expiresAt: 1_000 + 3_600_000, serverEndpoint: 'https://oauth.bitrix.info/rest/' } })
-    const url = new URL(f.mock.calls[0]![0])
-    expect(url.origin + url.pathname).toBe('https://oauth.bitrix.info/oauth/token/')
-    expect(Object.fromEntries(url.searchParams)).toEqual({ grant_type: 'refresh_token', client_id: 'local.abc', client_secret: 's3cret', refresh_token: 'r0' })
+    const [url, body] = f.mock.calls[0]!
+    expect(url).toBe('https://oauth.bitrix.info/oauth/token/')
+    expect(Object.fromEntries(body)).toEqual({ grant_type: 'refresh_token', client_id: 'local.abc', client_secret: 's3cret', refresh_token: 'r0' })
   })
 
   it('токен чужого портала или отказ сервера авторизации — отказ', async () => {

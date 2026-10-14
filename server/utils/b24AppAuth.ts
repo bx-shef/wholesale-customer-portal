@@ -57,7 +57,8 @@ export function parseInstallPayload(body: Record<string, unknown> | null, query:
   return { domain, memberId, refreshToken, serverEndpoint }
 }
 
-export type TokenFetch = (url: string) => Promise<{ ok: boolean, json: () => Promise<unknown> }>
+/** POST формой: ключ приложения и refresh-токен — в теле, а не в адресе (адреса пишутся в логи). */
+export type TokenFetch = (url: string, body: URLSearchParams) => Promise<{ ok: boolean, json: () => Promise<unknown> }>
 
 interface TokenResponse {
   access_token?: string
@@ -73,7 +74,7 @@ interface TokenResponse {
 export async function refreshAppToken(creds: AppCreds, serverEndpoint: string, refreshToken: string, fetchFn: TokenFetch, now = Date.now()): Promise<Omit<AppAuth, 'domain'> & { clientHost: string | null }> {
   const base = serverEndpoint.replace(/\/rest\/$/, '')
   const q = new URLSearchParams({ grant_type: 'refresh_token', client_id: creds.clientId, client_secret: creds.clientSecret, refresh_token: refreshToken })
-  const res = await fetchFn(`${base}/oauth/token/?${q}`)
+  const res = await fetchFn(`${base}/oauth/token/`, q)
   const data = await res.json().catch(() => null) as TokenResponse | null
   if (!res.ok || !data?.access_token || !data.refresh_token || data.error) throw new Error(`oauth refresh failed: ${data?.error ?? 'bad response'}`)
   let clientHost: string | null

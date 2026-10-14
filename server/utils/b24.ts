@@ -49,7 +49,12 @@ export function useB24Call(): B24Call {
   if (client?.key !== key) {
     const b24 = new B24OAuth(oauthParams(auth), creds)
     b24.setCallbackRefreshAuth(async ({ b24OAuthParams: p }) => {
-      saveAppAuth(useDb(), { ...auth, accessToken: p.accessToken, refreshToken: p.refreshToken, expiresAt: p.expires * 1000 })
+      // Пишем, только если в базе всё ещё та пара, из которой строился клиент: иначе приложение
+      // переустановили, и запоздалое продление старого клиента затёрло бы новую установку.
+      const db = useDb()
+      const current = loadAppAuth(db)
+      if (!current || current.refreshToken !== auth.refreshToken || current.memberId !== auth.memberId) return
+      saveAppAuth(db, { ...current, accessToken: p.accessToken, refreshToken: p.refreshToken, expiresAt: p.expires * 1000 })
     })
     client = { key, b24 }
   }
