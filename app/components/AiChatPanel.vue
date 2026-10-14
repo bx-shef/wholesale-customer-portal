@@ -85,11 +85,12 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
 
 <template>
   <aside
-    v-if="open"
-    class="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) shadow-xl md:w-[440px]"
+    class="ai-panel fixed inset-y-0 right-0 z-[110] flex w-full flex-col border-l border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) md:w-(--ai-chat-width)"
+    :class="{ 'is-open': open }"
+    :aria-hidden="!open"
     aria-label="ИИ-помощник"
   >
-    <div class="flex h-14 shrink-0 items-center gap-1 border-b border-(--ui-color-divider-default) px-4">
+    <div class="flex h-(--b24ui-header-height) shrink-0 items-center gap-1 border-b border-(--ui-color-divider-default) px-4">
       <span class="flex-1 font-semibold">ИИ-помощник</span>
       <B24Button v-if="messages.length" color="air-tertiary" size="sm" label="Очистить" @click="clear" />
       <B24Button color="air-tertiary" size="sm" label="Закрыть" @click="open = false" />
@@ -110,6 +111,7 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
         :status="chat.status"
         :user="{ side: 'right', variant: 'message' }"
         :assistant="{ side: 'left', variant: 'message' }"
+        class="ai-list"
       >
         <template #content="{ message }">
           <template v-for="(part, i) in message.parts" :key="`${message.id}-${i}`">
@@ -162,6 +164,20 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
 </template>
 
 <style scoped>
+/* Выезд справа, как в skills-site: закрытая панель уезжает за край и не ловит фокус. */
+.ai-panel { transform: translateX(100%); visibility: hidden; transition: transform .25s ease, visibility .25s ease; }
+.ai-panel.is-open { transform: none; visibility: visible; }
+/* Вопрос — серым пузырём справа, ответ — без пузыря, во всю ширину панели. */
+.ai-list :deep(article), .ai-list :deep([data-slot="container"]), .ai-list :deep([data-slot="body"]) { min-width: 0; max-width: 100%; }
+.ai-list :deep([data-role="user"] [data-slot="container"]) { max-width: 85%; margin-left: auto; }
+.ai-list :deep([data-role="user"] [data-slot="content"]) {
+  padding: 8px 12px; border-radius: 12px;
+  background: var(--ui-color-bg-content-secondary); color: var(--ui-color-design-plain-content);
+}
+.ai-list :deep([data-role="assistant"] [data-slot="content"]) {
+  padding: 0; background: transparent; color: inherit;
+  display: flex; flex-direction: column; gap: 10px;
+}
 .ai-md :deep(p) { margin: 0 0 .6em; }
 .ai-md :deep(p:last-child) { margin-bottom: 0; }
 .ai-md :deep(ul), .ai-md :deep(ol) { margin: 0 0 .6em; padding-left: 1.2em; list-style: revert; }
