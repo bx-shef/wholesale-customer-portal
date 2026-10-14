@@ -5,12 +5,16 @@ import { ru } from '@bitrix24/b24ui-nuxt/locale'
 // Тема b24ui включается только вызовом композабла: он ставит класс light/dark на <html>
 // (как в bx-shef/skills-site, где его зовёт шапка). Без вызова тёмная тема не включалась.
 useColorMode()
+const { open: aiOpen } = useAiChat()
 </script>
 
 <template>
   <B24App :locale="ru">
     <NuxtLoadingIndicator color="#0075ff" />
-    <NuxtPage />
+    <!-- Открытый чат на компьютере сдвигает страницу влево, а не закрывает её (как в skills-site). -->
+    <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
+      <NuxtPage />
+    </div>
     <ClientOnly>
       <AiChatPanel />
     </ClientOnly>
