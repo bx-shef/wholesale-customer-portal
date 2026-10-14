@@ -2,7 +2,7 @@
 export default defineTask({
   meta: { name: 'sync:orders', description: 'Заявки ЛК ↔ CRM ↔ 1С' },
   async run() {
-    if (!readServerEnv().b24WebhookUrl) return { result: 'skipped: B24_WEBHOOK_URL is not set' }
+    if (!b24Configured()) return { result: 'skipped: Bitrix24 app is not installed' }
     return { result: await runOrderSync() }
   },
 })

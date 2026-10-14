@@ -35,7 +35,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/api/auth/{login,logout,me}`, `server/api/profile.get.ts` | вход, выход, кто вошёл, профиль |
 | `server/utils/clientIp.ts` | адрес клиента для лимита: правый в `X-Forwarded-For` |
 | `server/tasks/maintenance/prune.ts` | очистка журналов старше 90 дней |
-| `server/utils/b24.ts` | B24Hook по `B24_WEBHOOK_URL` (только https) |
+| `server/utils/b24.ts`, `b24AppAuth.ts` | Битрикс24 токеном локального приложения (вебхука нет): приём установки (проверка продлением токена), хранение в SQLite, продление |
 | `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
 | `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
@@ -62,7 +62,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/utils/bearer.ts` | разбор и сверка Bearer за постоянное время |
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |
 | `shared/b24Setup.ts` | что ЛК нужно в CRM и чего не хватает — чистый планировщик |
-| `scripts/b24-setup.ts` | запуск планировщика через `B24Hook` (вебхук) |
+| `shared/b24SetupRun.ts` | прогон настройки CRM: при установке приложения, `b24_setup` в `/mcp/admin` (`make b24-setup`), `scripts/b24-setup.ts` — вебхуком на тестовом стенде |
 | `tests/` | vitest; `repoGuards` — гарды репозитория (штампы, CI, выкат, реестр REST) |
 | `Dockerfile`, `docker-compose*.yml`, `Makefile` | выкат — `docs/DEPLOY.md` |
 

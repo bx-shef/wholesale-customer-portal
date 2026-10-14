@@ -51,7 +51,7 @@ health:
 
 ## Что ЛК не хватает в CRM (только показать); записать — APPLY=1 make b24-setup
 b24-setup:
-	docker exec $(CONTAINER) node .output/b24-setup.mjs $$( [ -n "$${APPLY:-}" ] && echo --apply )
+	docker exec $(CONTAINER) node -e 'const apply=process.argv[1]==="1";fetch("http://127.0.0.1:3000/mcp/admin",{method:"POST",headers:{authorization:"Bearer "+process.env.MCP_ADMIN_TOKEN,"content-type":"application/json",accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"b24_setup",arguments:{apply}}})}).then(r=>r.text()).then(t=>{const line=t.split("\n").find(l=>l.startsWith("data: "));const j=JSON.parse(line?line.slice(6):t);const r=j.result;const txt=r&&r.content&&r.content[0]?r.content[0].text:JSON.stringify(j.error||j);if(!r||r.isError){console.log(txt);process.exit(1)}const o=JSON.parse(txt);o.lines.forEach(l=>console.log(l));o.pending.forEach(p=>console.log("pending: "+p));console.log(o.done?"Portal is already set up":apply?"Not finished - run again":"Dry run. Write: APPLY=1 make b24-setup")},e=>{console.log(e.message);process.exit(1)})' "$${APPLY:-0}"
 
 ## Что не так: сеть, прокси, Watchtower, .env, контейнер
 doctor:
@@ -64,7 +64,7 @@ doctor:
 		docker ps --format '{{.Names}}' | grep -qi watchtower && echo "[ok] watchtower" || echo "[..] watchtower не найден — обновлять через make prod-redeploy"; \
 	fi
 	@test -f .env && echo "[ok] .env" || echo "[!!] нет .env — шаблон .env.example"
-	@for v in DOMAIN B24_WEBHOOK_URL SESSION_SECRET MCP_ADMIN_TOKEN; do grep -qE "^$$v=.+" .env 2>/dev/null && echo "[ok] $$v задан" || echo "[!!] $$v пуст"; done
+	@for v in DOMAIN B24_PORTAL_HOST B24_CLIENT_ID B24_CLIENT_SECRET SESSION_SECRET MCP_ADMIN_TOKEN; do grep -qE "^$$v=.+" .env 2>/dev/null && echo "[ok] $$v задан" || echo "[!!] $$v пуст"; done
 	@grep -qE '^ONEC_MOCK=false' .env 2>/dev/null && echo "[ok] 1С: реальная база" || echo "[..] 1С: мок (ONEC_MOCK не false)"
 	@$(COMPOSE) ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true
 

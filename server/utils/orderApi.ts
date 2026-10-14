@@ -2,6 +2,7 @@
 import type { H3Event } from 'h3'
 import type { TripSchedule } from '../../shared/delivery'
 import { createB24Orders, type B24Orders } from '../services/b24Orders'
+import { loadAppAuth } from './b24AppAuth'
 import { createClientStore, type ClientStore } from './clients'
 import { createOrderStore, type OrderStore } from './orders'
 import { createRateLimiter } from './rateLimit'
@@ -19,7 +20,8 @@ export function useClientStore(): ClientStore {
   return clients
 }
 export function useB24Orders(): B24Orders {
-  const url = readServerEnv().b24WebhookUrl
+  // Кэш стадий и полей — на портал: переустановка на другой портал начинает с чистого листа.
+  const url = loadAppAuth(useDb())?.memberId ?? ''
   if (b24?.url !== url) b24 = { url, api: createB24Orders((m, p) => useB24Call()(m, p)) }
   return b24.api
 }

@@ -128,10 +128,10 @@ describe('вкладка компании: чистые правила', () => {
     for (const bad of ['https://b24.algena.by', 'b24.algena.by/x', 'a@b24.algena.by', '']) expect(normalizeHost(bad)).toBeNull()
   })
 
-  it('доверенные хосты: явный список, иначе хост вебхука', () => {
-    expect(allowedHosts('a.by, B.by', 'https://c.by/rest/1/x/')).toEqual(['a.by', 'b.by'])
-    expect(allowedHosts('', 'https://c.by/rest/1/x/')).toEqual(['c.by'])
-    expect(allowedHosts('', '')).toEqual([])
+  it('доверенные хосты: явный список, иначе портал установки', () => {
+    expect(allowedHosts('a.by, B.by', 'c.by')).toEqual(['a.by', 'b.by'])
+    expect(allowedHosts('', 'c.by')).toEqual(['c.by'])
+    expect(allowedHosts('', null)).toEqual([])
   })
 
   it('состояние доступа', () => {

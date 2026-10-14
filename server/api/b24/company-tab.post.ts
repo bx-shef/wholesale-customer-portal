@@ -3,6 +3,7 @@
 import { listCompanyContacts } from '../../services/b24Access'
 import { allowedHosts, normalizeHost, runTabAction, tabRequestSchema } from '../../utils/managerTab'
 import { portalUserCall } from '../../utils/portalUserCall'
+import { loadAppAuth } from '../../utils/b24AppAuth'
 
 const limiter = createRateLimiter(60, 60_000)
 
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const parsed = tabRequestSchema.safeParse(await readBody(event).catch(() => null))
   if (!parsed.success) throw createError({ statusCode: 400, message: 'Неверный запрос' })
   const env = readServerEnv()
-  const hosts = allowedHosts(env.b24PortalHosts, env.b24WebhookUrl)
+  const hosts = allowedHosts(env.b24PortalHosts, loadAppAuth(useDb())?.domain)
   // Чужой хост отсекаем до лимита и до похода в портал: иначе вариации домена плодили бы ключи
   // лимитера. Лимит — по адресу клиента: токен ещё не проверен, доверять companyId нельзя.
   if (!hosts.includes(normalizeHost(parsed.data.domain) ?? '')) throw createError({ statusCode: 403, message: 'Портал не подключён к ЛК' })

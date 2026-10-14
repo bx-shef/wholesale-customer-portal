@@ -129,9 +129,11 @@ jobs:
           check 200 localhost:3000/b24/company-tab
           check 404 -X POST localhost:3000/b24/anything
           check 400 -X POST -H 'content-type: application/json' -d '{}' localhost:3000/api/b24/company-tab
-          # `make b24-setup` на ВМ: скрипт есть в образе и без вебхука отказывает кодом 2, ничего не трогая.
-          rc=0; docker exec app node .output/b24-setup.mjs || rc=$?
-          [ "$rc" = 2 ] || { echo "b24-setup.mjs: код $rc, ждали 2"; exit 1; }
+          # `make b24-setup` зовёт b24_setup в /mcp/admin; без установленного приложения — отказ, а не зависание.
+          curl -s -X POST localhost:3000/mcp/admin -H 'authorization: Bearer ci' -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q '"b24_setup"' || { echo "нет инструмента b24_setup"; exit 1; }
+          # Установка без токенов коробки не принимается и не падает.
+          check 303 -X POST localhost:3000/b24/install
 
       - name: Container log
         if: always()
