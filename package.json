@@ -22,11 +22,14 @@
     "onec:openapi": "tsx scripts/onec-openapi.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.82",
+    "@ai-sdk/vue": "^4.0.140",
     "@bitrix24/b24icons-vue": "^2.0.8",
     "@bitrix24/b24jssdk": "^3.0.0",
     "@bitrix24/b24ui-nuxt": "^2.14.0",
     "@nuxt/content": "^3.16.1",
     "@nuxtjs/mcp-toolkit": "^0.24.1",
+    "ai": "^7.0.140",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3",
     "zod": "^4.1.13"

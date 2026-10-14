@@ -1,5 +1,8 @@
-// ИИ-помощник: DeepSeek + поиск по каталогу с ценами договора клиента. Только с сессией.
-import { AI_DAILY_LIMIT, chatRequestSchema, deepseekLlm, runChat } from '../../utils/aiChat'
+// ИИ-помощник: DeepSeek через AI SDK, стрим в B24ChatMessages; инструменты — каталог с ценами
+// договора клиента. Только с сессией. Правила безопасности — server/utils/aiChat.ts.
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai'
+import { AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
 import { createRateLimiter } from '../../utils/rateLimit'
 
 const daily = createRateLimiter(AI_DAILY_LIMIT, 24 * 60 * 60_000)
@@ -8,23 +11,36 @@ export default defineEventHandler(async (event) => {
   const ctx = await catalogContext(event)
   const env = readServerEnv()
   if (!env.deepseekApiKey) throw createError({ statusCode: 503, message: 'Помощник не настроен на сервере' })
-  const parsed = chatRequestSchema.safeParse(await readBody(event))
-  if (!parsed.success) throw createError({ statusCode: 400, message: 'Слишком длинный вопрос или переписка' })
-  if (!daily.take(String(ctx.session.contactId))) throw createError({ statusCode: 429, message: `Лимит — ${AI_DAILY_LIMIT} вопросов в сутки. Продолжим завтра.` })
-  try {
-    return await runChat(parsed.data, deepseekLlm(env.deepseekApiKey, env.deepseekModel), {
-      search: async (q, inStock) => (await catalogPage(ctx.store, { q, inStock, limit: 8 }, ctx.pricing, ctx.prices)).items,
-      details: async (guid) => {
-        const d = await catalogItem(ctx.store, guid, ctx.pricing, ctx.prices)
-        if (!d) return null
-        const { analogs, ...item } = d.item
-        return { item, analogs: analogs.slice(0, 5) }
-      },
-    })
-  }
-  catch (e) {
-    daily.release(String(ctx.session.contactId))
-    console.error(`[ai] ${(e as Error).message}`)
-    throw createError({ statusCode: 503, message: 'Помощник сейчас не отвечает. Попробуйте через минуту.' })
-  }
+  const history = sanitizeHistory((await readBody(event))?.messages)
+  if (!history) throw createError({ statusCode: 400, message: 'Слишком длинный вопрос' })
+  const contact = String(ctx.session.contactId)
+  if (!daily.take(contact)) throw createError({ statusCode: 429, message: `Лимит — ${AI_DAILY_LIMIT} вопросов в сутки. Продолжим завтра.` })
+
+  const h = chatToolHandlers({
+    search: async (q, inStock) => (await catalogPage(ctx.store, { q, inStock, limit: AI_SEARCH_LIMIT }, ctx.pricing, ctx.prices)).items,
+    details: async (guid) => {
+      const d = await catalogItem(ctx.store, guid, ctx.pricing, ctx.prices)
+      if (!d) return null
+      const { analogs, ...item } = d.item
+      return { item, analogs: analogs.slice(0, 5) }
+    },
+  })
+  const deepseek = createOpenAICompatible({ name: 'deepseek', baseURL: 'https://api.deepseek.com/v1', apiKey: env.deepseekApiKey })
+  const result = streamText({
+    model: deepseek(env.deepseekModel),
+    system: SYSTEM_PROMPT,
+    messages: await convertToModelMessages(history),
+    temperature: 0.3,
+    stopWhen: stepCountIs(AI_STEPS_MAX),
+    tools: {
+      search_products: tool({ description: 'Поиск товаров каталога: название, артикул, бренд. Возвращает цену и остаток клиента.', inputSchema: searchInput, execute: h.search }),
+      get_product: tool({ description: 'Карточка товара по guid: описание, цена, остаток, аналоги.', inputSchema: productInput, execute: h.product }),
+      show_products: tool({ description: 'Показать клиенту товары карточками с кнопкой «В корзину». Только guid из ответов инструментов.', inputSchema: showInput, execute: h.show }),
+    },
+    onError: ({ error }) => console.error(`[ai] ${(error as Error)?.message ?? 'stream error'}`),
+  })
+  return result.toUIMessageStreamResponse({
+    // Наружу — без подробностей: в тексте ошибки провайдера бывают адреса и параметры запроса.
+    onError: () => 'Помощник сейчас не отвечает. Попробуйте через минуту.',
+  })
 })

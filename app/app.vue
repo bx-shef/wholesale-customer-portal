@@ -11,5 +11,8 @@ useColorMode()
   <B24App :locale="ru">
     <NuxtLoadingIndicator color="#0075ff" />
     <NuxtPage />
+    <ClientOnly>
+      <AiChatPanel />
+    </ClientOnly>
   </B24App>
 </template>
