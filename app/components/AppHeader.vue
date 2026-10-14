@@ -11,6 +11,12 @@ watch(me, (v) => {
   if (v) cart.load(v.company.id)
 })
 
+// Длинное название товара не должно наезжать на меню шапки.
+const shortTitle = computed(() => {
+  const t = props.title || me.value?.company.title || 'Личный кабинет'
+  return t.length > 40 ? `${t.slice(0, 38)}…` : t
+})
+
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
   cart.forget()
@@ -19,7 +25,7 @@ async function logout() {
 </script>
 
 <template>
-  <B24Header :title="props.title || me?.company.title || 'Личный кабинет'" :to="props.back">
+  <B24Header :title="shortTitle" :to="props.back">
     <template #right>
       <div v-if="me" class="hidden md:flex gap-2">
         <B24Button to="/" color="air-tertiary" label="Каталог" />

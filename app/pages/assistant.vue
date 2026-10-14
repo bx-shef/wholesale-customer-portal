@@ -67,7 +67,7 @@ async function send(q = text.value) {
               <li v-for="it in m.items" :key="it.guid">
                 <B24Card class="h-full">
                   <div class="flex gap-3">
-                    <img v-if="it.image" :src="it.image" alt="" loading="lazy" class="size-14 shrink-0 rounded object-contain bg-white">
+                    <img v-if="it.image" :src="it.image" alt="" onerror="this.remove()" loading="lazy" class="size-14 shrink-0 rounded object-contain bg-white">
                     <div class="flex min-w-0 flex-1 flex-col gap-1">
                       <NuxtLink :to="`/product/${it.guid}`" class="text-sm font-medium leading-snug">
                         {{ it.name }}
