@@ -1,7 +1,8 @@
 /**
  * Компании из 1С → компании CRM коробки (docs/spec.md §1, поток `onec_companies` →
- * `b24_upsert_company`). Компанию заводят в 1С; ЛК создаёт или обновляет её в Б24 по
- * `UF_CRM_1C_GUID` — идемпотентно: повторная синхронизация того же клиента ничего не плодит.
+ * `b24_upsert_company`). Компанию заводят в 1С; ЛК находит её в Б24 по связи штатного обмена
+ * (`ORIGINATOR_ID = ONE_C`, `ORIGIN_ID = GUID`, shared/onecLink.ts) или по `UF_CRM_1C_GUID` и
+ * обновляет, иначе создаёт — идемпотентно: повторная синхронизация ничего не плодит.
  *
  * Ответственный — сотрудник портала с email менеджера из 1С; не нашли — поле не трогаем
  * (прежнего ответственного не снимаем: пустой email в 1С не повод оставить клиента без менеджера).
@@ -10,6 +11,7 @@
  */
 import type { ClientT } from '../../shared/onec/schemas'
 import { COMPANY_GUID_FIELD } from '../../shared/b24Setup'
+import { companyOnecGuid, ONEC_ORIGINATOR } from '../../shared/onecLink'
 import { resolveFieldKey, type B24Call } from './b24Access'
 
 export interface UpsertSummary {
@@ -53,8 +55,12 @@ export function createCompanySync(call: B24Call) {
           summary.skippedDeleted++
           continue
         }
-        const { items } = await call('crm.item.list', { entityTypeId: 4, filter: { [guid]: client.guid }, select: ['id', guid] }) as { items: Record<string, unknown>[] }
-        const existing = items.filter(i => String(i[guid] ?? '').toLowerCase() === client.guid.toLowerCase())
+        // Сначала — компания штатного обмена 1С (ORIGIN_ID), потом — заведённая ЛК (наше поле):
+        // иначе ЛК завёл бы дубль каждой компании, которую 1С уже передала в CRM.
+        const select = ['id', guid, 'originatorId', 'originId']
+        const same = (i: Record<string, unknown>) => companyOnecGuid(i, guid) === client.guid.toLowerCase()
+        let existing = ((await call('crm.item.list', { entityTypeId: 4, filter: { originatorId: ONEC_ORIGINATOR, originId: client.guid }, select }) as { items: Record<string, unknown>[] }).items).filter(same)
+        if (existing.length === 0) existing = ((await call('crm.item.list', { entityTypeId: 4, filter: { [guid]: client.guid }, select }) as { items: Record<string, unknown>[] }).items).filter(same)
         if (existing.length > 1) console.warn(`[sync:clients] ${existing.length} companies share 1C GUID ${client.guid}; updating id ${existing[0]!.id}`)
         const assignedById = await userIdByEmail(client.managerEmail, managers)
         const fields: Record<string, unknown> = {
@@ -67,7 +73,8 @@ export function createCompanySync(call: B24Call) {
           summary.updated++
         }
         else {
-          await call('crm.item.add', { entityTypeId: 4, fields })
+          // Новую компанию помечаем так же, как штатный обмен 1С: тогда он узнает её, а не заведёт вторую.
+          await call('crm.item.add', { entityTypeId: 4, fields: { ...fields, originatorId: ONEC_ORIGINATOR, originId: client.guid } })
           summary.created++
         }
       }
