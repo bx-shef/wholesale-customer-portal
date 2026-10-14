@@ -5,6 +5,9 @@
  */
 import type { ClientT, ContractT, ItemT, SectionT } from '../../../shared/onec/schemas'
 
+/** Момент «до всех изменений»: changedAt сида лежат после него, changedSince=SEED_EPOCH отдаёт всё. */
+import { ALGENA_DRY_MIXES } from './algena'
+
 /** mulberry32 — маленький детерминированный ГПСЧ; криптостойкость здесь не нужна. */
 export function prng(seed: number): () => number {
   let a = seed >>> 0
@@ -39,7 +42,6 @@ export interface SeedData {
   stock: Map<string, number>
 }
 
-/** Момент «до всех изменений»: changedAt сида лежат после него, changedSince=SEED_EPOCH отдаёт всё. */
 export const SEED_EPOCH = '2026-01-01T00:00:00.000Z'
 const DAY = 86_400_000
 
@@ -53,7 +55,12 @@ export function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-export function generateSeed(seed = 1): SeedData {
+/**
+ * `demoClients` — GUID настоящих компаний CRM (`ONEC_MOCK_CLIENTS`): мок заводит им клиента с
+ * демо-договором и адресом, иначе на стенде у реальной компании нет ни цен, ни корзины.
+ * `demoChangedAt` — их changedAt.
+ */
+export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt = SEED_EPOCH): SeedData {
   const rand = prng(seed)
   const pick = <T>(list: T[]) => list[Math.floor(rand() * list.length)]!
   const at = (days: number) => new Date(Date.parse(SEED_EPOCH) + days * DAY).toISOString()
@@ -97,6 +104,23 @@ export function generateSeed(seed = 1): SeedData {
     })
   }
 
+  // После основного сида: случайные GUID остальных записей от демо-клиентов не зависят.
+  for (const [i, guid] of demoClients.entries()) {
+    clients.push({
+      guid,
+      name: `Демо-клиент ${i + 1}`,
+      unp: '190000000',
+      address: 'г. Минск, ул. Складская, 1',
+      city: 'Минск',
+      managerEmail: '',
+      contractGuid: contracts[0]!.guid,
+      deliveryAddresses: [{ guid: guidFrom(prng(i + 1000)), city: 'Минск', address: 'г. Минск, ул. Строителей, 1' }],
+      // Время запуска процесса: синхронизация по курсору иначе не заметила бы GUID, добавленный позже.
+      changedAt: demoChangedAt,
+      deleted: false,
+    })
+  }
+
   const sections: SectionT[] = []
   for (const [i, name] of SECTION_NAMES.entries()) {
     // Первые четыре — корневые, остальные — подразделы: дерево проверяет parentGuid.
@@ -109,10 +133,12 @@ export function generateSeed(seed = 1): SeedData {
     const section = sections[i % sections.length]!
     const brand = pick(BRANDS)
     const packQty = pick([1, 1, 5, 10, 25])
+    // Первые товары раздела «Сухие смеси» — настоящие с algena.by: имя, цена, картинка.
+    const demo = i % sections.length === 0 ? ALGENA_DRY_MIXES[i / sections.length] : undefined
     const item: ItemT = {
       guid: guidFrom(rand),
       sku: `A-${String(10000 + i)}`,
-      name: `${section.name}: ${brand} модель ${100 + i}`,
+      name: demo?.name ?? `${section.name}: ${brand} модель ${100 + i}`,
       sectionGuid: section.guid,
       brand,
       unit: pick(UNITS),
@@ -120,13 +146,15 @@ export function generateSeed(seed = 1): SeedData {
       minQty: packQty,
       description: `Товар раздела «${section.name}» бренда ${brand}.`,
       properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: `${Math.ceil(rand() * 30)} кг` },
-      images: [],
+      images: demo?.image ? [demo.image] : [],
       analogs: [],
-      changedAt: at(10 + (i % 60)),
+      // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.
+      changedAt: demo ? at(286) : at(10 + (i % 60)),
       deleted: false,
     }
     items.push(item)
-    basePrice.set(item.guid, round2(2 + rand() * 300))
+    const random = round2(2 + rand() * 300)
+    basePrice.set(item.guid, demo ? demo.price : random)
   }
   // Аналоги — товары того же раздела другого бренда: связь двусторонняя, как в справочнике 1С.
   for (const item of items) {

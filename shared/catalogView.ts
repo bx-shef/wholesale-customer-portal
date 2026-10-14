@@ -13,6 +13,7 @@ export interface CatalogItemView {
   packQty: number
   minQty: number
   available: number
+  image: string | null
   price: ItemPriceView | null
 }
 

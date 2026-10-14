@@ -12,13 +12,15 @@ interface Contact { id: number, name: string, phones: string[], emails: string[]
 const ACCESS_LABEL = {
   none: { label: 'Нет доступа', color: 'air-secondary' },
   active: { label: 'Доступ есть', color: 'air-primary-success' },
-  revoked: { label: 'Отозван', color: 'air-secondary-alert' },
+  // «Отозван» — любой неактивный статус: запись могли выключить и руками в CRM.
+  revoked: { label: 'Неактивен', color: 'air-secondary-alert' },
   expired: { label: 'Истёк', color: 'air-primary-warning' },
 } as const
 
 let b24: B24Frame | null = null
 const companyId = ref<number | null>(null)
 const contacts = ref<Contact[]>([])
+const hasGuid = ref(true)
 const loading = ref(true)
 const busy = ref<number | null>(null)
 const error = ref('')
@@ -42,7 +44,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    contacts.value = (await api<{ contacts: Contact[] }>('list')).contacts
+    const r = await api<{ contacts: Contact[], hasGuid?: boolean }>('list')
+    contacts.value = r.contacts
+    hasGuid.value = r.hasGuid !== false
   }
   catch (e) {
     error.value = message(e)
@@ -133,6 +137,13 @@ onMounted(async () => {
       </div>
     </B24Card>
 
+    <B24Alert
+      v-if="!loading && !hasGuid"
+      color="air-primary-alert"
+      title="У компании нет GUID 1С"
+      description="Доступ выдаётся только компаниям из 1С: по GUID ЛК берёт договор, цены и адреса. Дождитесь, пока компания придёт из 1С, или проверьте её поле «Внешний код» (ORIGIN_ID)."
+    />
+
     <B24Card v-if="loading">
       <p class="text-sm">
         Загружаем контакты…
@@ -162,7 +173,7 @@ onMounted(async () => {
           <B24Button
             color="air-primary"
             :loading="busy === c.id"
-            :disabled="busy !== null"
+            :disabled="busy !== null || !hasGuid"
             :label="c.access === 'none' ? 'Выдать доступ' : 'Новый ключ'"
             @click="issue(c)"
           />

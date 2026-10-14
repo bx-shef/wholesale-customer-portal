@@ -45,7 +45,7 @@ export interface TabContact extends ContactInfo {
 }
 
 export type TabResult =
-  | { status: 200, body: { contacts: TabContact[] } | { key: string, expiresAt: string | null } | { revoked: number } }
+  | { status: 200, body: { contacts: TabContact[], hasGuid: boolean } | { key: string, expiresAt: string | null } | { revoked: number } }
   | { status: 400 | 403 | 409, body: { error: string } }
 
 /** Хост из домена фрейма: только имя и порт, без схемы, пути и учётных данных. */
@@ -100,10 +100,13 @@ export async function runTabAction(req: TabRequest, deps: TabDeps, now = new Dat
 
   if (req.action === 'list') {
     const contacts = await deps.listCompanyContacts(req.companyId, asUser)
+    // GUID 1С — сразу при открытии: без него выдать ключ нельзя, и узнавать это по клику поздно.
+    const hasGuid = !!(await deps.dir.getCompany(req.companyId))?.onecGuid
     const records = (await deps.dir.listAccessByContacts(contacts.map(c => c.id))).filter(r => r.companyId === req.companyId)
     return {
       status: 200,
       body: {
+        hasGuid,
         contacts: contacts.map((c) => {
           // Записей на контакт в компании может быть несколько после ручных правок: берём действующую.
           const own = records.filter(r => r.contactId === c.id)
