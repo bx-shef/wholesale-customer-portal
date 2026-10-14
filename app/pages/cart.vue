@@ -173,23 +173,22 @@ async function submit() {
             </div>
           </B24Card>
         </template>
+        <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-11 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:border-0 md:bg-transparent md:p-0">
+          <B24Alert v-if="sendError" color="air-primary-alert" :title="sendError" class="mb-2" />
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                Итого с НДС
+              </p>
+              <p class="text-lg font-semibold">
+                {{ quote?.currency ? formatMoney(quote.total, quote.currency) : '—' }}
+              </p>
+            </div>
+            <B24Button color="air-primary" label="Отправить заявку" class="min-h-11" :loading="sending" :disabled="!quote?.ok || !addressGuid" @click="submit" />
+          </div>
+        </div>
       </B24Container>
     </B24Main>
-
-    <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-11 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:mx-auto md:max-w-2xl md:border-0 md:bg-transparent">
-      <B24Alert v-if="sendError" color="air-primary-alert" :title="sendError" class="mb-2" />
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
-            Итого с НДС
-          </p>
-          <p class="text-lg font-semibold">
-            {{ quote?.currency ? formatMoney(quote.total, quote.currency) : '—' }}
-          </p>
-        </div>
-        <B24Button color="air-primary" label="Отправить заявку" class="min-h-11" :loading="sending" :disabled="!quote?.ok || !addressGuid" @click="submit" />
-      </div>
-    </div>
 
     <BottomNav />
   </div>

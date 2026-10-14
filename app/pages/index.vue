@@ -155,7 +155,7 @@ function reset() {
             <NuxtLink :to="`/product/${it.guid}`" class="block h-full">
               <B24Card class="h-full">
                 <div class="flex gap-3">
-                  <img v-if="it.image" :src="it.image" alt="" loading="lazy" class="size-16 shrink-0 rounded object-contain bg-white">
+                  <img v-if="it.image" :src="it.image" alt="" onerror="this.remove()" loading="lazy" class="size-16 shrink-0 rounded object-contain bg-white">
                   <div class="flex min-w-0 flex-1 flex-col gap-1">
                   <p class="font-medium leading-snug">
                     {{ it.name }}
