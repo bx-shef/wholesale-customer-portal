@@ -28,7 +28,7 @@ async function requestCallback() {
 </script>
 
 <template>
-  <div class="pb-16 md:pb-0">
+  <div>
     <AppHeader title="Профиль" />
     <B24Main>
       <B24Container class="py-6 flex flex-col gap-4 max-w-xl">
@@ -75,6 +75,5 @@ async function requestCallback() {
         </template>
       </B24Container>
     </B24Main>
-    <BottomNav />
   </div>
 </template>

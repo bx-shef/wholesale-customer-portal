@@ -1,10 +1,23 @@
-<!-- Шапка кабинета: название компании, разделы на десктопе, выход. Заодно привязывает корзину к компании. -->
+<!-- Шапка кабинета: название компании, разделы (на телефоне — в меню-бургере), выход. Заодно привязывает корзину к компании. -->
 <script setup lang="ts">
 const props = defineProps<{ title?: string, back?: string }>()
 const headers = useRequestHeaders(['cookie'])
 const { data: me } = await useFetch('/api/auth/me', { headers, key: 'me' })
 const cart = useCart()
 const ai = useAiChat()
+const menuOpen = ref(false)
+const route = useRoute()
+watch(() => route.fullPath, () => { menuOpen.value = false })
+const links = [
+  { to: '/', label: 'Каталог' },
+  { to: '/cart', label: 'Корзина' },
+  { to: '/orders', label: 'Заявки' },
+  { to: '/profile', label: 'Профиль' },
+]
+function openAi() {
+  menuOpen.value = false
+  ai.toggle()
+}
 onMounted(() => {
   if (me.value) cart.load(me.value.company.id)
 })
@@ -26,7 +39,7 @@ async function logout() {
 </script>
 
 <template>
-  <B24Header :title="shortTitle" :to="props.back">
+  <B24Header v-model:open="menuOpen" :title="shortTitle" :to="props.back">
     <template #right>
       <div v-if="me" class="hidden md:flex gap-2">
         <B24Button to="/" color="air-tertiary" label="Каталог" />
@@ -36,6 +49,13 @@ async function logout() {
         <B24Button to="/profile" color="air-tertiary" label="Профиль" />
         <B24Button color="air-tertiary" label="Выйти" @click="logout" />
       </div>
+    </template>
+    <template #body>
+      <nav v-if="me" class="flex flex-col gap-1" aria-label="Разделы">
+        <B24Button v-for="l in links" :key="l.to" :to="l.to" color="air-tertiary" block class="justify-start" :label="l.to === '/cart' && cart.count.value ? `Корзина · ${cart.count.value}` : l.label" />
+        <B24Button color="air-tertiary" block class="justify-start" label="ИИ-помощник" @click="openAi" />
+        <B24Button color="air-tertiary" block class="justify-start" label="Выйти" @click="logout" />
+      </nav>
     </template>
   </B24Header>
 </template>

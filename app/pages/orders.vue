@@ -39,7 +39,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
 </script>
 
 <template>
-  <div class="pb-16 md:pb-0">
+  <div>
     <AppHeader title="Мои заявки" />
     <B24Main>
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
@@ -132,6 +132,5 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
         </B24Card>
       </B24Container>
     </B24Main>
-    <BottomNav />
   </div>
 </template>
