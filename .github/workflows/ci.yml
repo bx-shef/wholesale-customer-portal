@@ -127,6 +127,8 @@ jobs:
           # Вкладка компании: портал шлёт POST — переводим на GET страницы; API без токена — 400.
           check 303 -X POST localhost:3000/b24/company-tab
           check 200 localhost:3000/b24/company-tab
+          check 303 -X POST localhost:3000/b24/app
+          check 200 localhost:3000/b24/app
           check 404 -X POST localhost:3000/b24/anything
           check 400 -X POST -H 'content-type: application/json' -d '{}' localhost:3000/api/b24/company-tab
           # `make b24-setup` зовёт b24_setup в /mcp/admin; без установленного приложения — отказ, а не зависание.
