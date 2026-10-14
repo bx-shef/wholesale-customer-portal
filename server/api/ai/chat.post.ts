@@ -2,7 +2,7 @@
 // договора клиента. Только с сессией. Правила безопасности — server/utils/aiChat.ts.
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai'
-import { topicPrompt, AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
+import { lastQuestion, topicPrompt, AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
 import { createRateLimiter } from '../../utils/rateLimit'
 
 const daily = createRateLimiter(AI_DAILY_LIMIT, 24 * 60 * 60_000)
@@ -26,6 +26,9 @@ export default defineEventHandler(async (event) => {
       return { item, analogs: analogs.slice(0, 5) }
     },
   })
+  const topic = typeof body?.product === 'string' ? body.product.slice(0, 64) : null
+  const journal = useAiJournal()
+  const dialogId = journal.start({ companyId: ctx.session.companyId, contactId: ctx.session.contactId, question: lastQuestion(history), topic })
   const deepseek = createOpenAICompatible({ name: 'deepseek', baseURL: 'https://api.deepseek.com/v1', apiKey: env.deepseekApiKey })
   const result = streamText({
     model: deepseek(env.deepseekModel),
@@ -38,9 +41,15 @@ export default defineEventHandler(async (event) => {
       get_product: tool({ description: 'Карточка товара по guid: описание, цена, остаток, аналоги.', inputSchema: productInput, execute: h.product }),
       show_products: tool({ description: 'Показать клиенту товары карточками с кнопкой «В корзину». Только guid из ответов инструментов.', inputSchema: showInput, execute: h.show }),
     },
-    onError: ({ error }) => console.error(`[ai] ${(error as Error)?.message ?? 'stream error'}`),
+    onFinish: ({ steps }) => journal.finish(dialogId, { answer: steps.map(s => s.text).filter(Boolean).join('\n\n'), products: h.shown(), ok: true }),
+    onError: ({ error }) => {
+      console.error(`[ai] ${(error as Error)?.message ?? 'stream error'}`)
+      journal.finish(dialogId, { answer: '', products: h.shown(), ok: false })
+    },
   })
   return result.toUIMessageStreamResponse({
+    // Номер записи журнала — клиенту: по нему ставится оценка 👍/👎.
+    messageMetadata: ({ part }) => (part.type === 'start' ? { dialogId } : undefined),
     // Наружу — без подробностей: в тексте ошибки провайдера бывают адреса и параметры запроса.
     onError: () => 'Помощник сейчас не отвечает. Попробуйте через минуту.',
   })

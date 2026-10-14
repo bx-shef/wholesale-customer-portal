@@ -51,6 +51,17 @@ const errorText = computed(() => {
   }
 })
 
+// Оценка ответа: номер записи журнала приходит в метаданных ответа, оценка — в журнал на сервере.
+const votes = ref<Record<number, number>>({})
+const dialogOf = (m: UIMessage) => (m.metadata as { dialogId?: number } | undefined)?.dialogId
+async function vote(m: UIMessage, v: 1 | -1) {
+  const id = dialogOf(m)
+  if (!id) return
+  const next = votes.value[id] === v ? 0 : v
+  votes.value = { ...votes.value, [id]: next }
+  await $fetch('/api/ai/rate', { method: 'POST', body: { dialogId: id, rating: next } }).catch(() => { /* оценка в окне уже стоит */ })
+}
+
 const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 
@@ -157,6 +168,13 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
             </ul>
           </template>
         </template>
+        <template #actions="{ message }">
+          <div v-if="message.role === 'assistant' && dialogOf(message) && !(busy && message.id === messages.at(-1)?.id)" class="flex items-center gap-1">
+            <B24Button :color="votes[dialogOf(message)!] === 1 ? 'air-secondary-accent' : 'air-tertiary'" size="xs" label="👍" aria-label="Полезно" :aria-pressed="votes[dialogOf(message)!] === 1" @click="vote(message, 1)" />
+            <B24Button :color="votes[dialogOf(message)!] === -1 ? 'air-secondary-accent' : 'air-tertiary'" size="xs" label="👎" aria-label="Не помогло" :aria-pressed="votes[dialogOf(message)!] === -1" @click="vote(message, -1)" />
+            <span v-if="votes[dialogOf(message)!] === -1" class="text-xs text-(--ui-color-design-plain-na-content-secondary)">Спасибо, разберём этот ответ</span>
+          </div>
+        </template>
       </B24ChatMessages>
 
       <B24Alert v-if="errorText && !busy" color="air-primary-alert" :title="errorText" />
@@ -188,6 +206,7 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
   padding: 8px 12px; border-radius: 12px;
   background: var(--ui-color-bg-content-secondary); color: var(--ui-color-design-plain-content);
 }
+.ai-list :deep([data-role="assistant"] [data-slot="actions"]) { opacity: 1; visibility: visible; }
 .ai-list :deep([data-role="assistant"] [data-slot="content"]) {
   padding: 0; background: transparent; color: inherit;
   display: flex; flex-direction: column; gap: 10px;
