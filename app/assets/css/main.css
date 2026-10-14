@@ -3,8 +3,7 @@
 @import "@bitrix24/b24ui-nuxt";
 
 /* Панель ИИ-помощника справа (app/components/AiChatPanel.vue): ширина и место под неё. */
-:root { --ai-chat-width: 440px; }
 .ai-shell { transition: padding-right .25s ease; }
 @media (min-width: 768px) {
-  .ai-shell--chat { padding-right: var(--ai-chat-width); }
+  .ai-shell--chat { padding-right: 440px; /* = ширина .ai-panel в AiChatPanel.vue */ }
 }
