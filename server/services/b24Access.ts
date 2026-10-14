@@ -195,3 +195,24 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
     },
   }
 }
+
+const MAX_COMPANY_CONTACTS = 50
+
+/**
+ * Контакты компании для вкладки менеджера: привязки (`crm.company.contact.items.get`), затем
+ * каждый контакт (`crm.contact.get`) — имя, телефоны, почта. Не больше 50: у оптового клиента их
+ * единицы, а вкладка не должна тратить лимит REST на компанию-справочник.
+ */
+export async function listCompanyContacts(call: B24Call, companyId: number) {
+  const links = await call('crm.company.contact.items.get', { id: companyId }) as { CONTACT_ID: number | string }[]
+  const ids = [...new Set((Array.isArray(links) ? links : []).map(l => Number(l.CONTACT_ID)).filter(id => id > 0))].slice(0, MAX_COMPANY_CONTACTS)
+  const out = []
+  for (const id of ids) {
+    const c = await call('crm.contact.get', { id }) as Record<string, unknown> | null
+    if (!c) continue
+    const values = (v: unknown) => (Array.isArray(v) ? v : []).map(x => String((x as { VALUE?: unknown }).VALUE ?? '').trim()).filter(Boolean)
+    const name = [c.LAST_NAME, c.NAME, c.SECOND_NAME].map(x => String(x ?? '').trim()).filter(Boolean).join(' ')
+    out.push({ id, name: name || `Контакт ${id}`, phones: values(c.PHONE), emails: values(c.EMAIL) })
+  }
+  return out
+}
