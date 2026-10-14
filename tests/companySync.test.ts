@@ -12,8 +12,8 @@ function fakeCrm() {
     switch (method) {
       case 'crm.item.fields': return { fields: { id: {}, title: {}, ufCrm1cGuid: {} } }
       case 'crm.item.list': {
-        const guid = (p.filter as Record<string, string>).ufCrm1cGuid
-        return { items: [...companies.values()].filter(c => c.ufCrm1cGuid === guid) }
+        const f = p.filter as Record<string, string>
+        return { items: [...companies.values()].filter(c => 'originId' in f ? c.originatorId === f.originatorId && c.originId === f.originId : c.ufCrm1cGuid === f.ufCrm1cGuid) }
       }
       case 'crm.item.add': { const id = next++; companies.set(id, { id, ...(p.fields as object) }); return { item: { id } } }
       case 'crm.item.update': { Object.assign(companies.get(Number(p.id))!, p.fields); return { item: {} } }
@@ -32,6 +32,15 @@ describe('клиенты 1С → компании Б24', () => {
     expect(await sync.upsert(clients)).toEqual({ created: 5, updated: 0, skippedDeleted: 0 })
     expect(await sync.upsert(clients)).toEqual({ created: 0, updated: 5, skippedDeleted: 0 })
     expect(crm.companies.size).toBe(5)
+  })
+
+  it('компания штатного обмена 1С (ORIGIN_ID) обновляется, а не дублируется; новую помечаем так же', async () => {
+    const crm = fakeCrm()
+    const [a, b] = generateSeed(1).clients
+    crm.companies.set(99, { id: 99, title: 'из 1С', originatorId: 'ONE_C', originId: a!.guid, ufCrm1cGuid: '' })
+    expect(await createCompanySync(crm.call).upsert([a!, b!])).toEqual({ created: 1, updated: 1, skippedDeleted: 0 })
+    expect(crm.companies.get(99)).toMatchObject({ title: a!.name, ufCrm1cGuid: a!.guid })
+    expect([...crm.companies.values()].find(c => c.id !== 99)).toMatchObject({ originatorId: 'ONE_C', originId: b!.guid })
   })
 
   it('ответственный — по email менеджера, а не первый попавшийся сотрудник', async () => {

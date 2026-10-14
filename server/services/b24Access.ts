@@ -10,6 +10,7 @@
  */
 import type { NormalizedLogin } from '../../shared/access/login'
 import { COMPANY_GUID_FIELD, SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
+import { companyOnecGuid } from '../../shared/onecLink'
 
 export type B24Call = (method: string, params: Record<string, unknown>) => Promise<unknown>
 
@@ -147,8 +148,7 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
       try {
         const { item } = await call('crm.item.get', { entityTypeId: 4, id }) as { item: Record<string, unknown> }
         if (!item) return null
-        const guid = item[m.companyGuid]
-        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: guid ? String(guid) : null, assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
+        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: companyOnecGuid(item, m.companyGuid), assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
       }
       catch (e) {
         if (isNotFound(e)) return null
