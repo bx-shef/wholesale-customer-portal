@@ -1,10 +1,10 @@
 /**
- * Профиль сотрудника клиента (docs/spec.md, «Профиль»): компания из CRM, договор из 1С,
+ * Профиль сотрудника клиента (docs/spec.md, «Профиль»): компания из CRM, договор — из клиентов 1С
+ * в базе ЛК (docs/onec-contract.md §2.1, в 1С на показ не ходим),
  * менеджер — ответственный за компанию. Только данные компании из сессии.
  */
 import type { ContractT } from '../../shared/onec/schemas'
 import type { AccessDirectory, B24Call } from '../services/b24Access'
-import type { OnecClient } from '../services/onec'
 
 export interface Profile {
   company: { id: number, title: string }
@@ -14,19 +14,14 @@ export interface Profile {
 
 export async function loadProfile(
   companyId: number,
-  deps: { directory: AccessDirectory, call: B24Call, onec: () => OnecClient },
+  deps: { directory: AccessDirectory, call: B24Call, contractOf: (clientGuid: string) => ContractT | null },
 ): Promise<Profile> {
   // Компании нет — 404 (удалили или объединили в CRM); сбой CRM пробрасывается и станет 503.
   const company = await deps.directory.getCompany(companyId)
   if (!company) throw Object.assign(new Error('Компания не найдена'), { statusCode: 404 })
 
   // Договор и менеджер — не обязательны для показа профиля: сбой одного не прячет остальное.
-  const contract = company.onecGuid
-    ? await deps.onec().contract(company.onecGuid).catch((e: unknown) => {
-        console.error(`[profile] contract: ${(e as Error).message}`)
-        return null
-      })
-    : null
+  const contract = company.onecGuid ? deps.contractOf(company.onecGuid) : null
 
   let manager: Profile['manager'] = null
   if (company.assignedById) {

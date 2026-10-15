@@ -47,6 +47,7 @@ export default defineNuxtConfig({
     scheduledTasks: {
       '*/10 * * * *': ['sync:companies'],
       '*/5 * * * *': ['sync:stock'],
+      '3-59/15 * * * *': ['sync:prices'],
       '*/2 * * * *': ['sync:orders'],
       '7 * * * *': ['sync:catalog'],
       '17 3 * * *': ['maintenance:prune'],

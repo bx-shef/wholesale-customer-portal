@@ -21,7 +21,7 @@ describe('OnecClient', () => {
   it('4xx не повторяет', async () => {
     let calls = 0
     const client = clientWith(async () => (calls++, json(404, { error: 'not_found', message: '' })))
-    const e = await client.contract('x').catch((err: unknown) => err)
+    const e = await client.image('x').catch((err: unknown) => err)
     expect(e).toMatchObject({ kind: 'http', status: 404, code: 'not_found' })
     expect(calls).toBe(1)
   })
@@ -99,9 +99,9 @@ describe('OnecClient — повторы и запрос', () => {
       return json(404, { error: 'not_found', message: '' })
     })
     await client.clients({ page: 2 }).catch(() => {})
-    await client.contract('a/b?c').catch(() => {})
+    await client.image('a/b?c').catch(() => {})
     expect(urls[0]).toBe('http://1c.local/hs/clients?page=2')
-    expect(urls[1]).toBe('http://1c.local/hs/client/a%2Fb%3Fc/contract')
+    expect(urls[1]).toBe('http://1c.local/hs/image/a%2Fb%3Fc')
   })
 })
 

@@ -15,7 +15,7 @@
  * 4. Сообщение в сделку: где статус в базе опережает сообщённый — комментарий в ленте,
  *    «доставлена»/«отменена» — стадия успеха/провала. Сбой CRM повторяется следующим запуском.
  */
-import type { OrderRequestT, OrderStatusRowT, OrderStatusT } from '../../shared/onec/schemas'
+import type { OrderLineFactT, OrderRequestT, OrderStatusRowT, OrderStatusT } from '../../shared/onec/schemas'
 import { neutralizeBb } from '../../shared/cart'
 import { MINSK_OFFSET_MIN, nextDelivery, type TripSchedule } from '../../shared/delivery'
 import type { DealStage, B24Orders } from '../services/b24Orders'
@@ -26,7 +26,7 @@ export interface OrderSyncDeps {
   orders: OrderStore
   clients: ClientStore
   b24: Pick<B24Orders, 'createDeal' | 'stages' | 'dealStage' | 'moveDeal' | 'comment'>
-  createOnecOrder: (order: OrderRequestT) => Promise<{ orderGuid: string, number: string, status: OrderStatusT }>
+  createOnecOrder: (order: OrderRequestT) => Promise<{ orderGuid: string, number: string, status: OrderStatusT, items: OrderLineFactT[] }>
   schedules: () => Promise<TripSchedule[]>
   now?: () => Date
 }
@@ -46,6 +46,28 @@ const MINSK_SHIFT = MINSK_OFFSET_MIN * 60_000
 export function deliveryDateFor(deliveryFrom: string | null, now: Date): string {
   if (deliveryFrom) return new Date(Date.parse(deliveryFrom) + MINSK_SHIFT).toISOString().slice(0, 10)
   return new Date(now.getTime() + MINSK_SHIFT + 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * Расхождения между заявкой и тем, с чем 1С приняла заказ (§2.6): цена и резерв по строкам.
+ * Нет расхождений — `null`. Текст — для ленты сделки (BB-разметка), поэтому название — через neutralizeBb.
+ */
+export function orderFactsDiff(items: OrderItem[], facts: OrderLineFactT[]): string | null {
+  const byGuid = new Map(facts.map(f => [f.itemGuid.toLowerCase(), f]))
+  const money = (v: number) => v.toFixed(2).replace('.', ',')
+  const lines: string[] = []
+  for (const it of items) {
+    const f = byGuid.get(it.guid.toLowerCase())
+    if (!f) {
+      lines.push(`${neutralizeBb(it.sku || it.name)}: 1С не вернула строку`)
+      continue
+    }
+    const parts: string[] = []
+    if (Math.abs(f.price - it.price) >= 0.005) parts.push(`цена ${money(it.price)} → ${money(f.price)}`)
+    if (f.reserved < it.qty) parts.push(`резерв ${f.reserved} из ${it.qty} ${it.unit}`)
+    if (parts.length) lines.push(`${neutralizeBb(it.sku || it.name)}: ${parts.join('; ')}`)
+  }
+  return lines.length ? `Расхождения при создании заказа в 1С — согласуйте с клиентом:\n${lines.join('\n')}` : null
 }
 
 export interface SyncSummary { resent: number, ordered: number, cancelled: number, reported: number, failed: number }
@@ -110,7 +132,13 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
           comment: row.comment,
           items: items.map(i => ({ itemGuid: i.guid, qty: i.qty, price: i.price })),
         })
-        if (deps.orders.setOnecOrder(row.id, created.orderGuid, created.number, created.status, { from, to: slot?.arrivalTo ?? null }, iso)) summary.ordered++
+        if (deps.orders.setOnecOrder(row.id, created.orderGuid, created.number, created.status, { from, to: slot?.arrivalTo ?? null }, iso)) {
+          summary.ordered++
+          // Сверка цен и остатков — здесь (§2.6): расхождения — менеджеру в сделку. Заказ уже создан,
+          // поэтому сбой комментария его не откатывает.
+          const diff = orderFactsDiff(items, created.items)
+          if (diff) await deps.b24.comment(row.deal_id!, diff).catch(e => console.error(`[orders:sync] diff comment ${row.id}: ${errKind(e)}`))
+        }
       }
       catch (e) {
         // Одна заявка не держит остальные: класс ошибки — в строке, повтор — следующим кругом.

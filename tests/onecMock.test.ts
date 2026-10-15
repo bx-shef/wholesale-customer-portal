@@ -30,18 +30,32 @@ describe('данные мока', () => {
   })
 })
 
+function orderFor(state: ReturnType<typeof createMockState>, i: number, externalId = 'deal-1') {
+  const client = state.data.clients[i]!
+  return {
+    externalId, clientGuid: client.guid, contractGuid: client.contract!.guid,
+    deliveryAddressGuid: client.deliveryAddresses[0]!.guid, deliveryDate: '2026-10-13',
+    items: [{ itemGuid: state.data.items[0]!.guid, qty: 1, price: 1 }],
+  }
+}
+
 describe('поведение мока', () => {
-  it('цена = базовая × коэффициент типа цен договора', () => {
+  it('прайс: каждый вид цен × товар, цена = базовая × коэффициент; заказ — с фактом цены и резерва', () => {
     const state = createMockState('t')
     const { data } = state
-    for (const client of data.clients) {
-      const contract = data.contracts.find(c => c.guid === client.contractGuid)!
-      const coefficient = data.priceTypes.find(p => p.guid === contract.priceTypeGuid)!.coefficient
-      const item = data.items[7]!
-      const res = handleMockRequest(state, req({ method: 'POST', path: '/prices', body: { clientGuid: client.guid, items: [item.guid] } }), T0)
-      const [price] = res.body as { price: number }[]
-      expect(price!.price).toBeCloseTo(Math.round(data.basePrice.get(item.guid)! * coefficient * 100) / 100, 2)
+    const res = handleMockRequest(state, req({ path: '/prices' }), T0)
+    const { items: rows, nextPage } = res.body as { items: { priceTypeGuid: string, itemGuid: string, price: number }[], nextPage: number | null }
+    expect(nextPage).toBe(2)
+    const item = data.items[7]!
+    for (const pt of data.priceTypes) {
+      const all = [...rows, ...(handleMockRequest(state, req({ path: '/prices', query: { page: '2' } }), T0).body as { items: typeof rows }).items, ...(handleMockRequest(state, req({ path: '/prices', query: { page: '3' } }), T0).body as { items: typeof rows }).items]
+      const row = all.find(r => r.priceTypeGuid === pt.guid && r.itemGuid === item.guid)!
+      expect(row.price).toBeCloseTo(Math.round(data.basePrice.get(item.guid)! * pt.coefficient * 100) / 100, 2)
     }
+    const order = orderFor(state, 0)
+    const created = handleMockRequest(state, req({ method: 'POST', path: '/order', body: { ...order, items: [{ ...order.items[0], qty: 100_000 }] } }), T0)
+    const fact = (created.body as { items: { reserved: number, price: number }[] }).items[0]!
+    expect(fact.reserved).toBeLessThan(100_000)
   })
 
   it('остатки меняются между запросами, и changedSince видит именно их', () => {
@@ -58,7 +72,7 @@ describe('поведение мока', () => {
     const state = createMockState('t')
     const client = state.data.clients[0]!
     const body = {
-      externalId: 'deal-1', clientGuid: client.guid, contractGuid: client.contractGuid,
+      externalId: 'deal-1', clientGuid: client.guid, contractGuid: client.contract!.guid,
       deliveryAddressGuid: client.deliveryAddresses[0]!.guid, deliveryDate: '2026-10-13',
       items: [{ itemGuid: state.data.items[0]!.guid, qty: 1, price: 1 }],
     }
@@ -98,14 +112,6 @@ describe('поведение мока', () => {
 })
 
 describe('заказы и страницы мока', () => {
-  const orderFor = (state: ReturnType<typeof createMockState>, i: number, externalId = 'deal-1') => {
-    const client = state.data.clients[i]!
-    return {
-      externalId, clientGuid: client.guid, contractGuid: client.contractGuid,
-      deliveryAddressGuid: client.deliveryAddresses[0]!.guid, deliveryDate: '2026-10-13',
-      items: [{ itemGuid: state.data.items[0]!.guid, qty: 1, price: 1 }],
-    }
-  }
 
   it('чужой externalId — 409, а не чужой заказ', () => {
     const state = createMockState('t')
@@ -116,7 +122,7 @@ describe('заказы и страницы мока', () => {
 
   it('договор или адрес не этого клиента — 400', () => {
     const state = createMockState('t')
-    const body = { ...orderFor(state, 0), contractGuid: state.data.clients[1]!.contractGuid }
+    const body = { ...orderFor(state, 0), contractGuid: state.data.clients[1]!.contract!.guid }
     expect(handleMockRequest(state, req({ method: 'POST', path: '/order', body }), T0).status).toBe(400)
   })
 
@@ -134,7 +140,7 @@ describe('мок 1С: демо-клиенты и витрина algena.by', () =
     const base = generateSeed(1)
     const withDemo = generateSeed(1, [guid])
     const demo = withDemo.clients.find(c => c.guid === guid)!
-    expect(withDemo.contracts.some(c => c.guid === demo.contractGuid)).toBe(true)
+    expect(withDemo.contracts.some(c => c.guid === demo.contract?.guid)).toBe(true)
     expect(demo.deliveryAddresses).toHaveLength(1)
     expect(withDemo.items.map(i => i.guid)).toEqual(base.items.map(i => i.guid))
   })

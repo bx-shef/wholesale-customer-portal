@@ -17,7 +17,7 @@ const item = (n: number, over: Partial<ItemT> = {}): ItemT => ({
   description: '', properties: {}, images: [], analogs: [], changedAt: at, deleted: false, ...over,
 })
 const client = (over: Partial<ClientT> = {}): ClientT => ({
-  guid: g(100), name: 'ООО «Клиент»', unp: '1', address: '', city: 'Минск', managerEmail: '', contractGuid: g(200),
+  guid: g(100), name: 'ООО «Клиент»', unp: '1', address: '', city: 'Минск', managerEmail: '', contract: { guid: g(200), number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid: g(201), paymentDelayDays: 0, creditLimit: 0, debt: 0, currency: 'BYN' },
   deliveryAddresses: [{ guid: g(300), city: 'Минск', address: 'ул. Строителей, 1' }], changedAt: at, deleted: false, ...over,
 })
 const REQ = '11111111-1111-4111-8111-111111111111'
@@ -192,7 +192,7 @@ describe('заявка', () => {
     expect(await submitOrder(session, ok, input({ addressGuid: g(301) }), deps)).toMatchObject({ error: 'bad_address' })
     expect(await submitOrder(session, { status: 'no-contract' }, input(), deps)).toMatchObject({ status: 409, error: 'no_contract' })
     expect(await submitOrder(session, { status: 'unavailable' }, input(), deps)).toMatchObject({ status: 503 })
-    createClientStore(db).save([client({ contractGuid: null })])
+    createClientStore(db).save([client({ contract: null })])
     expect(await submitOrder(session, ok, input(), deps)).toMatchObject({ status: 409, error: 'no_contract' })
   })
 

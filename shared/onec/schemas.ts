@@ -32,19 +32,6 @@ export const ListQuery = z.object({
 
 export const DeliveryAddress = z.object({ guid: Guid, city: z.string(), address: z.string() })
 
-export const Client = z.object({
-  guid: Guid,
-  name: z.string(),
-  unp: z.string(),
-  address: z.string(),
-  city: z.string(),
-  managerEmail: z.string(),
-  contractGuid: Guid.nullable(),
-  deliveryAddresses: z.array(DeliveryAddress),
-  changedAt: DateTime,
-  deleted: z.boolean(),
-})
-
 export const Contract = z.object({
   guid: Guid,
   number: z.string(),
@@ -55,6 +42,21 @@ export const Contract = z.object({
   debt: Money,
   currency: Currency,
 })
+
+export const Client = z.object({
+  guid: Guid,
+  name: z.string(),
+  unp: z.string(),
+  address: z.string(),
+  city: z.string(),
+  managerEmail: z.string(),
+  /** Договор для заказов из ЛК; `null` — договора нет, цен клиенту не показываем. */
+  contract: Contract.nullable(),
+  deliveryAddresses: z.array(DeliveryAddress),
+  changedAt: DateTime,
+  deleted: z.boolean(),
+})
+
 
 /** Ссылка на картинку товара: сам файл — `GET /image/{id}` в base64 (docs/onec-contract.md §2.8). */
 export const ImageRef = z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), hash: z.string().regex(/^[A-Za-z0-9]{1,64}$/) })
@@ -91,8 +93,16 @@ export const Item = z.object({
 /** Каталог: разделы приходят целиком на первой странице, товары — постранично. */
 export const CatalogPage = z.object({ sections: z.array(Section), items: z.array(Item), nextPage: z.number().int().positive().nullable() })
 
-export const PricesRequest = z.object({ clientGuid: Guid, items: z.array(Guid).min(1).max(PAGE_SIZE_MAX) })
-export const Price = z.object({ itemGuid: Guid, price: Money, currency: Currency, vatRate: z.number().nonnegative() })
+/** Строка прайса: цена товара по виду цен (§2.4); ЛК хранит прайс и считает цену клиента сам. */
+export const Price = z.object({
+  priceTypeGuid: Guid,
+  itemGuid: Guid,
+  price: Money,
+  currency: Currency,
+  vatRate: z.number().nonnegative(),
+  changedAt: DateTime,
+  deleted: z.boolean(),
+})
 
 export const Stock = z.object({
   itemGuid: Guid,
@@ -116,7 +126,9 @@ export const OrderRequest = z.object({
   test: z.boolean().optional(),
   items: z.array(z.object({ itemGuid: Guid, qty: z.number().positive(), price: Money })).min(1).max(PAGE_SIZE_MAX),
 })
-export const OrderCreated = z.object({ orderGuid: Guid, number: z.string().min(1).max(64), status: OrderStatus })
+/** Факт по строке заказа (§2.6): цена, с которой заказ принят, и сколько зарезервировано. */
+export const OrderLineFact = z.object({ itemGuid: Guid, price: Money, reserved: z.number().nonnegative() })
+export const OrderCreated = z.object({ orderGuid: Guid, number: z.string().min(1).max(64), status: OrderStatus, items: z.array(OrderLineFact) })
 
 export const OrderStatusRow = z.object({
   orderGuid: Guid,
@@ -130,7 +142,7 @@ export const OrderStatusRow = z.object({
 export const ClientsPage = page(Client)
 export const StockPage = page(Stock)
 export const OrderStatusPage = page(OrderStatusRow)
-export const PricesResponse = z.array(Price)
+export const PricesPage = page(Price)
 
 export type ClientT = z.infer<typeof Client>
 export type ContractT = z.infer<typeof Contract>
@@ -143,6 +155,7 @@ export type StockT = z.infer<typeof Stock>
 export type OrderStatusT = z.infer<typeof OrderStatus>
 export type OrderRequestT = z.input<typeof OrderRequest>
 export type OrderCreatedT = z.infer<typeof OrderCreated>
+export type OrderLineFactT = z.infer<typeof OrderLineFact>
 export type OrderStatusRowT = z.infer<typeof OrderStatusRow>
 
 /** Коды ошибок контракта: HTTP-код и `error` в теле. */

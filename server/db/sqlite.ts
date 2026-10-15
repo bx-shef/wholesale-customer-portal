@@ -142,6 +142,20 @@ export const MIGRATIONS: string[] = [
      rated_at TEXT
    );
    CREATE INDEX ai_dialog_created ON ai_dialog (created_at);`,
+  // Обмен с 1С без запросов на показ (docs/onec-contract.md §1.8): договор — внутри клиента,
+  // прайс по видам цен — своей таблицей; цена клиента считается в ЛК.
+  `ALTER TABLE onec_client ADD COLUMN contract TEXT;
+   CREATE TABLE price_list (
+     price_type_guid TEXT NOT NULL,
+     item_guid TEXT NOT NULL,
+     price REAL NOT NULL,
+     currency TEXT NOT NULL,
+     vat_rate REAL NOT NULL,
+     changed_at TEXT NOT NULL,
+     PRIMARY KEY (price_type_guid, item_guid)
+   );
+   -- Клиенты, загруженные до договора внутри /clients, перечитать целиком: иначе у них нет вида цен.
+   DELETE FROM sync_cursor WHERE flow = 'clients';`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

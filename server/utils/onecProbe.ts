@@ -123,24 +123,11 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     return 'пусто'
   })
 
-  const withContract = () => clients.find(c => c.contractGuid && !c.deleted)
-  await check('contract', 'GET /client/{guid}/contract — договор', async () => {
-    const c = withContract()!
-    const contract = await client.contract(c.guid)
-    if (contract.guid.toLowerCase() !== c.contractGuid!.toLowerCase()) throw new Error('guid договора не совпал с contractGuid клиента')
-    return `договор ${contract.number}, отсрочка ${contract.paymentDelayDays} дн., ${contract.currency}`
+  const withContract = () => clients.find(c => c.contract && !c.deleted)
+  await check('contract', 'Договор у клиента (поле contract в /clients)', async () => {
+    const c = withContract()!.contract!
+    return `договор ${c.number}, отсрочка ${c.paymentDelayDays} дн., долг ${c.debt} ${c.currency}`
   }, clients.length && !withContract() ? 'нет клиента с договором' : !clients.length ? 'нет клиентов' : undefined)
-
-  await check('contract-404', 'Договор неизвестного клиента — 404', async () => {
-    try {
-      await client.contract('00000000-0000-4000-8000-000000000000')
-    }
-    catch (e) {
-      if (e instanceof OnecError && e.status === 404) return '404'
-      throw e
-    }
-    throw new Error('ожидали 404, пришёл ответ с договором')
-  })
 
   let items: ItemT[] = []
   await check('catalog', 'GET /catalog — разделы и товары', async () => {
@@ -161,13 +148,15 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
 
   let prices: PriceT[] = []
   const priceClient = () => withContract()
-  await check('prices', 'POST /prices — цены клиента', async () => {
-    prices = await client.prices({ clientGuid: priceClient()!.guid, items: items.slice(0, 20).map(i => i.guid) })
-    if (prices.length === 0) throw new Error('ни одной цены на 20 товаров: проверьте вид цен договора')
-    const wanted = new Set(items.slice(0, 20).map(i => i.guid.toLowerCase()))
-    if (prices.some(p => !wanted.has(p.itemGuid.toLowerCase()))) throw new Error('в ответе товар, которого не спрашивали')
-    return `цен: ${prices.length} из ${Math.min(20, items.length)}`
-  }, !priceClient() ? 'нет клиента с договором' : !items.length ? 'нет товаров' : undefined)
+  await check('prices', 'GET /prices — прайс по видам цен', async () => {
+    const priceType = priceClient()!.contract!.priceTypeGuid.toLowerCase()
+    const page = await client.prices({ pageSize: 500 })
+    if (page.items.length === 0) throw new Error('прайс пуст')
+    prices = page.items.filter(p => p.priceTypeGuid.toLowerCase() === priceType && !p.deleted)
+    const types = new Set(page.items.map(p => p.priceTypeGuid.toLowerCase())).size
+    if (prices.length === 0) throw new Error(`на первой странице нет цен по виду цен договора ${priceType}`)
+    return `строк на первой странице: ${page.items.length}, видов цен: ${types}, по договору клиента: ${prices.length}`
+  }, !priceClient() ? 'нет клиента с договором' : undefined)
 
   await check('stock', 'GET /stock — остатки', async () => {
     const page = await client.stock({ pageSize: 50 })
@@ -186,7 +175,7 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     const body = {
       externalId: `lk-test-${randomUUID().slice(0, 8)}`,
       clientGuid: orderClient!.guid,
-      contractGuid: orderClient!.contractGuid!,
+      contractGuid: orderClient!.contract!.guid,
       deliveryAddressGuid: address!.guid,
       deliveryDate: new Date(now() + 86_400_000).toISOString().slice(0, 10),
       comment: 'Проверка стенда ЛК — тестовый заказ, можно удалить',
@@ -198,9 +187,11 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     const again = await client.createOrder(body)
     if (status() !== 200) throw new Error(`повтор: ожидали 200, пришёл ${status()}`)
     if (again.orderGuid.toLowerCase() !== created.orderGuid.toLowerCase()) throw new Error('повтор создал второй заказ')
+    const fact = created.items.find(f => f.itemGuid.toLowerCase() === priced!.itemGuid.toLowerCase())
+    if (!fact) throw new Error('в ответе нет факта по строке заказа (items[])')
     const listed = await client.orderStatus({ changedSince: new Date(started0).toISOString() })
     if (listed.items.some(o => o.orderGuid.toLowerCase() === created.orderGuid.toLowerCase())) throw new Error('тестовый заказ (test: true) попал в /orders/status')
-    return `заказ ${created.number}, повтор вернул тот же, в статусах его нет`
+    return `заказ ${created.number}: цена ${fact.price}, резерв ${fact.reserved}; повтор вернул тот же, в статусах его нет`
   }, !input.allowOrder
     ? 'выключено галкой'
     : !orderClient ? 'нет клиента с договором' : !address ? 'у клиента нет адреса доставки' : !priced ? 'нет товара с ценой' : undefined)

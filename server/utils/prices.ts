@@ -1,93 +1,56 @@
 /**
- * Цены клиента (docs/spec.md §4: `POST /prices`, кэш 15 минут). Цена — по договору компании из
- * сессии; чужую цену клиент не увидит, потому что `clientGuid` берётся только из CRM по компании
- * сессии, а кэш разделён по клиенту.
+ * Цены клиента (docs/onec-contract.md §2.4, §1.8): прайс по видам цен лежит в базе ЛК, его
+ * обновляет расписание по изменениям. Цена клиента = строка прайса по виду цен его договора,
+ * договор — из клиентов 1С (§2.1). На показ цены в 1С не ходим вовсе.
  *
- * - В 1С — пачкой только недостающие товары: страница каталога — один запрос, а не 30.
- * - Одинаковые запросы, пришедшие одновременно, ждут один ответ 1С, а не идут дублями.
- * - 1С не ответила — следующие PRICE_FAILURE_PAUSE_MS не спрашиваем её снова по этому клиенту:
- *   лежащая 1С не должна получать по запросу на каждую страницу каждого клиента.
- * - Переполнение вытесняет самые старые записи, а не весь кэш разом.
+ * Чужую цену клиент не увидит: `clientGuid` берётся только из CRM по компании сессии.
  */
+import type { DatabaseSync } from 'node:sqlite'
 import type { PriceT } from '../../shared/onec/schemas'
-import { PAGE_SIZE_MAX } from '../../shared/onec/schemas'
 
-export const PRICE_TTL_MS = 15 * 60_000
-export const PRICE_FAILURE_PAUSE_MS = 30_000
-export const PRICE_CACHE_MAX = 50_000
-
-export type PriceLoader = (clientGuid: string, itemGuids: string[]) => Promise<PriceT[]>
-
-export class PricesUnavailableError extends Error {
-  constructor() {
-    super('1C prices are temporarily unavailable')
-    this.name = 'PricesUnavailableError'
-  }
-}
-
-export function createPriceCache(load: PriceLoader, now: () => number = Date.now, max = PRICE_CACHE_MAX) {
-  // Значение null — «у клиента нет цены на товар»: тоже кэшируем, иначе такие товары спрашивали бы каждый раз.
-  // Map хранит порядок вставки: первая запись — самая старая, её и вытесняем.
-  const cache = new Map<string, { until: number, price: PriceT | null }>()
-  const inFlight = new Map<string, Promise<void>>()
-  const failedUntil = new Map<string, number>()
-  const key = (client: string, item: string) => `${client}|${item}`
-
-  function put(k: string, value: { until: number, price: PriceT | null }) {
-    cache.delete(k)
-    cache.set(k, value)
-    while (cache.size > max) cache.delete(cache.keys().next().value!)
-  }
-
-  async function fetchBatch(client: string, batch: string[]) {
-    const prices = await load(client, batch)
-    const byItem = new Map(prices.map(p => [p.itemGuid.toLowerCase(), p]))
-    const until = now() + PRICE_TTL_MS
-    for (const g of batch) put(key(client, g), { until, price: byItem.get(g) ?? null })
-  }
+export function createPriceStore(db: DatabaseSync) {
+  const upsert = db.prepare(`INSERT INTO price_list (price_type_guid, item_guid, price, currency, vat_rate, changed_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (price_type_guid, item_guid) DO UPDATE SET price = excluded.price, currency = excluded.currency,
+      vat_rate = excluded.vat_rate, changed_at = excluded.changed_at`)
+  const remove = db.prepare('DELETE FROM price_list WHERE price_type_guid = ? AND item_guid = ?')
+  const contractOf = db.prepare('SELECT contract FROM onec_client WHERE guid = ? AND deleted = 0')
+  const lower = (s: string) => s.toLowerCase()
 
   return {
-    /** Бросает PricesUnavailableError, если 1С недоступна (или недавно была). */
-    async get(clientGuid: string, itemGuids: string[]): Promise<Map<string, PriceT>> {
-      const client = clientGuid.toLowerCase()
-      const wanted = [...new Set(itemGuids.map(g => g.toLowerCase()))]
-      const t = now()
-      const fresh = (g: string) => (cache.get(key(client, g))?.until ?? 0) > t
-      const waits: Promise<void>[] = []
-      const missing: string[] = []
-      for (const g of wanted) {
-        if (fresh(g)) continue
-        const pending = inFlight.get(key(client, g))
-        if (pending) waits.push(pending)
-        else missing.push(g)
+    save(rows: PriceT[]) {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        for (const r of rows) {
+          if (r.deleted) remove.run(lower(r.priceTypeGuid), lower(r.itemGuid))
+          else upsert.run(lower(r.priceTypeGuid), lower(r.itemGuid), r.price, r.currency, r.vatRate, r.changedAt)
+        }
+        db.exec('COMMIT')
       }
-      if (missing.length && (failedUntil.get(client) ?? 0) > t) throw new PricesUnavailableError()
-      for (let i = 0; i < missing.length; i += PAGE_SIZE_MAX) {
-        const batch = missing.slice(i, i + PAGE_SIZE_MAX)
-        const p = fetchBatch(client, batch).finally(() => {
-          for (const g of batch) inFlight.delete(key(client, g))
-        })
-        for (const g of batch) inFlight.set(key(client, g), p)
-        waits.push(p)
+      catch (e) {
+        db.exec('ROLLBACK')
+        throw e
       }
-      const results = await Promise.allSettled(waits)
-      const failure = results.find(r => r.status === 'rejected')
-      if (failure) {
-        failedUntil.set(client, now() + PRICE_FAILURE_PAUSE_MS)
-        console.error(`[prices] ${(failure as PromiseRejectedResult).reason?.name ?? 'Error'}`)
-        throw new PricesUnavailableError()
-      }
-      failedUntil.delete(client)
-      const out = new Map<string, PriceT>()
-      for (const g of wanted) {
-        const p = cache.get(key(client, g))?.price
-        if (p) out.set(g, p)
-      }
-      return out
     },
-    clear() {
-      cache.clear()
-      failedUntil.clear()
+    /** Вид цен договора клиента; нет клиента или договора — null. */
+    priceTypeOf(clientGuid: string): string | null {
+      const row = contractOf.get(lower(clientGuid)) as { contract: string | null } | undefined
+      const contract = row?.contract ? JSON.parse(row.contract) as { priceTypeGuid?: string } : null
+      return contract?.priceTypeGuid ? lower(contract.priceTypeGuid) : null
+    },
+    /** Цены товаров для клиента по его договору; товара без цены в ответе нет. */
+    async get(clientGuid: string, itemGuids: string[]): Promise<Map<string, PriceT>> {
+      const out = new Map<string, PriceT>()
+      const priceType = this.priceTypeOf(clientGuid)
+      const wanted = [...new Set(itemGuids.map(lower))]
+      if (!priceType || wanted.length === 0) return out
+      const rows = db.prepare(`SELECT item_guid AS itemGuid, price, currency, vat_rate AS vatRate, changed_at AS changedAt
+        FROM price_list WHERE price_type_guid = ? AND item_guid IN (${wanted.map(() => '?').join(',')})`)
+        .all(priceType, ...wanted) as { itemGuid: string, price: number, currency: string, vatRate: number, changedAt: string }[]
+      for (const r of rows) out.set(r.itemGuid, { ...r, priceTypeGuid: priceType, deleted: false })
+      return out
     },
   }
 }
+
+export type PriceStore = ReturnType<typeof createPriceStore>
