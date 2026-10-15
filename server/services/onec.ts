@@ -44,10 +44,22 @@ export interface OnecLogEntry {
   error?: OnecErrorKind
 }
 
+/** Авторизация в 1С: Bearer-токен или логин и пароль пользователя 1С (Basic), docs/onec-contract.md §1.2. */
+export type OnecAuth = { kind: 'bearer', token: string } | { kind: 'basic', login: string, password: string }
+
+export function onecAuthHeader(auth: OnecAuth): string {
+  return auth.kind === 'basic'
+    ? `Basic ${Buffer.from(`${auth.login}:${auth.password}`, 'utf8').toString('base64')}`
+    : `Bearer ${auth.token}`
+}
+
 export interface OnecClientOptions {
   /** База без завершающего `/`, например `https://1c.example.by/hs/lk` или `http://mock/mock-1c`. */
   baseUrl: string
-  token: string
+  /** Bearer-токен; не нужен, если задан `auth`. */
+  token?: string
+  /** Способ авторизации; без него — Bearer `token`. */
+  auth?: OnecAuth
   fetch?: typeof fetch
   timeoutMs?: number
   /** Сколько раз повторить после первой попытки. */
@@ -146,7 +158,7 @@ export class OnecClient {
       response = await this.fetchImpl(url, {
         method,
         headers: {
-          'authorization': `Bearer ${this.options.token}`,
+          'authorization': onecAuthHeader(this.options.auth ?? { kind: 'bearer', token: this.options.token ?? '' }),
           'accept': 'application/json',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },

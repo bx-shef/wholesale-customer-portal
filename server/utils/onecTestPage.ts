@@ -1,0 +1,115 @@
+/**
+ * Страница стенда 1С — самодостаточный HTML без сборки: её открывает программист 1С, у
+ * которого нет ЛК. Токен уходит POST-ом на сервер ЛК и нигде не сохраняется.
+ */
+export const ONEC_TEST_PAGE = `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Проверка сервиса 1С — ЛК Алгена</title>
+<style>
+  :root { color-scheme: light; --line: #dfe3e8; --muted: #5d6670; --ok: #1b8a3a; --fail: #c62828; --skip: #8a6d00; --accent: #0075ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #eef2f4; color: #1f2329; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  header img { height: 32px; }
+  h1 { font-size: 20px; margin: 0; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  p.muted, .muted { color: var(--muted); }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input[type=text], input[type=password] { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+  .row label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 400; }
+  button { margin-top: 16px; padding: 10px 20px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.st { width: 72px; font-weight: 700; white-space: nowrap; }
+  td.ms { width: 72px; text-align: right; color: var(--muted); white-space: nowrap; }
+  .ok { color: var(--ok); } .fail { color: var(--fail); } .skip { color: var(--skip); }
+  .summary { font-weight: 600; margin-bottom: 8px; }
+  .err { color: var(--fail); font-weight: 600; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="/logo.png" alt=""><h1>Проверка HTTP-сервиса 1С для ЛК</h1></header>
+  <div class="card">
+    <p class="muted">Стенд по очереди вызывает методы контракта <b>с сервера ЛК</b> и сверяет ответы с описанием:
+    <a href="https://github.com/bx-shef/wholesale-customer-portal/blob/main/docs/onec-contract.md" target="_blank" rel="noopener">спецификация</a>.
+    Токен и пароль не сохраняются и не пишутся в журнал.</p>
+    <form id="f">
+      <div class="row">
+        <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
+        <label><input type="radio" name="target" value="mock"> Мок ЛК (эталон контракта)</label>
+      </div>
+      <div id="onec-fields">
+        <label for="baseUrl">Базовый адрес сервиса</label>
+        <input id="baseUrl" type="text" placeholder="https://1c.algena.by/base/hs/lk" autocomplete="off">
+        <div class="row">
+          <label><input type="radio" name="authKind" value="bearer" checked> Токен (Bearer)</label>
+          <label><input type="radio" name="authKind" value="basic"> Логин и пароль 1С (Basic)</label>
+        </div>
+        <div id="bearer-fields">
+          <label for="token">Токен</label>
+          <input id="token" type="password" autocomplete="off">
+        </div>
+        <div id="basic-fields" hidden>
+          <label for="login">Логин пользователя 1С</label>
+          <input id="login" type="text" autocomplete="off">
+          <label for="password">Пароль</label>
+          <input id="password" type="password" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <label><input id="allowOrder" type="checkbox"> Проверить создание заказа — <b>пишет документ в базу</b>, только тестовая база</label>
+      </div>
+      <button id="go" type="submit">Проверить</button>
+    </form>
+  </div>
+  <div class="card" id="report" hidden></div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id)
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+  const target = () => document.querySelector('input[name=target]:checked').value
+  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock' }))
+  const authKind = () => document.querySelector('input[name=authKind]:checked').value
+  document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
+  const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }
+  $('f').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const report = $('report')
+    $('go').disabled = true
+    report.hidden = false
+    report.innerHTML = '<p class="muted">Проверяем… до минуты на медленной базе.</p>'
+    try {
+      const res = await fetch('/api/onec-test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ target: target(), baseUrl: $('baseUrl').value, authKind: authKind(), token: $('token').value, login: $('login').value, password: $('password').value, allowOrder: $('allowOrder').checked }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status))
+      const ok = data.checks.filter((c) => c.status === 'ok').length
+      const fail = data.checks.filter((c) => c.status === 'fail').length
+      report.innerHTML = '<div class="summary ' + (fail ? 'fail' : 'ok') + '">' + esc(data.target) + ': пройдено ' + ok + ' из ' + data.checks.length
+        + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + (data.ms / 1000).toFixed(1) + ' с</div><table>'
+        + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span></td><td class="ms">' + (c.status === 'skip' ? '' : c.ms + ' мс') + '</td></tr>').join('')
+        + '</table>'
+    }
+    catch (err) {
+      report.innerHTML = '<p class="err">' + esc(err.message) + '</p>'
+    }
+    finally {
+      $('go').disabled = false
+    }
+  })
+</script>
+</body>
+</html>
+`

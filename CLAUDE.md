@@ -45,6 +45,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
 | `server/services/onec.ts` | клиент 1С: таймаут, повторы, проверка схемой |
 | `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
+| `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
 | `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, кэш цен клиента, каталог глазами клиента, обвязка маршрутов |
