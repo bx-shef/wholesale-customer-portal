@@ -144,6 +144,6 @@ describe('мок 1С: демо-клиенты и витрина algena.by', () =
     const first = items[0]!
     expect(first.name).toContain('CemTop')
     expect(basePrice.get(first.guid)).toBe(18.2)
-    expect(items.filter(i => i.images[0]?.startsWith('https://algena.by/')).length).toBeGreaterThan(5)
+    expect(items.filter(i => i.images.length > 0).length).toBe(6)
   })
 })

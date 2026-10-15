@@ -9,7 +9,7 @@
  */
 import type { z } from 'zod'
 import {
-  CatalogPage, ClientsPage, Contract, ErrorBody, OrderCreated, OrderRequest, OrderStatusPage,
+  CatalogPage, ClientsPage, Contract, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
   PricesRequest, PricesResponse, StockPage,
 } from '../../shared/onec/schemas'
 
@@ -114,6 +114,11 @@ export class OnecClient {
   /** Идемпотентно по `externalId`, поэтому повтор после таймаута не создаст второй заказ. */
   async createOrder(input: z.input<typeof OrderRequest>) {
     return this.request('POST', '/order', OrderCreated, { body: OrderRequest.parse(input) })
+  }
+
+  /** Картинка товара в base64 (§2.8). */
+  image(id: string) {
+    return this.request('GET', `/image/${encodeURIComponent(id)}`, ImageFile)
   }
 
   orderStatus(params: ListParams = {}) {

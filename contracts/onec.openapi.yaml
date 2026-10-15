@@ -5,6 +5,7 @@ info:
   description: "Собрано из shared/onec/schemas.ts. Описание и порядок сдачи — docs/onec-contract.md. Не править руками: pnpm onec:openapi."
 security:
   - bearer: []
+  - basic: []
 paths:
   /clients:
     get:
@@ -98,9 +99,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /image/{id}:
+    get:
+      summary: Картинка товара в base64 (JPEG, PNG, WebP; до 5 МБ)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{1,64}$
+      responses:
+        "200":
+          description: Файл
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageFile"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Нет картинки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /catalog:
     get:
-      summary: "Каталог: разделы на первой странице, товары постранично"
+      summary: "Каталог: разделы (виды номенклатуры) на первой странице, товары постранично"
       parameters:
         - name: changedSince
           in: query
@@ -342,6 +384,9 @@ components:
     bearer:
       type: http
       scheme: bearer
+    basic:
+      type: http
+      scheme: basic
   schemas:
     Error:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -576,7 +621,18 @@ components:
         images:
           type: array
           items:
-            type: string
+            type: object
+            properties:
+              id:
+                type: string
+                pattern: ^[A-Za-z0-9_-]{1,64}$
+              hash:
+                type: string
+                pattern: ^[A-Za-z0-9]{1,64}$
+            required:
+              - id
+              - hash
+            additionalProperties: false
         analogs:
           type: array
           items:
@@ -664,7 +720,18 @@ components:
               images:
                 type: array
                 items:
-                  type: string
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      pattern: ^[A-Za-z0-9_-]{1,64}$
+                    hash:
+                      type: string
+                      pattern: ^[A-Za-z0-9]{1,64}$
+                  required:
+                    - id
+                    - hash
+                  additionalProperties: false
               analogs:
                 type: array
                 items:
@@ -1007,4 +1074,44 @@ components:
       required:
         - items
         - nextPage
+      additionalProperties: false
+    ImageRef:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+        hash:
+          type: string
+          pattern: ^[A-Za-z0-9]{1,64}$
+      required:
+        - id
+        - hash
+      additionalProperties: false
+    ImageFile:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+        hash:
+          type: string
+          pattern: ^[A-Za-z0-9]{1,64}$
+        contentType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+        data:
+          type: string
+          maxLength: 6990508
+          pattern: ^[A-Za-z0-9+/]*={0,2}$
+      required:
+        - id
+        - hash
+        - contentType
+        - data
       additionalProperties: false

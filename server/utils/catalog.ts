@@ -6,7 +6,8 @@
  * GUID 1С храним в нижнем регистре: контракт допускает любой регистр, а ключи должны совпадать.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import type { ItemT, SectionT, StockT } from '../../shared/onec/schemas'
+import type { ImageRefT, ItemT, SectionT, StockT } from '../../shared/onec/schemas'
+import { imageUrl, refFromUrl } from './imageStore'
 
 export interface CatalogItem {
   guid: string
@@ -118,7 +119,7 @@ export function createCatalogStore(db: DatabaseSync) {
             continue
           }
           upsertItem.run(guid, i.sku, i.name, lower(i.sectionGuid), i.brand, i.unit, i.packQty, i.minQty, i.description,
-            JSON.stringify(i.properties), JSON.stringify(i.images), JSON.stringify(i.analogs.slice(0, ANALOGS_STORED_MAX).map(lower)),
+            JSON.stringify(i.properties), JSON.stringify(i.images.map(imageUrl)), JSON.stringify(i.analogs.slice(0, ANALOGS_STORED_MAX).map(lower)),
             searchText(`${i.name} ${i.sku}`), searchText(i.name), i.changedAt)
         }
       })
@@ -135,6 +136,11 @@ export function createCatalogStore(db: DatabaseSync) {
       return db.prepare('SELECT guid, parent_guid AS parentGuid, name FROM catalog_section ORDER BY name').all() as never
     },
 
+    /** Картинки всех товаров каталога — для докачки файлов из 1С (§2.8). */
+    imageRefs(): ImageRefT[] {
+      const rows = db.prepare(`SELECT j.value AS url FROM catalog_item i, json_each(i.images) j`).all() as { url: string }[]
+      return rows.map(r => refFromUrl(r.url)).filter((r): r is ImageRefT => r !== null)
+    },
     brands(): string[] {
       return (db.prepare('SELECT DISTINCT brand FROM catalog_item WHERE brand <> \'\' ORDER BY brand').all() as { brand: string }[]).map(r => r.brand)
     },

@@ -19,12 +19,13 @@ const mockSrc = read('server/mocks/onec/mock.ts')
 const fromMock = sorted([
   ...[...mockSrc.matchAll(/method === '(GET|POST)' && path === '([^']+)'/g)].map(m => `${m[1]} ${m[2]}`),
   ...(/method === 'GET' && contractMatch/.test(mockSrc) && /\\\/client\\\/\(\[\^\/\]\+\)\\\/contract/.test(mockSrc) ? ['GET /client/{guid}/contract'] : []),
+  ...(/method === 'GET' && imageMatch/.test(mockSrc) && /\\\/image\\\/\(\[\^\/\]\+\)\$/.test(mockSrc) ? ['GET /image/{guid}'] : []),
 ])
 const fromOpenApi = sorted([...read('contracts/onec.openapi.yaml').matchAll(/^ {2}(\/\S+):\n {4}(get|post):/gm)].map(m => `${m[2]!.toUpperCase()} ${norm(m[1]!)}`))
 
 describe('1С: спецификация = клиент ЛК = мок = OpenAPI', () => {
-  it('семь методов, одинаковые во всех четырёх местах', () => {
-    expect(fromDoc).toHaveLength(7)
+  it('восемь методов, одинаковые во всех четырёх местах', () => {
+    expect(fromDoc).toHaveLength(8)
     expect(fromClient).toEqual(fromDoc)
     expect(fromMock).toEqual(fromDoc)
     expect(fromOpenApi).toEqual(fromDoc)
@@ -42,8 +43,10 @@ describe('1С: спецификация = клиент ЛК = мок = OpenAPI',
     const clients = await c.clients({ pageSize: 5 })
     const client = clients.items.find(x => x.contractGuid)!
     const contract = await c.contract(client.guid)
-    const catalog = await c.catalog({ pageSize: 5 })
-    const prices = await c.prices({ clientGuid: client.guid, items: catalog.items.map(i => i.guid) })
+    const catalog = await c.catalog({ pageSize: 500 })
+    const ref = catalog.items.flatMap(i => i.images)[0]
+    if (ref) await c.image(ref.id)
+    const prices = await c.prices({ clientGuid: client.guid, items: catalog.items.slice(0, 20).map(i => i.guid) })
     await c.stock({ pageSize: 5 })
     const order = await c.createOrder({
       externalId: 'parity-1', clientGuid: client.guid, contractGuid: contract.guid,

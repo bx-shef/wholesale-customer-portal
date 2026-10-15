@@ -10,8 +10,8 @@ describe('contracts/onec.openapi.yaml', () => {
     expect(committed).toEqual(JSON.parse(JSON.stringify(buildOnecOpenApi())))
   })
 
-  it('описывает все семь методов контракта', () => {
+  it('описывает все восемь методов контракта', () => {
     const paths = buildOnecOpenApi().paths
-    expect(Object.keys(paths).sort()).toEqual(['/catalog', '/client/{guid}/contract', '/clients', '/order', '/orders/status', '/prices', '/stock'])
+    expect(Object.keys(paths).sort()).toEqual(['/catalog', '/client/{guid}/contract', '/clients', '/image/{id}', '/order', '/orders/status', '/prices', '/stock'])
   })
 })
