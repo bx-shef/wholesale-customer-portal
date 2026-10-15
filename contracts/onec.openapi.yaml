@@ -857,6 +857,8 @@ components:
           default: ""
           type: string
           maxLength: 2000
+        test:
+          type: boolean
         items:
           minItems: 1
           maxItems: 500
