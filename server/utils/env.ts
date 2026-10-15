@@ -29,6 +29,8 @@ export interface ServerEnv {
   onecTestPassword: string
   /** Логин стенда проверки 1С; пусто — любой. */
   onecTestLogin: string
+  /** Адрес ЛК снаружи, например https://wsp.algena.by — для ссылки в оповещениях; пусто — без ссылки. */
+  publicUrl: string
   commitSha: string
   /** Каталог базы SQLite; в проде — том `/data`. */
   dataDir: string
@@ -54,6 +56,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     mcpAdminToken: get('MCP_ADMIN_TOKEN'),
     onecTestPassword: get('ONEC_TEST_PASSWORD'),
     onecTestLogin: get('ONEC_TEST_LOGIN'),
+    publicUrl: get('PUBLIC_URL').replace(/\/+$/, ''),
     commitSha: get('COMMIT_SHA'),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',

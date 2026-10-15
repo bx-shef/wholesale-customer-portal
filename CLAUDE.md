@@ -46,6 +46,8 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/services/onec.ts` | клиент 1С: таймаут, без повторов (повтор — следующий цикл расписания), проверка схемой |
 | `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
+| `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, управление моком — `docs/MONITORING.md` |
+| `server/utils/{telegramAlert,alertDelivery}.ts`, `server/tasks/monitor/alerts.ts` | оповещения в Telegram по эпизодам (порт из client-bank-alfa-by), раз в 5 минут |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
 | `server/utils/imageStore.ts`, `server/routes/images/[name].get.ts` | картинки товаров: из 1С base64 (`GET /image/{id}`), на томе `/data/images`, раздача `/images/<id>.<hash>` |

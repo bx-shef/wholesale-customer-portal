@@ -52,5 +52,10 @@ export function createOnecGuard(opts: { failures?: number, pauseMs?: number, now
       }
     },
     state: () => ({ failures, pausedUntil }),
+    /** Снять паузу вручную — со страницы «Состояние системы», когда 1С уже подняли. */
+    reset() {
+      failures = 0
+      pausedUntil = 0
+    },
   }
 }
