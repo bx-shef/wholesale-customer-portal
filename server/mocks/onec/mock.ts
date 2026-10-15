@@ -57,6 +57,8 @@ export interface MockState {
   data: SeedData
   /** Момент изменения остатка: ключ `itemGuid|warehouseGuid`, мс эпохи. */
   stockChangedAt: Map<string, number>
+  /** Когда менялась цена товара (`_admin/price`), ISO: прайс отдаёт его как changedAt. */
+  priceChangedAt: Map<string, string>
   orders: Map<string, MockOrder>
   ordersByExternalId: Map<string, MockOrder>
   stockTicks: number
@@ -82,6 +84,7 @@ export function createMockState(token: string, seed = 1, demoClients: string[] =
     seed,
     data,
     stockChangedAt: new Map([...data.stock.keys()].map(k => [k, epoch])),
+    priceChangedAt: new Map(),
     orders: new Map(),
     ordersByExternalId: new Map(),
     stockTicks: 0,
@@ -132,7 +135,7 @@ function priceRows(state: MockState): PriceT[] {
     for (const item of state.data.items) {
       const base = state.data.basePrice.get(item.guid)
       if (base === undefined) continue
-      rows.push({ priceTypeGuid: pt.guid, itemGuid: item.guid, price: round2(base * pt.coefficient), currency: 'BYN', vatRate: 20, changedAt: item.changedAt, deleted: false })
+      rows.push({ priceTypeGuid: pt.guid, itemGuid: item.guid, price: round2(base * pt.coefficient), currency: 'BYN', vatRate: 20, changedAt: state.priceChangedAt.get(item.guid) ?? item.changedAt, deleted: false })
     }
   }
   return rows
@@ -324,6 +327,32 @@ function handleAdmin(state: MockState, method: string, path: string, body: unkno
       failNext: Number.isInteger(input.failNext) ? num(input.failNext, 1000) ?? state.mode.failNext : state.mode.failNext,
     }
     return { status: 200, body: state.mode, delayMs: 0 }
+  }
+  // «Как будто в 1С поменяли» — для проверки синхронизации на моке (docs/MONITORING.md).
+  if (path === '/_admin/price') {
+    const count = Number.isInteger(input.count) && (input.count as number) > 0 ? Math.min(input.count as number, 50) : 3
+    const factor = typeof input.factor === 'number' && input.factor > 0 && input.factor < 10 ? input.factor : 1.05
+    const changed = state.data.items.slice(0, count).map((item) => {
+      const was = state.data.basePrice.get(item.guid)!
+      state.data.basePrice.set(item.guid, round2(was * factor))
+      state.priceChangedAt.set(item.guid, new Date(now).toISOString())
+      return { itemGuid: item.guid, name: item.name, base: { was, now: state.data.basePrice.get(item.guid) } }
+    })
+    return { status: 200, body: { changed }, delayMs: 0 }
+  }
+  if (path === '/_admin/debt') {
+    const client = state.data.clients.find(c => c.contract && !c.deleted)
+    if (!client) return error('not_found', 'No client with contract')
+    client.contract = { ...client.contract!, debt: round2(client.contract!.debt + (typeof input.add === 'number' ? input.add : 100)) }
+    client.changedAt = new Date(now).toISOString()
+    return { status: 200, body: { client: client.name, debt: client.contract.debt }, delayMs: 0 }
+  }
+  if (path === '/_admin/item') {
+    const item = state.data.items[typeof input.index === 'number' ? input.index : 1]
+    if (!item) return error('not_found', 'No item')
+    item.name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : `${item.name.replace(/ \(изм\. \d+\)$/, '')} (изм. ${new Date(now).toISOString().slice(11, 16)})`
+    item.changedAt = new Date(now).toISOString()
+    return { status: 200, body: { item: item.name }, delayMs: 0 }
   }
   if (path === '/_admin/cancel') {
     const order = state.orders.get(String(input.orderGuid ?? ''))

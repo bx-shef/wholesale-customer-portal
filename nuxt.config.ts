@@ -48,6 +48,7 @@ export default defineNuxtConfig({
       '*/10 * * * *': ['sync:companies'],
       '*/5 * * * *': ['sync:stock'],
       '3-59/15 * * * *': ['sync:prices'],
+      '1-59/5 * * * *': ['monitor:alerts'],
       '*/2 * * * *': ['sync:orders'],
       '7 * * * *': ['sync:catalog'],
       '17 3 * * *': ['maintenance:prune'],

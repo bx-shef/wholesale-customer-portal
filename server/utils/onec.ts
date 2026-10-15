@@ -13,6 +13,10 @@ import { createOnecGuard } from './onecGuard'
 /** Один на процесс: очередь «по одному» и пауза после сбоев общие для всех потоков ЛК (§1.8). */
 const guard = createOnecGuard()
 
+/** Состояние защиты 1С — для оповещений и страницы «Состояние системы». */
+export const onecGuardState = () => guard.state()
+export const onecGuardReset = () => guard.reset()
+
 let mockState: MockState | undefined
 
 /**
@@ -35,7 +39,8 @@ export function useOnec(): OnecClient {
   }
   if (env.onecMock) {
     const state = getMockState()
-    return new OnecClient({ baseUrl: 'http://mock.local/mock-1c', token: state.token, fetch: mockFetch(state), log })
+    // Защита — и на моке: «сбой 1С» на стенде показывает ту же паузу, что будет на настоящей.
+    return new OnecClient({ baseUrl: 'http://mock.local/mock-1c', token: state.token, fetch: guard.wrap(mockFetch(state)), log })
   }
   // Логин и пароль пользователя 1С (Basic) — если заданы; иначе Bearer-токен.
   const auth = env.onecLogin && env.onecPassword
