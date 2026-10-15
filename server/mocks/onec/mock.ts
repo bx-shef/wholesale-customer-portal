@@ -45,6 +45,8 @@ interface MockOrder {
   createdAt: number
   /** Момент отмены, мс эпохи: он же changedAt — иначе синхронизация по курсору отмену не увидит. */
   cancelledAt: number | null
+  /** Заказ со стенда (`test: true`, docs/onec-contract.md §1.7): не виден в /orders/status. */
+  test: boolean
 }
 
 export interface MockState {
@@ -248,7 +250,8 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         orderGuid: guidFrom(state.rand),
         externalId: parsed.data.externalId,
         clientGuid: client.guid,
-        number: `ЗК-${String(state.orders.size + 1).padStart(5, '0')}`,
+        number: parsed.data.test ? `ТЕСТ-${parsed.data.externalId}` : `ЗК-${String(state.orders.size + 1).padStart(5, '0')}`,
+        test: parsed.data.test === true,
         createdAt: now,
         cancelledAt: null,
       }
@@ -263,7 +266,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
   if (method === 'GET' && path === '/orders/status') {
     const q = list()
     if (!q) return error('validation', 'Bad list parameters')
-    const rows = [...state.orders.values()].map((o) => {
+    const rows = [...state.orders.values()].filter(o => !o.test).map((o) => {
       const { status, changedAt } = orderStatusAt(o, now)
       return {
         orderGuid: o.orderGuid,
