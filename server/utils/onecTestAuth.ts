@@ -12,6 +12,14 @@ export function basicCredentials(header: string | null | undefined): { login: st
   return i >= 0 ? { login: decoded.slice(0, i), password: decoded.slice(i + 1) } : null
 }
 
+/** Заголовок, без которого стенд не принимает POST: чужая страница не поставит его без preflight (CSRF). */
+export const STAND_WRITE_HEADER = 'x-lk-stand'
+
+/** Пишущий запрос стенда — только со своей страницы: браузер подставляет Basic и в чужую форму. */
+export function standWriteAllowed(method: string, header: string | null | undefined): boolean {
+  return method === 'GET' || method === 'HEAD' || header === '1'
+}
+
 export function onecTestAllowed(header: string | null | undefined, expected: { login: string, password: string }): boolean {
   const got = basicCredentials(header)
   if (!got) return false

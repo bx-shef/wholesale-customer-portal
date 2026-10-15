@@ -95,6 +95,9 @@ make prod-up && make doctor
 | `SESSION_SECRET` | Подпись сессий клиентов и HMAC логина в журнале, не короче 32 символов (`openssl rand -hex 32`). Смена разлогинивает всех и обнуляет счётчики попыток |
 | `MCP_ADMIN_TOKEN` | Bearer для `/mcp/admin` |
 | `DATA_DIR` | Каталог базы SQLite; в образе — `/data` (том `data` в compose) |
+| `ONEC_TEST_LOGIN`, `ONEC_TEST_PASSWORD` | Вход на стенд 1С `/api/onec-test` и страницу «Состояние системы» `/api/system`; пароль не задан — обе страницы отвечают 404 |
+| `TELEGRAM_ALERT_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID` | Оповещения о сбоях обмена (`docs/MONITORING.md`); нет одной из пары или неверный формат — канал выключен, видно на `/api/system` |
+| `PUBLIC_URL` | Адрес ЛК (`https://wsp.algena.by`) для ссылки на `/api/system` в сообщениях Telegram; необязателен |
 | `FEEDBACK_URL`, `FEEDBACK_TOKEN` | Приёмник оценок ИИ (skills-standard); пусто — канал выключен — *этап 5* |
 
 `make` запускает compose только с `.env` (без переменных оболочки) — приём invoice-from-tasks против соседних проектов на общем хосте. Копии `SESSION_SECRET` и `MCP_ADMIN_TOKEN` — вне сервера.

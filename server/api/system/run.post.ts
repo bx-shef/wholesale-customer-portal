@@ -1,24 +1,37 @@
-// Запустить поток обмена сейчас, не дожидаясь расписания. Возвращает итог запуска.
+// Запустить поток обмена сейчас, не дожидаясь расписания. Идёт в фоне: итог — в таблице запусков.
 import { z } from 'zod'
-import { createRateLimiter } from '../../utils/rateLimit'
+import { manualRunVerdict } from '../../utils/manualRun'
 
-const runs = createRateLimiter(60, 60 * 60_000)
+const running = new Set<string>()
+const lastStartedAt = new Map<string, number>()
 const body = z.object({ flow: z.enum(['clients', 'catalog', 'prices', 'stock', 'orders']) })
 
 export default defineEventHandler(async (event) => {
   guardOnecTest(event)
-  const parsed = body.safeParse(await readBody(event))
+  const parsed = body.safeParse(await readBody(event).catch(() => null))
   if (!parsed.success) throw createError({ statusCode: 400, message: 'Неизвестный поток' })
-  // 1С хрупкая: ручных запусков — не больше 60 в час на всех.
-  if (!runs.take('all')) throw createError({ statusCode: 429, message: 'Не больше 60 ручных запусков в час' })
-  const started = Date.now()
-  const run = await ({
+  const flow = parsed.data.flow
+  const now = Date.now()
+  const verdict = manualRunVerdict(flow, running, lastStartedAt.get(flow), now)
+  if (!verdict.ok) {
+    throw createError({
+      statusCode: verdict.reason === 'busy' ? 409 : 429,
+      message: verdict.reason === 'busy' ? 'Этот обмен уже идёт' : `Бережём 1С: повторить можно через ${Math.ceil(verdict.retryInMs / 60_000)} мин`,
+    })
+  }
+  running.add(flow)
+  lastStartedAt.set(flow, now)
+  const job = {
     clients: () => syncCompanies(),
     catalog: () => syncCatalog(),
     prices: () => syncPrices(),
     stock: () => syncStock(),
     orders: () => runOrderSync(),
-  })[parsed.data.flow]()
-  console.info(`[system] manual run ${parsed.data.flow}`)
-  return { flow: parsed.data.flow, ms: Date.now() - started, result: run }
+  }[flow]
+  console.info(`[system] manual run ${flow}`)
+  void Promise.resolve().then(job)
+    .catch(e => console.warn(`[system] manual run ${flow} failed: ${e instanceof Error ? e.name : 'Error'}`))
+    .finally(() => running.delete(flow))
+  setResponseStatus(event, 202)
+  return { flow, started: true }
 })

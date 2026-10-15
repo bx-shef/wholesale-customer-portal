@@ -1,30 +1,27 @@
 // Раз в 5 минут: здоровье обмена → Telegram по эпизодам (одно «⚠️» на поломку, одно «✅» на восстановление).
-import { alertMessage, emptyDeliveryState, episodeKey, markAnnounced, markRecovered, planAlertDelivery, recoveryMessage, type DeliveryState } from '../../utils/alertDelivery'
-import { sendTelegramAlert, type AlertFetchFn } from '../../utils/telegramAlert'
+// Состояние эпизодов — в SQLite (`app_state`), чтобы выкат посреди аварии не дал повторного «⚠️» и не потерял «✅».
+import { parseDeliveryState, runAlertTick } from '../../utils/alertTick'
+import { sendTelegramAlert } from '../../utils/telegramAlert'
 
-let state: DeliveryState = emptyDeliveryState()
+const KEY = 'alert-delivery'
 
 export default defineTask({
   meta: { name: 'monitor:alerts', description: 'Здоровье обмена с 1С → Telegram' },
   async run() {
     const telegram = resolveTelegramConfig()
     if (!telegram) return { result: 'telegram off' }
+    const db = useDb()
     const status = currentSystemStatus()
-    const now = Date.now()
-    const plan = planAlertDelivery(status.alerts, state, now)
-    state = plan.state
-    const statusUrl = readServerEnv().publicUrl ? `${readServerEnv().publicUrl}/api/system` : null
-    const send = (text: string) => sendTelegramAlert(telegram, text, globalThis.fetch as unknown as AlertFetchFn)
-    for (const a of plan.opened) {
-      const r = await send(alertMessage(a, statusUrl))
-      if (r.ok) state = markAnnounced(state, episodeKey(a), now)
-      else console.warn(`[monitor] telegram ${r.status}`)
-    }
-    for (const key of plan.recovered) {
-      const r = await send(recoveryMessage(key))
-      if (r.ok) state = markRecovered(state, key)
-      else console.warn(`[monitor] telegram ${r.status}`)
-    }
-    return { result: { alerts: status.alerts.length, opened: plan.opened.length, recovered: plan.recovered.length } }
+    const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(KEY) as { value: string } | undefined
+    const publicUrl = readServerEnv().publicUrl
+    const r = await runAlertTick(status.alerts, parseDeliveryState(row?.value), {
+      send: text => sendTelegramAlert(telegram, text, fetch),
+      now: Date.now(),
+      statusUrl: publicUrl ? `${publicUrl}/api/system` : null,
+      warn: msg => console.warn(msg),
+    })
+    db.prepare(`INSERT INTO app_state (key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(KEY, JSON.stringify(r.state), new Date().toISOString())
+    return { result: { alerts: status.alerts.length, sent: r.sent, failed: r.failed } }
   },
 })

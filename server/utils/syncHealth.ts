@@ -44,21 +44,30 @@ export function flowHealth(flow: string, runs: FlowRunRow[], nowMs: number, sinc
   else if (lastOkAt && nowMs - Date.parse(lastOkAt) > def.staleMs) state = 'stale'
   // Ни одного удачного запуска: тревога, только если процесс живёт дольше срока — иначе ложная на выкате.
   else if (!lastOkAt) state = sinceStartMs > def.staleMs ? 'stale' : 'never'
-  return { flow, label: def.label, state, lastRun: runs[0] ?? null, lastOkAt, failuresInRow }
+  return { flow, label: def.label, state, lastRun: finished[0] ?? runs[0] ?? null, lastOkAt, failuresInRow }
+}
+
+/**
+ * Класс ошибки без текста: в журнале лежит `${name}: ${message}`, а сообщение бывает с куском
+ * ответа 1С (данные клиента). В Telegram — внешний сервис, отозвать нельзя — уходит только имя.
+ */
+export function errorClass(error: string | null | undefined): string {
+  const name = /^([A-Za-z][\w]{0,40}):/.exec(error ?? '')?.[1]
+  return name ?? 'ошибка'
 }
 
 export function healthAlerts(flows: FlowHealth[], onec: { pausedUntil: number }, nowMs: number): Alert[] {
   const alerts: Alert[] = []
   for (const f of flows) {
     if (f.state === 'failing') {
-      alerts.push({ kind: 'sync-failed', subject: f.label, text: `обмен «${f.label}» падает ${f.failuresInRow} раз подряд. Последняя ошибка: ${(f.lastRun?.error ?? '—').slice(0, 300)}` })
+      alerts.push({ kind: 'sync-failed', subject: f.label, text: `обмен «${f.label}» падает ${f.failuresInRow} раз подряд (${errorClass(f.lastRun?.error)}). Подробности — на странице состояния.` })
     }
     else if (f.state === 'stale') {
       alerts.push({ kind: 'sync-stale', subject: f.label, text: f.lastOkAt ? `обмен «${f.label}» не проходил с ${f.lastOkAt}.` : `обмен «${f.label}» ни разу не прошёл.` })
     }
   }
   if (onec.pausedUntil > nowMs) {
-    alerts.push({ kind: 'onec-paused', subject: '1С', text: `1С не отвечает: после серии сбоев обращения приостановлены до ${new Date(onec.pausedUntil).toISOString()}.` })
+    alerts.push({ kind: 'onec-paused', subject: '1С', text: `1С не отвечает: после серии сбоев обращения приостановлены до ${new Date(onec.pausedUntil).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' })} по Минску.` })
   }
   return alerts
 }

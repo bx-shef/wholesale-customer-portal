@@ -156,6 +156,12 @@ export const MIGRATIONS: string[] = [
    );
    -- Клиенты, загруженные до договора внутри /clients, перечитать целиком: иначе у них нет вида цен.
    DELETE FROM sync_cursor WHERE flow = 'clients';`,
+  // Состояние фоновых задач, которое должно пережить выкат (эпизоды оповещений).
+  `CREATE TABLE app_state (
+     key TEXT PRIMARY KEY,
+     value TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

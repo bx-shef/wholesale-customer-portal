@@ -25,7 +25,7 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
   const runsOf = db.prepare(`SELECT flow, status, started_at AS startedAt, finished_at AS finishedAt, received, error
     FROM sync_run WHERE flow = ? ORDER BY id DESC LIMIT 10`)
   const flows = Object.keys(FLOWS).map(f => flowHealth(f, runsOf.all(f) as unknown as FlowRunRow[], now, now - STARTED_AT))
-  const one = (sql: string) => Number((db.prepare(sql).get() as { n: number }).n)
+  const one = (sql: string, ...params: string[]) => Number((db.prepare(sql).get(...params) as { n: number }).n)
   const counts = {
     'клиенты 1С': one('SELECT count(*) AS n FROM onec_client WHERE deleted = 0'),
     'клиенты с договором': one('SELECT count(*) AS n FROM onec_client WHERE deleted = 0 AND contract IS NOT NULL'),
@@ -34,7 +34,7 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     'строки прайса': one('SELECT count(*) AS n FROM price_list'),
     'виды цен': one('SELECT count(DISTINCT price_type_guid) AS n FROM price_list'),
     'строки остатков': one('SELECT count(*) AS n FROM stock'),
-    'диалоги ИИ за сутки': one(`SELECT count(*) AS n FROM ai_dialog WHERE created_at > '${new Date(now - 86_400_000).toISOString()}'`),
+    'диалоги ИИ за сутки': one('SELECT count(*) AS n FROM ai_dialog WHERE created_at > ?', new Date(now - 86_400_000).toISOString()),
   }
   const orders: Record<string, number> = {}
   for (const r of db.prepare('SELECT status, count(*) AS n FROM order_request GROUP BY status').all() as { status: string, n: number }[]) orders[r.status] = Number(r.n)

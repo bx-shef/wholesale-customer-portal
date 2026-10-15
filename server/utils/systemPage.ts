@@ -90,7 +90,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
   const FLOWS = { clients: 'клиенты и договоры', catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов' }
   async function api(path, body) {
-    const res = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {})
+    const res = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-lk-stand': '1' }, body: JSON.stringify(body) } : {})
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status))
     return data
@@ -100,14 +100,14 @@ export const SYSTEM_PAGE = `<!doctype html>
     $('updated').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU') + ' · сборка ' + s.commit.slice(0, 7)
     const mode = { mock: 'мок 1С', real: 'настоящая 1С', off: '1С не настроена' }[s.onec.mode]
     $('summary').innerHTML = '<b>' + esc(mode) + '</b>'
-      + (s.onec.pausedUntil ? ' · <span class="alert">обращения к 1С на паузе до ' + esc(ago(s.onec.pausedUntil).split(' · ')[0]) + '</span>' : ' · сбоев подряд: ' + s.onec.failuresInRow)
+      + (s.onec.pausedUntil ? ' · <span class="alert">обращения к 1С на паузе до ' + esc(ago(s.onec.pausedUntil).split(' · ')[0]) + '</span>' : ' · сбоев подряд: ' + Number(s.onec.failuresInRow))
       + (s.alerts.length ? '<div class="alert" style="margin-top:6px">' + s.alerts.map((a) => '⚠️ ' + esc(a.text)).join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>')
     $('flows').innerHTML = s.flows.map((f) => '<tr><td><b>' + esc(f.label) + '</b></td><td><span class="b ' + f.state + '">' + STATE[f.state] + '</span>'
-      + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + f.failuresInRow + '</span>' : '') + '</td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'
-      + (f.lastRun ? '<span class="b ' + f.lastRun.status + '">' + RUN[f.lastRun.status] + '</span> ' + esc(ago(f.lastRun.startedAt)) + ', получено ' + f.lastRun.received : '—')
+      + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + Number(f.failuresInRow) + '</span>' : '') + '</td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'
+      + (f.lastRun ? '<span class="b ' + esc(f.lastRun.status) + '">' + esc(RUN[f.lastRun.status]) + '</span> ' + esc(ago(f.lastRun.startedAt)) + ', получено ' + Number(f.lastRun.received) : '—')
       + '</td><td><button data-run="' + f.flow + '">Запустить</button></td></tr>').join('')
-    $('counts').innerHTML = Object.entries(s.counts).map(([k, v]) => '<div class="tile"><b>' + v + '</b>' + esc(k) + '</div>').join('')
-      + Object.entries(s.orders).map(([k, v]) => '<div class="tile"><b>' + v + '</b>заявки: ' + esc(k) + '</div>').join('')
+    $('counts').innerHTML = Object.entries(s.counts).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>' + esc(k) + '</div>').join('')
+      + Object.entries(s.orders).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>заявки: ' + esc(k) + '</div>').join('')
     $('runs').innerHTML = s.recentRuns.map((r) => '<tr><td>' + esc(ago(r.startedAt)) + '</td><td>' + esc(FLOWS[r.flow] || r.flow) + '</td><td><span class="b ' + r.status + '">' + RUN[r.status] + '</span></td><td>' + r.received + '</td><td class="hide-m muted">' + esc(r.error || '') + '</td></tr>').join('')
     $('mock-card').hidden = s.onec.mode !== 'mock'
     $('tg').textContent = s.telegram ? 'Включены: сообщение на каждую поломку обмена и на восстановление.' : 'Выключены: задайте TELEGRAM_ALERT_BOT_TOKEN и TELEGRAM_ALERT_CHAT_ID.'
@@ -119,8 +119,8 @@ export const SYSTEM_PAGE = `<!doctype html>
     b.disabled = true
     try {
       if (b.dataset.run) {
-        const r = await api('/api/system/run', { flow: b.dataset.run })
-        b.textContent = 'Готово за ' + (r.ms / 1000).toFixed(1) + ' с'
+        await api('/api/system/run', { flow: b.dataset.run })
+        b.textContent = 'Запущено — итог в таблице ниже'
       }
       else if (b.dataset.mock) out('mock-out', JSON.stringify((await api('/api/system/mock', { action: b.dataset.mock })).body, null, 2))
       else if (b.id === 'tg-test') { const r = await api('/api/system/alert-test', {}); out('tg-out', r.ok ? 'Доставлено.' : 'Telegram ответил ' + r.status) }
