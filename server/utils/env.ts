@@ -11,6 +11,9 @@ export interface ServerEnv {
   b24PortalHosts: string
   onecUrl: string
   onecToken: string
+  /** Логин и пароль пользователя 1С — вместо токена (Basic). */
+  onecLogin: string
+  onecPassword: string
   /**
    * Мок 1С — только при явном `ONEC_MOCK=true`. Иначе забытая строка на проде молча подменила бы
    * 1С фейковыми данными и открыла `/mock-1c` с токеном реальной 1С (находка ревью PR #2).
@@ -22,6 +25,10 @@ export interface ServerEnv {
   deepseekModel: string
   sessionSecret: string
   mcpAdminToken: string
+  /** Пароль стенда проверки 1С (/api/onec-test); пусто — стенд закрыт. */
+  onecTestPassword: string
+  /** Логин стенда проверки 1С; пусто — любой. */
+  onecTestLogin: string
   commitSha: string
   /** Каталог базы SQLite; в проде — том `/data`. */
   dataDir: string
@@ -37,12 +44,16 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     b24PortalHosts: get('B24_PORTAL_HOST'),
     onecUrl: get('ONEC_URL'),
     onecToken: get('ONEC_TOKEN'),
+    onecLogin: get('ONEC_LOGIN'),
+    onecPassword: get('ONEC_PASSWORD'),
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
     deepseekModel: get('DEEPSEEK_MODEL') || 'deepseek-chat',
     sessionSecret: get('SESSION_SECRET'),
     mcpAdminToken: get('MCP_ADMIN_TOKEN'),
+    onecTestPassword: get('ONEC_TEST_PASSWORD'),
+    onecTestLogin: get('ONEC_TEST_LOGIN'),
     commitSha: get('COMMIT_SHA'),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',

@@ -33,6 +33,10 @@ export function useOnec(): OnecClient {
     const state = getMockState()
     return new OnecClient({ baseUrl: 'http://mock.local/mock-1c', token: state.token, fetch: mockFetch(state), log })
   }
-  if (!env.onecUrl || !env.onecToken) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL / ONEC_TOKEN' })
-  return new OnecClient({ baseUrl: env.onecUrl, token: env.onecToken, log })
+  // Логин и пароль пользователя 1С (Basic) — если заданы; иначе Bearer-токен.
+  const auth = env.onecLogin && env.onecPassword
+    ? { kind: 'basic' as const, login: env.onecLogin, password: env.onecPassword }
+    : env.onecToken ? { kind: 'bearer' as const, token: env.onecToken } : null
+  if (!env.onecUrl || !auth) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL and ONEC_TOKEN or ONEC_LOGIN/ONEC_PASSWORD' })
+  return new OnecClient({ baseUrl: env.onecUrl, auth, log })
 }
