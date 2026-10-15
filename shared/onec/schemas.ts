@@ -56,6 +56,19 @@ export const Contract = z.object({
   currency: Currency,
 })
 
+/** Ссылка на картинку товара: сам файл — `GET /image/{id}` в base64 (docs/onec-contract.md §2.8). */
+export const ImageRef = z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), hash: z.string().regex(/^[A-Za-z0-9]{1,64}$/) })
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+export const ImageFile = z.object({
+  id: ImageRef.shape.id,
+  hash: ImageRef.shape.hash,
+  contentType: z.enum(IMAGE_TYPES),
+  // base64 без переносов и префикса data:; 5 МБ файла — до ~7 МБ строки.
+  data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(Math.ceil(IMAGE_MAX_BYTES / 3) * 4),
+})
+
+/** Раздел ЛК — вид номенклатуры 1С (решение владельца, docs/onec-contract.md §2.3). */
 export const Section = z.object({ guid: Guid, parentGuid: Guid.nullable(), name: z.string() })
 
 export const Item = z.object({
@@ -69,7 +82,7 @@ export const Item = z.object({
   minQty: z.number().positive(),
   description: z.string(),
   properties: z.record(z.string(), z.string()),
-  images: z.array(z.string()),
+  images: z.array(ImageRef),
   analogs: z.array(Guid),
   changedAt: DateTime,
   deleted: z.boolean(),
@@ -123,6 +136,8 @@ export type ClientT = z.infer<typeof Client>
 export type ContractT = z.infer<typeof Contract>
 export type SectionT = z.infer<typeof Section>
 export type ItemT = z.infer<typeof Item>
+export type ImageRefT = z.infer<typeof ImageRef>
+export type ImageFileT = z.infer<typeof ImageFile>
 export type PriceT = z.infer<typeof Price>
 export type StockT = z.infer<typeof Stock>
 export type OrderStatusT = z.infer<typeof OrderStatus>

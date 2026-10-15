@@ -25,7 +25,7 @@ export function buildOnecOpenApi() {
     Error: s.ErrorBody, Client: s.Client, ClientsPage: s.ClientsPage, Contract: s.Contract, Section: s.Section,
     Item: s.Item, CatalogPage: s.CatalogPage, PricesRequest: s.PricesRequest, Price: s.Price, PricesResponse: s.PricesResponse,
     Stock: s.Stock, StockPage: s.StockPage, OrderRequest: s.OrderRequest, OrderCreated: s.OrderCreated,
-    OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage,
+    OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage, ImageRef: s.ImageRef, ImageFile: s.ImageFile,
   }
   return {
     openapi: '3.1.0',
@@ -34,7 +34,7 @@ export function buildOnecOpenApi() {
       version: '1.0.0',
       description: 'Собрано из shared/onec/schemas.ts. Описание и порядок сдачи — docs/onec-contract.md. Не править руками: pnpm onec:openapi.',
     },
-    security: [{ bearer: [] }],
+    security: [{ bearer: [] }, { basic: [] }],
     paths: {
       '/clients': { get: { summary: 'Контрагенты', parameters: listParams, responses: { 200: { description: 'Страница', content: content('ClientsPage') }, ...errors } } },
       '/client/{guid}/contract': {
@@ -44,7 +44,14 @@ export function buildOnecOpenApi() {
           responses: { 200: { description: 'Договор', content: content('Contract') }, 404: { description: 'Нет клиента или договора', content: content('Error') }, ...errors },
         },
       },
-      '/catalog': { get: { summary: 'Каталог: разделы на первой странице, товары постранично', parameters: listParams, responses: { 200: { description: 'Страница', content: content('CatalogPage') }, ...errors } } },
+      '/image/{id}': {
+        get: {
+          summary: 'Картинка товара в base64 (JPEG, PNG, WebP; до 5 МБ)',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } }],
+          responses: { 200: { description: 'Файл', content: content('ImageFile') }, 404: { description: 'Нет картинки', content: content('Error') }, ...errors },
+        },
+      },
+      '/catalog': { get: { summary: 'Каталог: разделы (виды номенклатуры) на первой странице, товары постранично', parameters: listParams, responses: { 200: { description: 'Страница', content: content('CatalogPage') }, ...errors } } },
       '/prices': {
         post: {
           summary: 'Цены по договору клиента, с НДС. Неизвестный товар — нет строки в ответе',
@@ -68,7 +75,7 @@ export function buildOnecOpenApi() {
       '/orders/status': { get: { summary: 'Статусы заказов', parameters: listParams, responses: { 200: { description: 'Страница', content: content('OrderStatusPage') }, ...errors } } },
     },
     components: {
-      securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } },
+      securitySchemes: { bearer: { type: 'http', scheme: 'bearer' }, basic: { type: 'http', scheme: 'basic' } },
       schemas: Object.fromEntries(Object.entries(schemas).map(([name, schema]) => [name, json(schema)])),
     },
   }

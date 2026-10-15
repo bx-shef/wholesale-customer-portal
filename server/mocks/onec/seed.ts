@@ -6,7 +6,9 @@
 import type { ClientT, ContractT, ItemT, SectionT } from '../../../shared/onec/schemas'
 
 /** Момент «до всех изменений»: changedAt сида лежат после него, changedSince=SEED_EPOCH отдаёт всё. */
+import { createHash } from 'node:crypto'
 import { ALGENA_DRY_MIXES } from './algena'
+import { DEMO_IMAGES_JPEG } from './demoImages'
 
 /** mulberry32 — маленький детерминированный ГПСЧ; криптостойкость здесь не нужна. */
 export function prng(seed: number): () => number {
@@ -40,6 +42,8 @@ export interface SeedData {
   basePrice: Map<string, number>
   /** Остаток: ключ `itemGuid|warehouseGuid`. */
   stock: Map<string, number>
+  /** Картинки для `GET /image/{id}`: версия и base64. */
+  images: Map<string, { hash: string, data: string }>
 }
 
 export const SEED_EPOCH = '2026-01-01T00:00:00.000Z'
@@ -127,7 +131,16 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     sections.push({ guid: guidFrom(rand), parentGuid: i < 4 ? null : sections[i % 4]!.guid, name })
   }
 
+  // Картинки витрины — по порядку к товарам algena.by, у которых картинка есть.
+  const images = new Map<string, { hash: string, data: string }>()
+  let nextImage = 0
   const items: ItemT[] = []
+  function addImage(data: string) {
+    const id = `img-${images.size + 1}`
+    const hash = createHash('sha1').update(data).digest('hex')
+    images.set(id, { hash, data })
+    return { id, hash }
+  }
   const basePrice = new Map<string, number>()
   for (let i = 0; i < 500; i++) {
     const section = sections[i % sections.length]!
@@ -146,10 +159,10 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       minQty: demo ? 1 : packQty,
       description: `Товар раздела «${section.name}» бренда ${brand}.`,
       properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: `${Math.ceil(rand() * 30)} кг` },
-      images: demo?.image ? [demo.image] : [],
+      images: demo?.image && nextImage < DEMO_IMAGES_JPEG.length ? [addImage(DEMO_IMAGES_JPEG[nextImage++]!)] : [],
       analogs: [],
       // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.
-      changedAt: demo ? at(286) : at(10 + (i % 60)),
+      changedAt: demo ? at(287) : at(10 + (i % 60)),
       deleted: false,
     }
     items.push(item)
@@ -173,5 +186,5 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     }
   }
 
-  return { priceTypes, warehouses, clients, contracts, sections, items, basePrice, stock }
+  return { priceTypes, warehouses, clients, contracts, sections, items, basePrice, stock, images }
 }

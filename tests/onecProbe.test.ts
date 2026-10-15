@@ -80,3 +80,38 @@ describe('стенд 1С: доступ и адрес', () => {
     for (const bad of ['http://1c.algena.by/hs', 'https://u:p@1c.algena.by', 'https://1c.algena.by/hs?x=1', 'ftp://x', 'мусор']) expect(checkBaseUrl(bad)).toBeNull()
   })
 })
+
+describe('картинки из 1С (§2.8)', () => {
+  it('докачивает только недостающие, проверяет формат и кладёт под hash ответа', async () => {
+    const { fetchMissingImages, imageUrl, refFromUrl, sniffImage } = await import('../server/utils/imageStore')
+    const jpeg = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 1, 2]).toString('base64')
+    const svg = Buffer.from('<svg onload="alert(1)"/>').toString('base64')
+    const files = new Map<string, Buffer>([['have.h1', Buffer.from('x')]])
+    const res = await fetchMissingImages(
+      [{ id: 'have', hash: 'h1' }, { id: 'new', hash: 'h2' }, { id: 'new', hash: 'h2' }, { id: 'bad', hash: 'h3' }, { id: 'png', hash: 'h4' }],
+      {
+        fs: { exists: async n => files.has(n), write: async (n, b) => { files.set(n, b) } },
+        load: async id => id === 'bad'
+          ? { id, hash: 'h3', contentType: 'image/jpeg' as const, data: svg }
+          : id === 'png' ? { id, hash: 'h4', contentType: 'image/png' as const, data: jpeg } : { id, hash: 'h9', contentType: 'image/jpeg' as const, data: jpeg },
+      },
+    )
+    expect(res.saved).toBe(1)
+    expect(files.has('new.h9')).toBe(true)
+    expect(res.failed).toEqual([{ id: 'bad', reason: 'не JPEG, PNG или WebP' }, { id: 'png', reason: 'contentType image/png, а файл — image/jpeg' }])
+    expect(refFromUrl(imageUrl({ id: 'a-1', hash: 'f0' }))).toEqual({ id: 'a-1', hash: 'f0' })
+    expect(refFromUrl('https://algena.by/x.jpg')).toBeNull()
+    expect(refFromUrl('/images/../etc.passwd')).toBeNull()
+    expect(sniffImage(Buffer.from('RIFF0000WEBP'))).toBe('image/webp')
+  })
+
+  it('мок отдаёт картинку каталога в base64, и она проходит проверку ЛК', async () => {
+    const { decodeImage } = await import('../server/utils/imageStore')
+    const { OnecClient } = await import('../server/services/onec')
+    const m = mock()
+    const c = new OnecClient({ baseUrl: m.baseUrl, token: m.token, fetch: m.fetch, retries: 0 })
+    const items = (await c.catalog({ pageSize: 500 })).items
+    const ref = items.find(i => i.images.length)!.images[0]!
+    expect(decodeImage(await c.image(ref.id), ref)).toMatchObject({ ok: true })
+  })
+})

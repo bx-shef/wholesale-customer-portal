@@ -203,6 +203,13 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     return ok({ sections: q.page === 1 ? state.data.sections : [], ...pageData })
   }
 
+  const imageMatch = /^\/image\/([^/]+)$/.exec(path)
+  if (method === 'GET' && imageMatch) {
+    const id = decodeURIComponent(imageMatch[1]!)
+    const image = state.data.images.get(id)
+    return image ? ok({ id, hash: image.hash, contentType: 'image/jpeg', data: image.data }) : error('not_found', 'Image not found')
+  }
+
   if (method === 'POST' && path === '/prices') {
     const parsed = PricesRequest.safeParse(req.body)
     if (!parsed.success) return error('validation', 'Bad prices request')

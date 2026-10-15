@@ -48,6 +48,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
+| `server/utils/imageStore.ts`, `server/routes/images/[name].get.ts` | картинки товаров: из 1С base64 (`GET /image/{id}`), на томе `/data/images`, раздача `/images/<id>.<hash>` |
 | `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, кэш цен клиента, каталог глазами клиента, обвязка маршрутов |
 | `server/tasks/sync/{catalog,stock}.ts`, `server/plugins/catalogWarmup.ts` | каталог раз в час, остатки раз в 5 минут, первый прогон при старте |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |

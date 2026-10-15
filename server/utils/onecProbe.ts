@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto'
 import { OnecClient, OnecError, onecAuthHeader, type OnecAuth } from '../services/onec'
 import { ErrorBody, type ClientT, type ItemT, type PriceT } from '../../shared/onec/schemas'
+import { decodeImage } from './imageStore'
 
 export interface ProbeInput {
   baseUrl: string
@@ -143,12 +144,20 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
 
   let items: ItemT[] = []
   await check('catalog', 'GET /catalog — разделы и товары', async () => {
-    const page = await client.catalog({ pageSize: 50 })
+    const page = await client.catalog({ pageSize: 500 })
     items = page.items
     if (page.sections.length === 0) throw new Error('на первой странице нет разделов (sections)')
     const unknown = page.items.find(i => !page.sections.some(s => s.guid.toLowerCase() === i.sectionGuid.toLowerCase()))
     return `разделов: ${page.sections.length}, товаров на странице: ${page.items.length}${unknown ? `; у товара ${unknown.sku} раздел не из sections` : ''}`
   })
+
+  const withImage = () => items.find(i => i.images.length > 0)
+  await check('image', 'GET /image/{id} — картинка товара в base64', async () => {
+    const ref = withImage()!.images[0]!
+    const decoded = decodeImage(await client.image(ref.id), ref)
+    if (!decoded.ok) throw new Error(decoded.reason)
+    return `${ref.id}: ${Math.round(decoded.bytes.length / 1024)} КБ`
+  }, !items.length ? 'нет товаров' : !withImage() ? 'на первой странице каталога нет товаров с картинками' : undefined)
 
   let prices: PriceT[] = []
   const priceClient = () => withContract()
