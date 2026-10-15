@@ -60,6 +60,8 @@ export interface OnecClientOptions {
   token?: string
   /** Способ авторизации; без него — Bearer `token`. */
   auth?: OnecAuth
+  /** Запросы стенда проверки: заголовок `X-LK-Test: 1` (docs/onec-contract.md §1.7). Сам ЛК не ставит. */
+  testMode?: boolean
   fetch?: typeof fetch
   timeoutMs?: number
   /** Сколько раз повторить после первой попытки. */
@@ -160,6 +162,7 @@ export class OnecClient {
         headers: {
           'authorization': onecAuthHeader(this.options.auth ?? { kind: 'bearer', token: this.options.token ?? '' }),
           'accept': 'application/json',
+          ...(this.options.testMode ? { 'x-lk-test': '1' } : {}),
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),

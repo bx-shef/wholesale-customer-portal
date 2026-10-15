@@ -50,6 +50,7 @@ const describe = (e: unknown) => {
 
 export async function runOnecProbe(input: ProbeInput, now: () => number = Date.now): Promise<ProbeCheck[]> {
   const checks: ProbeCheck[] = []
+  const started0 = now() - 60_000
   let lastStatus = null as number | null
   const status = () => lastStatus
   const client = new OnecClient({
@@ -57,10 +58,11 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     auth: input.auth,
     fetch: input.fetch,
     retries: 0,
+    testMode: true,
     log: (e) => { lastStatus = e.status },
   })
   const raw = (path: string, headers: Record<string, string> = {}) =>
-    input.fetch(new URL(input.baseUrl.replace(/\/+$/, '') + path), { headers: { accept: 'application/json', ...headers } })
+    input.fetch(new URL(input.baseUrl.replace(/\/+$/, '') + path), { headers: { 'accept': 'application/json', 'x-lk-test': '1', ...headers } })
 
   async function check(id: string, title: string, run: () => Promise<string>, skipReason?: string) {
     if (skipReason) {
@@ -179,6 +181,7 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
       deliveryAddressGuid: address!.guid,
       deliveryDate: new Date(now() + 86_400_000).toISOString().slice(0, 10),
       comment: 'Проверка стенда ЛК — тестовый заказ, можно удалить',
+      test: true,
       items: [{ itemGuid: priced!.itemGuid, qty: 1, price: priced!.price }],
     }
     const created = await client.createOrder(body)
@@ -186,9 +189,11 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     const again = await client.createOrder(body)
     if (status() !== 200) throw new Error(`повтор: ожидали 200, пришёл ${status()}`)
     if (again.orderGuid.toLowerCase() !== created.orderGuid.toLowerCase()) throw new Error('повтор создал второй заказ')
-    return `заказ ${created.number}, повтор вернул тот же`
+    const listed = await client.orderStatus({ changedSince: new Date(started0).toISOString() })
+    if (listed.items.some(o => o.orderGuid.toLowerCase() === created.orderGuid.toLowerCase())) throw new Error('тестовый заказ (test: true) попал в /orders/status')
+    return `заказ ${created.number}, повтор вернул тот же, в статусах его нет`
   }, !input.allowOrder
-    ? 'выключено: создаёт документ в базе'
+    ? 'выключено галкой'
     : !orderClient ? 'нет клиента с договором' : !address ? 'у клиента нет адреса доставки' : !priced ? 'нет товара с ценой' : undefined)
 
   return checks

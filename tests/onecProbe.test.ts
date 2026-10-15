@@ -16,6 +16,19 @@ describe('стенд 1С: проверки', () => {
     expect(checks.map(c => c.id)).toContain('order')
   })
 
+  it('все запросы стенда — с X-LK-Test: 1, заказ — с test: true и не виден в статусах', async () => {
+    const m = mock()
+    const seen: { test: string | null, body: string }[] = []
+    const spy: typeof fetch = async (url, init) => {
+      seen.push({ test: new Headers(init?.headers).get('x-lk-test'), body: String(init?.body ?? '') })
+      return m.fetch(url, init)
+    }
+    const checks = await runOnecProbe({ ...m, fetch: spy, allowOrder: true })
+    expect(checks.find(c => c.id === 'order')).toMatchObject({ status: 'ok', detail: expect.stringContaining('ТЕСТ-') })
+    expect(seen.every(s => s.test === '1')).toBe(true)
+    expect(seen.filter(s => s.body.includes('externalId')).every(s => JSON.parse(s.body).test === true)).toBe(true)
+  })
+
   it('без галки заказ не создаётся — пропуск', async () => {
     const checks = await runOnecProbe({ ...mock(), allowOrder: false })
     expect(checks.find(c => c.id === 'order')).toMatchObject({ status: 'skip' })

@@ -41,7 +41,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   <div class="card">
     <p class="muted">Стенд по очереди вызывает методы контракта <b>с сервера ЛК</b> и сверяет ответы с описанием:
     <a href="https://github.com/bx-shef/wholesale-customer-portal/blob/main/docs/onec-contract.md" target="_blank" rel="noopener">спецификация</a>.
-    Токен и пароль не сохраняются и не пишутся в журнал.</p>
+    Все запросы идут с заголовком <code>X-LK-Test: 1</code>. Токен и пароль не сохраняются и не пишутся в журнал.</p>
     <form id="f">
       <div class="row">
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
@@ -66,7 +66,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         </div>
       </div>
       <div class="row">
-        <label><input id="allowOrder" type="checkbox"> Проверить создание заказа — <b>пишет документ в базу</b>, только тестовая база</label>
+        <label><input id="allowOrder" type="checkbox"> Проверить создание заказа — уходит с <code>test: true</code>; если 1С тестовый документ всё же создаёт, — только на тестовой базе</label>
       </div>
       <button id="go" type="submit">Проверить</button>
     </form>
