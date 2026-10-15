@@ -90,7 +90,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
     try {
       const res = await fetch('/api/onec-test', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-lk-stand': '1' },
         body: JSON.stringify({ target: target(), baseUrl: $('baseUrl').value, authKind: authKind(), token: $('token').value, login: $('login').value, password: $('password').value, allowOrder: $('allowOrder').checked }),
       })
       const data = await res.json().catch(() => ({}))

@@ -58,3 +58,14 @@ describe('сверка при создании заказа (§2.6)', () => {
     ])).toBe('Расхождения при создании заказа в 1С — согласуйте с клиентом:\nA-a: цена 18,20 → 18,90; резерв 8 из 10 шт\nA-c: 1С не вернула строку')
   })
 })
+
+describe('снятие паузы (кнопка «1С починили» на моке)', () => {
+  it('reset снимает паузу и счёт сбоев', async () => {
+    const guard = createOnecGuard({ now: () => 0 })
+    const f = guard.wrap(async () => new Response('', { status: 503 }))
+    for (let i = 0; i < 3; i++) await f('x')
+    expect(guard.state().pausedUntil).toBeGreaterThan(0)
+    guard.reset()
+    expect(guard.state()).toMatchObject({ failures: 0, pausedUntil: 0 })
+  })
+})

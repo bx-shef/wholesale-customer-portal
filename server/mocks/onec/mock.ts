@@ -54,6 +54,8 @@ interface MockOrder {
 export interface MockState {
   token: string
   seed: number
+  /** Демо-клиенты из `ONEC_MOCK_CLIENTS`: `_admin/reset` создаёт их заново. */
+  demoClients: string[]
   data: SeedData
   /** Момент изменения остатка: ключ `itemGuid|warehouseGuid`, мс эпохи. */
   stockChangedAt: Map<string, number>
@@ -82,6 +84,7 @@ export function createMockState(token: string, seed = 1, demoClients: string[] =
   return {
     token,
     seed,
+    demoClients,
     data,
     stockChangedAt: new Map([...data.stock.keys()].map(k => [k, epoch])),
     priceChangedAt: new Map(),
@@ -312,7 +315,7 @@ function handleAdmin(state: MockState, method: string, path: string, body: unkno
   const input = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
 
   if (path === '/_admin/reset') {
-    const fresh = createMockState(state.token, typeof input.seed === 'number' ? input.seed : state.seed)
+    const fresh = createMockState(state.token, typeof input.seed === 'number' ? input.seed : state.seed, state.demoClients)
     Object.assign(state, fresh)
     return { status: 200, body: { ok: true, seed: state.seed }, delayMs: 0 }
   }
@@ -350,7 +353,7 @@ function handleAdmin(state: MockState, method: string, path: string, body: unkno
   if (path === '/_admin/item') {
     const item = state.data.items[typeof input.index === 'number' ? input.index : 1]
     if (!item) return error('not_found', 'No item')
-    item.name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : `${item.name.replace(/ \(изм\. \d+\)$/, '')} (изм. ${new Date(now).toISOString().slice(11, 16)})`
+    item.name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : `${item.name.replace(/ \(изм\. [\d:]+\)$/, '')} (изм. ${new Date(now).toISOString().slice(11, 16)})`
     item.changedAt = new Date(now).toISOString()
     return { status: 200, body: { item: item.name }, delayMs: 0 }
   }
