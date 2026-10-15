@@ -4,10 +4,10 @@
  */
 import { access, mkdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ItemT, SectionT, StockT } from '../../shared/onec/schemas'
+import type { ItemT, PriceT, SectionT, StockT } from '../../shared/onec/schemas'
 import { fetchMissingImages } from './imageStore'
 import { createCatalogStore, type CatalogStore } from './catalog'
-import { createPriceCache } from './prices'
+import { createPriceStore, type PriceStore } from './prices'
 import { runFlow, sqliteSyncStore, type SyncRun } from './onecSync'
 
 let store: CatalogStore | undefined
@@ -16,9 +16,10 @@ export function useCatalog(): CatalogStore {
   return store
 }
 
-let prices: ReturnType<typeof createPriceCache> | undefined
-export function usePrices() {
-  prices ??= createPriceCache(async (clientGuid, items) => useOnec().prices({ clientGuid, items }))
+let prices: PriceStore | undefined
+/** Прайс в базе ЛК (§2.4): цены клиенту — отсюда, без запросов к 1С. */
+export function usePrices(): PriceStore {
+  prices ??= createPriceStore(useDb())
   return prices
 }
 
@@ -76,6 +77,22 @@ export async function syncImages() {
     for (const f of result.failed.slice(0, 5)) console.warn(`[sync:images] ${f.id}: ${f.reason}`)
   }
   return result
+}
+
+/** Прайс по изменениям (§2.4): раз в 15 минут, ключ — «вид цен × товар». */
+export function syncPrices(): Promise<SyncRun> {
+  return once('prices', async () => {
+    const onec = useOnec()
+    const store = usePrices()
+    const run = await runFlow<PriceT>({
+      name: 'prices',
+      key: p => `${p.priceTypeGuid.toLowerCase()}|${p.itemGuid.toLowerCase()}`,
+      load: p => onec.prices(p),
+      consume: async rows => store.save(rows),
+    }, sqliteSyncStore(useDb()))
+    if (run.status === 'failed') console.error(`[sync:prices] ${run.error}`)
+    return run
+  })
 }
 
 export function syncStock(): Promise<SyncRun> {

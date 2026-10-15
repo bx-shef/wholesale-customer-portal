@@ -101,7 +101,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       address: `г. ${city}, ул. Складская, ${i + 1}`,
       city,
       managerEmail: `manager${(i % 2) + 1}@example.by`,
-      contractGuid: contract.guid,
+      contract,
       deliveryAddresses: [{ guid: guidFrom(rand), city, address: `г. ${city}, ул. Строителей, ${10 + i}` }],
       changedAt: at(1 + i),
       deleted: false,
@@ -117,7 +117,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       address: 'г. Минск, ул. Складская, 1',
       city: 'Минск',
       managerEmail: '',
-      contractGuid: contracts[0]!.guid,
+      contract: contracts[0]!,
       deliveryAddresses: [{ guid: guidFrom(prng(i + 1000)), city: 'Минск', address: 'г. Минск, ул. Строителей, 1' }],
       // Время запуска процесса: синхронизация по курсору иначе не заметила бы GUID, добавленный позже.
       changedAt: demoChangedAt,

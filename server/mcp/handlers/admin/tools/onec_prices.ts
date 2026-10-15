@@ -1,9 +1,9 @@
-import { PricesRequest } from '../../../../../shared/onec/schemas'
+import { ListQuery } from '../../../../../shared/onec/schemas'
 
-// Цены по договору клиента (POST /prices), с НДС. Покупатель видит только свои — это /mcp/client.
+// Прайс по видам цен (GET /prices), постранично, с НДС. Цены клиента ЛК считает сам по договору.
 export default defineMcpTool({
   name: 'onec_prices',
-  description: 'Цены товаров по договору клиента из 1С',
-  inputSchema: PricesRequest.shape,
-  handler: async input => mcpJson(() => useOnec().prices(input)),
+  description: 'Прайс 1С по видам цен постранично (по изменениям — changedSince)',
+  inputSchema: ListQuery.partial().shape,
+  handler: async params => mcpJson(() => useOnec().prices(params)),
 })

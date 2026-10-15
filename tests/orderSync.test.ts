@@ -45,7 +45,7 @@ describe('синхронизация заявок', () => {
         moveDeal: vi.fn(async () => {}),
         comment: vi.fn(async () => {}),
       },
-      createOnecOrder: vi.fn(async () => ({ orderGuid: g(900).toUpperCase(), number: 'ЛК-1', status: 'new' as const })),
+      createOnecOrder: vi.fn(async (o: { items: { itemGuid: string, qty: number, price: number }[] }) => ({ orderGuid: g(900).toUpperCase(), number: 'ЛК-1', status: 'new' as const, items: o.items.map(i => ({ itemGuid: i.itemGuid, price: i.price, reserved: i.qty })) })),
       schedules: vi.fn(async () => minskTueFri),
       now: () => NOW,
     }

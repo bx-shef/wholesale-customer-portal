@@ -9,8 +9,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { generateSeed, guidFrom, prng, round2, SEED_EPOCH, type SeedData } from './seed'
 import {
-  ERROR_CODES, ListQuery, OrderRequest, PricesRequest,
-  type ClientT, type ErrorCode, type OrderStatusT, type StockT,
+  ERROR_CODES, ListQuery, OrderRequest,
+  type ClientT, type ErrorCode, type OrderLineFactT, type OrderStatusT, type PriceT, type StockT,
 } from '../../../shared/onec/schemas'
 
 export interface MockRequest {
@@ -45,6 +45,8 @@ interface MockOrder {
   createdAt: number
   /** Момент отмены, мс эпохи: он же changedAt — иначе синхронизация по курсору отмену не увидит. */
   cancelledAt: number | null
+  /** Факт по строкам (§2.6): цена прайса договора и резерв из свободного остатка. */
+  lines: OrderLineFactT[]
   /** Заказ со стенда (`test: true`, docs/onec-contract.md §1.7): не виден в /orders/status. */
   test: boolean
 }
@@ -123,6 +125,31 @@ function moveStock(state: MockState, now: number) {
   }
 }
 
+/** Прайс мока: «вид цен × товар», цена — базовая × коэффициент вида цен. */
+function priceRows(state: MockState): PriceT[] {
+  const rows: PriceT[] = []
+  for (const pt of state.data.priceTypes) {
+    for (const item of state.data.items) {
+      const base = state.data.basePrice.get(item.guid)
+      if (base === undefined) continue
+      rows.push({ priceTypeGuid: pt.guid, itemGuid: item.guid, price: round2(base * pt.coefficient), currency: 'BYN', vatRate: 20, changedAt: item.changedAt, deleted: false })
+    }
+  }
+  return rows
+}
+
+/** Что 1С скажет о строках заказа: цена по прайсу договора, резерв — сколько есть на складах. */
+function orderFacts(state: MockState, priceTypeGuid: string, items: { itemGuid: string, qty: number, price: number }[]): OrderLineFactT[] {
+  const pt = state.data.priceTypes.find(p => p.guid === priceTypeGuid)
+  return items.map((line) => {
+    const guid = line.itemGuid.toLowerCase()
+    const base = state.data.basePrice.get(guid)
+    let free = 0
+    for (const w of state.data.warehouses) free += state.data.stock.get(`${guid}|${w.guid}`) ?? 0
+    return { itemGuid: guid, price: base !== undefined && pt ? round2(base * pt.coefficient) : line.price, reserved: Math.min(line.qty, free) }
+  })
+}
+
 function newClient(state: MockState, name: string | undefined, now: number): ClientT {
   const { data } = state
   const contract = {
@@ -143,7 +170,7 @@ function newClient(state: MockState, name: string | undefined, now: number): Cli
     address: 'г. Минск, ул. Новая, 1',
     city: 'Минск',
     managerEmail: 'manager1@example.by',
-    contractGuid: contract.guid,
+    contract,
     deliveryAddresses: [{ guid: guidFrom(state.rand), city: 'Минск', address: 'г. Минск, ул. Новая, 1' }],
     changedAt: new Date(now).toISOString(),
     deleted: false,
@@ -187,13 +214,6 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     return ok(paginate(rows, q.page, q.pageSize))
   }
 
-  const contractMatch = /^\/client\/([^/]+)\/contract$/.exec(path)
-  if (method === 'GET' && contractMatch) {
-    const client = state.data.clients.find(c => c.guid.toLowerCase() === contractMatch[1]!.toLowerCase() && !c.deleted)
-    const contract = client && state.data.contracts.find(c => c.guid === client.contractGuid)
-    return contract ? ok(contract) : error('not_found', 'Client or contract not found')
-  }
-
   if (method === 'GET' && path === '/catalog') {
     const q = list()
     if (!q) return error('validation', 'Bad list parameters')
@@ -210,18 +230,11 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     return image ? ok({ id, hash: image.hash, contentType: 'image/jpeg', data: image.data }) : error('not_found', 'Image not found')
   }
 
-  if (method === 'POST' && path === '/prices') {
-    const parsed = PricesRequest.safeParse(req.body)
-    if (!parsed.success) return error('validation', 'Bad prices request')
-    const client = state.data.clients.find(c => c.guid.toLowerCase() === parsed.data.clientGuid.toLowerCase() && !c.deleted)
-    const contract = client && state.data.contracts.find(c => c.guid === client.contractGuid)
-    const priceType = contract && state.data.priceTypes.find(p => p.guid === contract.priceTypeGuid)
-    if (!priceType || !contract) return error('not_found', 'Client or contract not found')
-    // Неизвестный товар — просто нет строки в ответе: клиент сверяет по itemGuid.
-    return ok(parsed.data.items.flatMap((itemGuid) => {
-      const base = state.data.basePrice.get(itemGuid.toLowerCase())
-      return base === undefined ? [] : [{ itemGuid: itemGuid.toLowerCase(), price: round2(base * priceType.coefficient), currency: contract.currency, vatRate: 20 }]
-    }))
+  if (method === 'GET' && path === '/prices') {
+    const q = list()
+    if (!q) return error('validation', 'Bad list parameters')
+    const rows = byChange(priceRows(state).filter(r => Date.parse(r.changedAt) >= since(q.changedSince)), r => r.changedAt, r => `${r.priceTypeGuid}|${r.itemGuid}`)
+    return ok(paginate(rows, q.page, q.pageSize))
   }
 
   if (method === 'GET' && path === '/stock') {
@@ -249,7 +262,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     }
     const client = state.data.clients.find(c => c.guid.toLowerCase() === parsed.data.clientGuid.toLowerCase() && !c.deleted)
     if (!client) return error('not_found', 'Client not found')
-    if (client.contractGuid !== parsed.data.contractGuid.toLowerCase() || !client.deliveryAddresses.some(a => a.guid === parsed.data.deliveryAddressGuid.toLowerCase())) {
+    if (client.contract?.guid !== parsed.data.contractGuid.toLowerCase() || !client.deliveryAddresses.some(a => a.guid === parsed.data.deliveryAddressGuid.toLowerCase())) {
       return error('validation', 'Contract or delivery address does not belong to the client')
     }
     const order = existing ?? (() => {
@@ -261,13 +274,14 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         test: parsed.data.test === true,
         createdAt: now,
         cancelledAt: null,
+        lines: orderFacts(state, client.contract!.priceTypeGuid, parsed.data.items),
       }
       state.orders.set(created.orderGuid, created)
       state.ordersByExternalId.set(created.externalId, created)
       return created
     })()
     // Повтор с тем же externalId — тот же заказ и 200, первое создание — 201.
-    return ok({ orderGuid: order.orderGuid, number: order.number, status: orderStatusAt(order, now).status }, existing ? 200 : 201)
+    return ok({ orderGuid: order.orderGuid, number: order.number, status: orderStatusAt(order, now).status, items: order.lines }, existing ? 200 : 201)
   }
 
   if (method === 'GET' && path === '/orders/status') {

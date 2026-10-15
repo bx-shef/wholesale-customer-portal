@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createCatalogStore } from '../server/utils/catalog'
-import { createPriceCache, PRICE_FAILURE_PAUSE_MS, PRICE_TTL_MS, PricesUnavailableError } from '../server/utils/prices'
+import { createPriceStore } from '../server/utils/prices'
+import { createClientStore } from '../server/utils/clients'
 import { catalogItem, catalogPage, COMPANY_NO_GUID_TTL_MS, createCompanyGuidResolver, parseCatalogQuery, resolvePricing } from '../server/utils/catalogView'
 import { generateSeed } from '../server/mocks/onec/seed'
 import type { ItemT, PriceT } from '../shared/onec/schemas'
@@ -128,71 +129,42 @@ describe('индекс каталога', () => {
   })
 })
 
-describe('цены клиента', () => {
-  const price = (item: string, v = 10): PriceT => ({ itemGuid: item, price: v, currency: 'BYN', vatRate: 20 })
+describe('цены клиента — из прайса в базе ЛК (§2.4)', () => {
+  const contract = (priceTypeGuid: string) => ({ guid: g(500), number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid, paymentDelayDays: 0, creditLimit: 0, debt: 0, currency: 'BYN' })
+  const row = (pt: string, itemN: number, price: number, over: Partial<PriceT> = {}): PriceT => ({ priceTypeGuid: pt, itemGuid: g(itemN), price, currency: 'BYN', vatRate: 20, changedAt: at, deleted: false, ...over })
+  const setup = () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const clients = createClientStore(db)
+    clients.save([
+      { guid: g(100), name: 'А', unp: '', address: '', city: '', managerEmail: '', contract: contract(g(700)), deliveryAddresses: [], changedAt: at, deleted: false },
+      { guid: g(101), name: 'Б', unp: '', address: '', city: '', managerEmail: '', contract: contract(g(701)), deliveryAddresses: [], changedAt: at, deleted: false },
+      { guid: g(102), name: 'В', unp: '', address: '', city: '', managerEmail: '', contract: null, deliveryAddresses: [], changedAt: at, deleted: false },
+    ])
+    return createPriceStore(db)
+  }
 
-  it('в 1С идут только недостающие, кэш 15 минут, отдельно по клиенту', async () => {
-    let t = 0
-    const load = vi.fn(async (_c: string, items: string[]) => items.map(i => price(i)))
-    const cache = createPriceCache(load, () => t)
-    await cache.get(g(100), [g(1), g(2)])
-    await cache.get(g(100), [g(2), g(3)])
-    expect(load.mock.calls.map(c => c[1])).toEqual([[g(1), g(2)], [g(3)]])
-    await cache.get(g(101), [g(1)])
-    expect(load).toHaveBeenCalledTimes(3)
-    t = PRICE_TTL_MS + 1
-    await cache.get(g(100), [g(1)])
-    expect(load).toHaveBeenCalledTimes(4)
+  it('цена — по виду цен договора клиента, у другого клиента своя', async () => {
+    const prices = setup()
+    prices.save([row(g(700), 1, 10), row(g(701), 1, 9), row(g(700), 2, 20)])
+    expect([...(await prices.get(g(100), [g(1), g(2), g(3)])).entries()].map(([k, v]) => [k, v.price])).toEqual([[g(1), 10], [g(2), 20]])
+    expect((await prices.get(g(101).toUpperCase(), [g(1)])).get(g(1))!.price).toBe(9)
   })
 
-  it('одновременные одинаковые запросы ждут один ответ 1С', async () => {
-    let release!: () => void
-    const load = vi.fn((_c: string, items: string[]) => new Promise<PriceT[]>((r) => {
-      release = () => r(items.map(i => price(i)))
-    }))
-    const cache = createPriceCache(load, () => 0)
-    const a = cache.get(g(100), [g(1)])
-    const b = cache.get(g(100), [g(1)])
-    release()
-    expect((await a).size).toBe(1)
-    expect((await b).size).toBe(1)
-    expect(load).toHaveBeenCalledTimes(1)
+  it('без договора или без клиента — цен нет', async () => {
+    const prices = setup()
+    prices.save([row(g(700), 1, 10)])
+    expect((await prices.get(g(102), [g(1)])).size).toBe(0)
+    expect((await prices.get(g(999), [g(1)])).size).toBe(0)
   })
 
-  it('1С упала — пауза: 30 секунд её не спрашиваем, потом снова', async () => {
-    let t = 0
-    let down = true
-    const load = vi.fn(async (_c: string, items: string[]) => {
-      if (down) throw new Error('503')
-      return items.map(i => price(i))
-    })
-    const cache = createPriceCache(load, () => t)
-    await expect(cache.get(g(100), [g(1)])).rejects.toBeInstanceOf(PricesUnavailableError)
-    await expect(cache.get(g(100), [g(1)])).rejects.toBeInstanceOf(PricesUnavailableError)
-    expect(load).toHaveBeenCalledTimes(1)
-    down = false
-    t = PRICE_FAILURE_PAUSE_MS + 1
-    expect((await cache.get(g(100), [g(1)])).size).toBe(1)
-  })
-
-  it('переполнение вытесняет старые записи, а цены текущего ответа не теряются', async () => {
-    const load = vi.fn(async (_c: string, items: string[]) => items.map(i => price(i)))
-    const cache = createPriceCache(load, () => 0, 3)
-    await cache.get(g(100), [g(1), g(2)])
-    const r = await cache.get(g(100), [g(3), g(4)])
-    expect(r.size).toBe(2)
-    await cache.get(g(100), [g(2)])
-    expect(load).toHaveBeenCalledTimes(2)
-    await cache.get(g(100), [g(1)])
-    expect(load).toHaveBeenCalledTimes(3)
-  })
-
-  it('«нет цены» тоже кэшируется и не превращается в ноль', async () => {
-    const load = vi.fn(async () => [] as PriceT[])
-    const cache = createPriceCache(load, () => 0)
-    expect((await cache.get(g(100), [g(1)])).size).toBe(0)
-    await cache.get(g(100), [g(1)])
-    expect(load).toHaveBeenCalledTimes(1)
+  it('новая цена заменяет старую, deleted — снимает', async () => {
+    const prices = setup()
+    prices.save([row(g(700), 1, 10)])
+    prices.save([row(g(700), 1, 11)])
+    expect((await prices.get(g(100), [g(1)])).get(g(1))!.price).toBe(11)
+    prices.save([row(g(700), 1, 11, { deleted: true })])
+    expect((await prices.get(g(100), [g(1)])).size).toBe(0)
   })
 })
 

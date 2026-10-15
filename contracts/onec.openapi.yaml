@@ -9,7 +9,7 @@ security:
 paths:
   /clients:
     get:
-      summary: Контрагенты
+      summary: Контрагенты с договорами и адресами доставки
       parameters:
         - name: changedSince
           in: query
@@ -48,47 +48,6 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Нет или неверный Bearer-токен
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "503":
-          description: Сервис временно недоступен — ЛК повторит запрос
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /client/{guid}/contract:
-    get:
-      summary: Договор клиента
-      parameters:
-        - name: guid
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: Договор
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Contract"
-        "400":
-          description: Неверные параметры
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Нет или неверный Bearer-токен
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Нет клиента или договора
           content:
             application/json:
               schema:
@@ -192,21 +151,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /prices:
-    post:
-      summary: Цены по договору клиента, с НДС. Неизвестный товар — нет строки в ответе
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PricesRequest"
+    get:
+      summary: "Прайс: цены по видам цен, с НДС, по изменениям"
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
       responses:
         "200":
-          description: Цены
+          description: Страница
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PricesResponse"
+                $ref: "#/components/schemas/PricesPage"
         "400":
           description: Неверные параметры
           content:
@@ -215,12 +191,6 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Нет или неверный Bearer-токен
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Нет клиента или договора
           content:
             application/json:
               schema:
@@ -418,10 +388,43 @@ components:
           type: string
         managerEmail:
           type: string
-        contractGuid:
+        contract:
           anyOf:
-            - type: string
-              pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            - type: object
+              properties:
+                guid:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                number:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                  pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                priceTypeGuid:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                paymentDelayDays:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                creditLimit:
+                  type: number
+                debt:
+                  type: number
+                currency:
+                  type: string
+                  pattern: ^[A-Z]{3}$
+              required:
+                - guid
+                - number
+                - date
+                - priceTypeGuid
+                - paymentDelayDays
+                - creditLimit
+                - debt
+                - currency
+              additionalProperties: false
             - type: "null"
         deliveryAddresses:
           type: array
@@ -453,7 +456,7 @@ components:
         - address
         - city
         - managerEmail
-        - contractGuid
+        - contract
         - deliveryAddresses
         - changedAt
         - deleted
@@ -480,10 +483,43 @@ components:
                 type: string
               managerEmail:
                 type: string
-              contractGuid:
+              contract:
                 anyOf:
-                  - type: string
-                    pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  - type: object
+                    properties:
+                      guid:
+                        type: string
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                      number:
+                        type: string
+                      date:
+                        type: string
+                        format: date
+                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+                      priceTypeGuid:
+                        type: string
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                      paymentDelayDays:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      creditLimit:
+                        type: number
+                      debt:
+                        type: number
+                      currency:
+                        type: string
+                        pattern: ^[A-Z]{3}$
+                    required:
+                      - guid
+                      - number
+                      - date
+                      - priceTypeGuid
+                      - paymentDelayDays
+                      - creditLimit
+                      - debt
+                      - currency
+                    additionalProperties: false
                   - type: "null"
               deliveryAddresses:
                 type: array
@@ -515,7 +551,7 @@ components:
               - address
               - city
               - managerEmail
-              - contractGuid
+              - contract
               - deliveryAddresses
               - changedAt
               - deleted
@@ -770,28 +806,13 @@ components:
         - items
         - nextPage
       additionalProperties: false
-    PricesRequest:
-      $schema: https://json-schema.org/draft/2020-12/schema
-      type: object
-      properties:
-        clientGuid:
-          type: string
-          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
-        items:
-          minItems: 1
-          maxItems: 500
-          type: array
-          items:
-            type: string
-            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
-      required:
-        - clientGuid
-        - items
-      additionalProperties: false
     Price:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
       properties:
+        priceTypeGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
         itemGuid:
           type: string
           pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
@@ -803,35 +824,86 @@ components:
         vatRate:
           type: number
           minimum: 0
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+        deleted:
+          type: boolean
       required:
+        - priceTypeGuid
         - itemGuid
         - price
         - currency
         - vatRate
+        - changedAt
+        - deleted
       additionalProperties: false
-    PricesResponse:
+    PricesPage:
       $schema: https://json-schema.org/draft/2020-12/schema
-      type: array
-      items:
-        type: object
-        properties:
-          itemGuid:
-            type: string
-            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
-          price:
-            type: number
-          currency:
-            type: string
-            pattern: ^[A-Z]{3}$
-          vatRate:
-            type: number
-            minimum: 0
-        required:
-          - itemGuid
-          - price
-          - currency
-          - vatRate
-        additionalProperties: false
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              priceTypeGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              itemGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              price:
+                type: number
+              currency:
+                type: string
+                pattern: ^[A-Z]{3}$
+              vatRate:
+                type: number
+                minimum: 0
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+              deleted:
+                type: boolean
+            required:
+              - priceTypeGuid
+              - itemGuid
+              - price
+              - currency
+              - vatRate
+              - changedAt
+              - deleted
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - items
+        - nextPage
+      additionalProperties: false
+    OrderLineFact:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        itemGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        price:
+          type: number
+        reserved:
+          type: number
+          minimum: 0
+      required:
+        - itemGuid
+        - price
+        - reserved
+      additionalProperties: false
     Stock:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
@@ -975,10 +1047,29 @@ components:
             - shipped
             - delivered
             - cancelled
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              itemGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              price:
+                type: number
+              reserved:
+                type: number
+                minimum: 0
+            required:
+              - itemGuid
+              - price
+              - reserved
+            additionalProperties: false
       required:
         - orderGuid
         - number
         - status
+        - items
       additionalProperties: false
     OrderStatusRow:
       $schema: https://json-schema.org/draft/2020-12/schema

@@ -172,6 +172,9 @@ async function submit() {
               <B24FormField label="Комментарий" :hint="`${comment.length} / ${COMMENT_MAX}`">
                 <B24Textarea v-model="comment" :maxlength="COMMENT_MAX" :rows="3" placeholder="Например: разгрузка с 9:00, позвонить заранее" class="w-full" />
               </B24FormField>
+              <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                Цены и наличие — по последнему обмену с 1С. Менеджер подтвердит заказ и сообщит, если что-то изменилось.
+              </p>
             </div>
           </B24Card>
         </template>

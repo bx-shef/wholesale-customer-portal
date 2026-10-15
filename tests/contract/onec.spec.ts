@@ -48,18 +48,16 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
       }
     })
 
-    it('неизвестный клиент — 404 с телом ошибки', async () => {
-      await expectError(client.contract('00000000-0000-4000-8000-000000000000'), 404)
+    it('неизвестная картинка — 404 с телом ошибки', async () => {
+      await expectError(client.image('no-such-image'), 404)
     })
   })
 
   describe('GET /clients', () => {
     it('есть хотя бы один клиент, и у него есть договор', async () => {
       expect(clients.length).toBeGreaterThan(0)
-      const withContract = clients.find(c => c.contractGuid && !c.deleted)
-      expect(withContract).toBeTruthy()
-      const contract = await client.contract(withContract!.guid)
-      expect(contract.guid).toBe(withContract!.contractGuid)
+      const withContract = clients.find(c => c.contract && !c.deleted)
+      expect(withContract, 'договор приходит внутри клиента — поле contract').toBeTruthy()
     })
 
     it('страницы по 2 дают тот же набор без повторов, последняя — nextPage: null', async () => {
@@ -84,7 +82,7 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
     })
   })
 
-  describe('GET /catalog и POST /prices', () => {
+  describe('GET /catalog и GET /prices', () => {
     it('первая страница несёт разделы, товары ссылаются на них', async () => {
       const first = await client.catalog({ pageSize: 50 })
       expect(first.sections.length).toBeGreaterThan(0)
@@ -93,26 +91,18 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
       for (const s of first.sections) if (s.parentGuid) expect(sectionGuids.has(s.parentGuid)).toBe(true)
     })
 
-    it('цены — по запрошенным товарам, в валюте договора', async () => {
-      const items = (await client.catalog({ pageSize: 3 })).items.map(i => i.guid)
-      const buyer = clients.find(c => c.contractGuid && !c.deleted)!
-      const contract = await client.contract(buyer.guid)
-      const prices = await client.prices({ clientGuid: buyer.guid, items })
-      expect(prices.length).toBeGreaterThan(0)
-      for (const p of prices) {
-        expect(items.map(i => i.toLowerCase())).toContain(p.itemGuid.toLowerCase())
-        expect(p.currency).toBe(contract.currency)
-      }
+    it('прайс содержит вид цен из договора клиента, цены — на товары каталога', async () => {
+      const buyer = clients.find(c => c.contract && !c.deleted)!
+      const rows = await collectPages(page => client.prices({ page }))
+      const own = rows.filter(r => r.priceTypeGuid.toLowerCase() === buyer.contract!.priceTypeGuid.toLowerCase())
+      expect(own.length).toBeGreaterThan(0)
+      const items = new Set((await collectPages(page => client.catalog({ page }))).map(i => i.guid.toLowerCase()))
+      expect(own.every(r => items.has(r.itemGuid.toLowerCase()))).toBe(true)
+      expect(new Set(rows.map(r => `${r.priceTypeGuid}|${r.itemGuid}`.toLowerCase())).size, 'пара «вид цен × товар» — одна строка').toBe(rows.length)
     })
 
-    it('цены без товаров — 400 ещё до запроса', async () => {
-      await expect(client.prices({ clientGuid: clients[0]!.guid, items: [] })).rejects.toThrow()
-      const res = await raw('/prices', {
-        method: 'POST',
-        headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ clientGuid: clients[0]!.guid, items: [] }),
-      })
-      expect(res.status).toBe(400)
+    it('прайс по changedSince из будущего — пусто', async () => {
+      expect(await client.prices({ changedSince: '2999-01-01T00:00:00Z' })).toEqual({ items: [], nextPage: null })
     })
   })
 
@@ -137,30 +127,33 @@ describe(`контракт 1С — ${remoteUrl ? remoteUrl : 'мок'}`, () => {
 
   describe.skipIf(!target.allowOrder)('POST /order и GET /orders/status', () => {
     it('заказ идемпотентен по externalId и виден в статусах', async () => {
-      const buyer = clients.find(c => c.contractGuid && !c.deleted && c.deliveryAddresses.length > 0)!
-      const item = (await client.catalog({ pageSize: 1 })).items[0]!
-      const [price] = await client.prices({ clientGuid: buyer.guid, items: [item.guid] })
+      const buyer = clients.find(c => c.contract && !c.deleted && c.deliveryAddresses.length > 0)!
+      const price = (await collectPages(page => client.prices({ page }))).find(p => p.priceTypeGuid.toLowerCase() === buyer.contract!.priceTypeGuid.toLowerCase())!
+      const item = (await collectPages(page => client.catalog({ page }))).find(i => i.guid.toLowerCase() === price.itemGuid.toLowerCase())!
       const externalId = `contract-test-${Date.now()}`
       const order = {
         externalId,
         clientGuid: buyer.guid,
-        contractGuid: buyer.contractGuid!,
+        contractGuid: buyer.contract!.guid,
         deliveryAddressGuid: buyer.deliveryAddresses[0]!.guid,
         deliveryDate: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10),
-        items: [{ itemGuid: item.guid, qty: item.minQty, price: price!.price }],
+        items: [{ itemGuid: item.guid, qty: item.minQty, price: price.price }],
       }
       const first = await client.createOrder(order)
       const again = await client.createOrder(order)
       expect(again.orderGuid).toBe(first.orderGuid)
       expect(again.number).toBe(first.number)
+      // Факт по строке: цена прайса договора и резерв — это и есть сверка перед заказом (§2.6).
+      expect(first.items.map(f => f.itemGuid.toLowerCase())).toEqual([item.guid.toLowerCase()])
+      expect(first.items[0]!.reserved).toBeLessThanOrEqual(item.minQty)
 
       const statuses = await collectPages(page => client.orderStatus({ page }))
       expect(statuses.find(s => s.externalId === externalId)?.orderGuid).toBe(first.orderGuid)
 
       // Тот же externalId от другого клиента — 409, а не чужой заказ.
-      const other = clients.find(c => c.guid !== buyer.guid && c.contractGuid && !c.deleted && c.deliveryAddresses.length > 0)
+      const other = clients.find(c => c.guid !== buyer.guid && c.contract && !c.deleted && c.deliveryAddresses.length > 0)
       if (other) {
-        await expectError(client.createOrder({ ...order, clientGuid: other.guid, contractGuid: other.contractGuid!, deliveryAddressGuid: other.deliveryAddresses[0]!.guid }), 409)
+        await expectError(client.createOrder({ ...order, clientGuid: other.guid, contractGuid: other.contract!.guid, deliveryAddressGuid: other.deliveryAddresses[0]!.guid }), 409)
       }
     })
 

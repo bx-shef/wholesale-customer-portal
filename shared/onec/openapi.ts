@@ -23,7 +23,7 @@ const listParams = [
 export function buildOnecOpenApi() {
   const schemas = {
     Error: s.ErrorBody, Client: s.Client, ClientsPage: s.ClientsPage, Contract: s.Contract, Section: s.Section,
-    Item: s.Item, CatalogPage: s.CatalogPage, PricesRequest: s.PricesRequest, Price: s.Price, PricesResponse: s.PricesResponse,
+    Item: s.Item, CatalogPage: s.CatalogPage, Price: s.Price, PricesPage: s.PricesPage, OrderLineFact: s.OrderLineFact,
     Stock: s.Stock, StockPage: s.StockPage, OrderRequest: s.OrderRequest, OrderCreated: s.OrderCreated,
     OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage, ImageRef: s.ImageRef, ImageFile: s.ImageFile,
   }
@@ -36,14 +36,7 @@ export function buildOnecOpenApi() {
     },
     security: [{ bearer: [] }, { basic: [] }],
     paths: {
-      '/clients': { get: { summary: 'Контрагенты', parameters: listParams, responses: { 200: { description: 'Страница', content: content('ClientsPage') }, ...errors } } },
-      '/client/{guid}/contract': {
-        get: {
-          summary: 'Договор клиента',
-          parameters: [{ name: 'guid', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          responses: { 200: { description: 'Договор', content: content('Contract') }, 404: { description: 'Нет клиента или договора', content: content('Error') }, ...errors },
-        },
-      },
+      '/clients': { get: { summary: 'Контрагенты с договорами и адресами доставки', parameters: listParams, responses: { 200: { description: 'Страница', content: content('ClientsPage') }, ...errors } } },
       '/image/{id}': {
         get: {
           summary: 'Картинка товара в base64 (JPEG, PNG, WebP; до 5 МБ)',
@@ -52,13 +45,7 @@ export function buildOnecOpenApi() {
         },
       },
       '/catalog': { get: { summary: 'Каталог: разделы (виды номенклатуры) на первой странице, товары постранично', parameters: listParams, responses: { 200: { description: 'Страница', content: content('CatalogPage') }, ...errors } } },
-      '/prices': {
-        post: {
-          summary: 'Цены по договору клиента, с НДС. Неизвестный товар — нет строки в ответе',
-          requestBody: { required: true, content: content('PricesRequest') },
-          responses: { 200: { description: 'Цены', content: content('PricesResponse') }, 404: { description: 'Нет клиента или договора', content: content('Error') }, ...errors },
-        },
-      },
+      '/prices': { get: { summary: 'Прайс: цены по видам цен, с НДС, по изменениям', parameters: listParams, responses: { 200: { description: 'Страница', content: content('PricesPage') }, ...errors } } },
       '/stock': { get: { summary: 'Свободный остаток без резервов', parameters: listParams, responses: { 200: { description: 'Страница', content: content('StockPage') }, ...errors } } },
       '/order': {
         post: {

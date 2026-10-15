@@ -9,8 +9,8 @@
  */
 import type { z } from 'zod'
 import {
-  CatalogPage, ClientsPage, Contract, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
-  PricesRequest, PricesResponse, StockPage,
+  CatalogPage, ClientsPage, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
+  PricesPage, StockPage,
 } from '../../shared/onec/schemas'
 
 export type OnecErrorKind = 'http' | 'timeout' | 'network' | 'contract'
@@ -64,7 +64,7 @@ export interface OnecClientOptions {
   testMode?: boolean
   fetch?: typeof fetch
   timeoutMs?: number
-  /** Сколько раз повторить после первой попытки. */
+  /** Сколько раз повторить после первой попытки; по умолчанию 0. */
   retries?: number
   log?: (entry: OnecLogEntry) => void
   sleep?: (ms: number) => Promise<void>
@@ -87,7 +87,8 @@ export class OnecClient {
   constructor(private readonly options: OnecClientOptions) {
     this.fetchImpl = options.fetch ?? fetch
     this.timeoutMs = options.timeoutMs ?? 15_000
-    this.retries = options.retries ?? 2
+    // Без повторов по умолчанию: 1С хрупкая, повтор — следующий запуск расписания (§1.6).
+    this.retries = options.retries ?? 0
     this.sleep = options.sleep ?? defaultSleep
   }
 
@@ -95,16 +96,13 @@ export class OnecClient {
     return this.request('GET', '/clients', ClientsPage, { query: params })
   }
 
-  contract(clientGuid: string) {
-    return this.request('GET', `/client/${encodeURIComponent(clientGuid)}/contract`, Contract)
-  }
-
   catalog(params: ListParams = {}) {
     return this.request('GET', '/catalog', CatalogPage, { query: params })
   }
 
-  async prices(input: z.input<typeof PricesRequest>) {
-    return this.request('POST', '/prices', PricesResponse, { body: PricesRequest.parse(input) })
+  /** Прайс по видам цен, по изменениям (§2.4): ЛК хранит его и считает цену клиента сам. */
+  prices(params: ListParams = {}) {
+    return this.request('GET', '/prices', PricesPage, { query: params })
   }
 
   stock(params: ListParams = {}) {

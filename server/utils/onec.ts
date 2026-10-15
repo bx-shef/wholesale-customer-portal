@@ -8,6 +8,10 @@ import { randomUUID } from 'node:crypto'
 import { createMockState, type MockState } from '../mocks/onec/mock'
 import { mockFetch } from '../mocks/onec/fetch'
 import { OnecClient } from '../services/onec'
+import { createOnecGuard } from './onecGuard'
+
+/** Один на процесс: очередь «по одному» и пауза после сбоев общие для всех потоков ЛК (§1.8). */
+const guard = createOnecGuard()
 
 let mockState: MockState | undefined
 
@@ -38,5 +42,5 @@ export function useOnec(): OnecClient {
     ? { kind: 'basic' as const, login: env.onecLogin, password: env.onecPassword }
     : env.onecToken ? { kind: 'bearer' as const, token: env.onecToken } : null
   if (!env.onecUrl || !auth) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL and ONEC_TOKEN or ONEC_LOGIN/ONEC_PASSWORD' })
-  return new OnecClient({ baseUrl: env.onecUrl, auth, log })
+  return new OnecClient({ baseUrl: env.onecUrl, auth, log, fetch: guard.wrap(fetch) })
 }

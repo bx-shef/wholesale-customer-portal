@@ -86,24 +86,24 @@ describe('клиенты 1С → компании Б24', () => {
 })
 
 describe('профиль', () => {
-  it('договор из 1С по GUID компании, менеджер — ответственный; сбой 1С не прячет менеджера', async () => {
+  it('договор — из клиентов 1С в базе ЛК по GUID компании, менеджер — ответственный', async () => {
     const { loadProfile } = await import('../server/utils/profile')
     const company = { id: 7, title: 'ООО', onecGuid: 'g', assignedById: 3 }
     const directory = { getCompany: async () => company } as never
     const call = async () => [{ ID: '9', NAME: 'Чужой' }, { ID: '3', NAME: 'Анна', LAST_NAME: 'Иванова', WORK_PHONE: '+375171234567', EMAIL: 'a@x.by' }]
     const contract = { guid: 'c', number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid: 'p', paymentDelayDays: 14, creditLimit: 5000, debt: 0, currency: 'BYN' }
-    const ok = await loadProfile(7, { directory, call, onec: () => ({ contract: async () => contract }) as never })
+    const ok = await loadProfile(7, { directory, call, contractOf: guid => (guid === 'g' ? contract : null) })
     expect(ok).toEqual({ company: { id: 7, title: 'ООО' }, contract, manager: { name: 'Анна Иванова', phone: '+375171234567', email: 'a@x.by' } })
-    const broken = await loadProfile(7, { directory, call, onec: () => ({ contract: async () => { throw new Error('503') } }) as never })
-    expect(broken.contract).toBeNull()
-    expect(broken.manager?.name).toBe('Анна Иванова')
+    const none = await loadProfile(7, { directory, call, contractOf: () => null })
+    expect(none.contract).toBeNull()
+    expect(none.manager?.name).toBe('Анна Иванова')
   })
 })
 
 describe('профиль — ошибки', () => {
   it('компании нет — 404, а не 500', async () => {
     const { loadProfile } = await import('../server/utils/profile')
-    const e = await loadProfile(7, { directory: { getCompany: async () => null } as never, call: async () => [], onec: () => ({}) as never }).catch((x: unknown) => x)
+    const e = await loadProfile(7, { directory: { getCompany: async () => null } as never, call: async () => [], contractOf: () => null }).catch((x: unknown) => x)
     expect(e).toMatchObject({ statusCode: 404 })
   })
 })
