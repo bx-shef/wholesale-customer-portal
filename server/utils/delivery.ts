@@ -15,7 +15,7 @@ export interface UpcomingTrip {
   actualStart: string | null
   vehicle: string
   regions: string[]
-  orders: { orderGuid: string, number: string, clientGuid: string, clientName: string | null }[]
+  orders: { orderGuid: string, number: string, clientName: string | null }[]
 }
 
 export function createDeliveryStore(db: DatabaseSync) {
@@ -62,7 +62,7 @@ export function createDeliveryStore(db: DatabaseSync) {
         return {
           guid: t.guid.toLowerCase(), number: t.number, status: t.status, plannedStart: t.plannedStart, actualStart: t.actualStart, vehicle: t.vehicle,
           regions: t.regionGuids.map(g => (regionName.get(g.toLowerCase()) as { n: string } | undefined)?.n ?? '—'),
-          orders: t.orders.map(o => ({ orderGuid: o.orderGuid.toLowerCase(), number: o.number, clientGuid: o.clientGuid.toLowerCase(), clientName: (clientName.get(o.clientGuid.toLowerCase()) as { n: string } | undefined)?.n ?? null })),
+          orders: t.orders.map(o => ({ orderGuid: o.orderGuid.toLowerCase(), number: o.number, clientName: (clientName.get(o.clientGuid.toLowerCase()) as { n: string } | undefined)?.n ?? null })),
         }
       })
     },

@@ -56,7 +56,7 @@ describe('задания на перевозку в базе ЛК', () => {
 describe('вкладка «Ближайшие доставки»', () => {
   const upcoming = vi.fn(() => [])
   it('только с портала, где стоит приложение, и с живым токеном сотрудника', async () => {
-    const userCall = vi.fn(async () => ({ ID: '5' }))
+    const userCall = vi.fn(async () => ({ ID: '5', UF_DEPARTMENT: [1] }))
     expect((await readDeliveries({ domain: 'evil.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall, upcoming })).status).toBe(403)
     expect(userCall).not.toHaveBeenCalled()
     const failing = vi.fn(async () => { throw new Error('expired_token') })
@@ -64,6 +64,13 @@ describe('вкладка «Ближайшие доставки»', () => {
     const ok = await readDeliveries({ domain: 'https://crm.algena.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall, upcoming })
     expect(ok.status).toBe(200)
     expect(userCall).toHaveBeenCalledWith('crm.algena.by', 't', 'user.current', {})
+  })
+
+  it('экстранет и внешние пользователи без подразделения — отказ, если не администратор', async () => {
+    const extranet = vi.fn(async (_h: string, _t: string, m: string) => (m === 'user.current' ? { ID: '9', UF_DEPARTMENT: [] } : false))
+    expect((await readDeliveries({ domain: 'crm.algena.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall: extranet, upcoming })).status).toBe(403)
+    const admin = vi.fn(async (_h: string, _t: string, m: string) => (m === 'user.current' ? { ID: '1' } : true))
+    expect((await readDeliveries({ domain: 'crm.algena.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall: admin, upcoming })).status).toBe(200)
   })
 })
 

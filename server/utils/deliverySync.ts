@@ -28,6 +28,8 @@ export function syncDeliverySchedule(): Promise<SyncRun> {
     await journal.saveRun(run)
     try {
       const { items } = await useOnec().deliverySchedule()
+      // Пустой график — скорее сбой выгрузки, чем «рейсов больше нет»: прежний не стираем.
+      if (items.length === 0) throw new Error('1С отдала пустой график доставки — прежний оставлен')
       useDelivery().saveSchedules(items)
       run.received = items.length
       run.status = 'done'

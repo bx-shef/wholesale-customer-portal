@@ -4,7 +4,9 @@
  * Только чтение: график и рейсы правятся в 1С.
  *
  * Кто смотрит — решает портал: токен фрейма проверяем вызовом `user.current` от имени сотрудника.
- * Видно любому сотруднику портала, на котором стоит приложение: это внутренние данные поставщика.
+ * Видно сотрудникам поставщика: у пользователя есть подразделение (`UF_DEPARTMENT`) или он
+ * администратор. Экстранет и внешние пользователи портала (без подразделения) — отказ: в рейсах
+ * названия клиентов и номера заказов.
  */
 import { z } from 'zod'
 import { normalizeHost, type UserCall } from './managerTab'
@@ -38,8 +40,10 @@ export async function readDeliveries(
   const host = normalizeHost(req.domain)
   if (!host || !deps.allowedHosts.includes(host)) return denied
   try {
-    const me = await deps.userCall(host, req.authId, 'user.current', {}) as { ID?: string | number } | null
+    const me = await deps.userCall(host, req.authId, 'user.current', {}) as { ID?: string | number, UF_DEPARTMENT?: unknown } | null
     if (!(Number(me?.ID) > 0)) return denied
+    const staff = Array.isArray(me?.UF_DEPARTMENT) && me.UF_DEPARTMENT.some(d => Number(d) > 0)
+    if (!staff && (await deps.userCall(host, req.authId, 'user.admin', {})) !== true) return denied
   }
   catch {
     return denied
