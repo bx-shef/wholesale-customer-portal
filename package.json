@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.82",
-    "@ai-sdk/vue": "^4.0.140",
+    "@ai-sdk/vue": "^4.0.143",
     "@bitrix24/b24icons-vue": "^2.0.8",
     "@bitrix24/b24jssdk": "^3.0.0",
     "@bitrix24/b24ui-nuxt": "^2.14.0",
