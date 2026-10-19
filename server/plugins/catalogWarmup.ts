@@ -8,6 +8,9 @@ export default defineNitroPlugin(() => {
     // Остатки — только поверх каталога: без товаров в индексе они не сохраняются.
     syncCatalog()
       .then(run => (run.status === 'done' ? syncStock().then(() => syncPrices()) : undefined))
+      // График и рейсы — из 1С сразу: без графика корзина не назовёт дату доставки.
+      .then(() => syncDeliverySchedule())
+      .then(() => syncTrips())
       .catch(e => console.error(`[catalog] warmup: ${(e as Error).message}`))
   }, 1000).unref()
 })

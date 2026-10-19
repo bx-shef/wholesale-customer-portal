@@ -6,11 +6,11 @@
  * Поведение (docs/spec.md §6): остатки меняются между запросами, заказ сам проходит статусы
  * по времени, включаются задержка и 5xx. Время приходит параметром — тесты двигают его сами.
  */
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { generateSeed, guidFrom, prng, round2, SEED_EPOCH, type SeedData } from './seed'
 import {
   ERROR_CODES, ListQuery, OrderRequest,
-  type ClientT, type ErrorCode, type OrderLineFactT, type OrderStatusT, type PriceT, type StockT,
+  type ClientT, type ErrorCode, type OrderLineFactT, type OrderStatusT, type PriceT, type StockT, type TripT,
 } from '../../../shared/onec/schemas'
 
 export interface MockRequest {
@@ -119,6 +119,63 @@ function orderStatusAt(order: MockOrder, now: number): { status: OrderStatusT, c
   return { status: current[0], changedAt: order.createdAt + current[1] * 1000 }
 }
 
+/** GUID рейса из региона и даты: один рейс на регион в день, как задание на перевозку по направлению. */
+function tripGuid(regionGuid: string, date: string): string {
+  const h = createHash('sha1').update(`${regionGuid}|${date}`).digest('hex')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+}
+
+/**
+ * Задания на перевозку мока: собранный заказ попадает в рейс своего региона на дату отгрузки;
+ * статус рейса идёт за статусом заказа (собран → к погрузке, отгружен → отправлено, доставлен →
+ * закрыто). Плюс по пустому формируемому рейсу на завтра в каждый регион — вкладке Б24 есть что показать.
+ */
+function mockTrips(state: MockState, now: number): TripT[] {
+  const trips = new Map<string, TripT>()
+  const dayStart = new Date(now).toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.parse(dayStart) + 86_400_000).toISOString().slice(0, 10)
+  for (const s of state.data.schedules) {
+    const guid = tripGuid(s.regionGuid, tomorrow)
+    trips.set(guid, {
+      guid, number: `ЦБ-${guid.slice(0, 6).toUpperCase()}`, status: 'forming',
+      plannedStart: `${tomorrow}T${s.arrivalFrom}:00.000+03:00`, plannedEnd: null, actualStart: null, actualEnd: null,
+      vehicle: '', regionGuids: [s.regionGuid], orders: [], changedAt: `${dayStart}T00:00:00.000Z`, deleted: false,
+    })
+  }
+  for (const o of state.orders.values()) {
+    if (o.test) continue
+    const at = orderStatusAt(o, now)
+    if (!['assembled', 'shipped', 'delivered'].includes(at.status)) continue
+    const region = state.data.clients.find(c => c.guid === o.clientGuid)?.region
+    if (!region) continue
+    const date = new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString().slice(0, 10)
+    const guid = tripGuid(region.guid, date)
+    const status = at.status === 'assembled' ? 'loading' : at.status === 'shipped' ? 'sent' : 'closed'
+    const changedAt = new Date(at.changedAt).toISOString()
+    const trip = trips.get(guid) ?? {
+      guid, number: `ЦБ-${guid.slice(0, 6).toUpperCase()}`, status, plannedStart: new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString(),
+      plannedEnd: null, actualStart: null, actualEnd: null, vehicle: 'АМ 3634-1 ГАЗ-А31R32', regionGuids: [region.guid], orders: [], changedAt, deleted: false,
+    }
+    trip.vehicle ||= 'АМ 3634-1 ГАЗ-А31R32'
+    if (status === 'sent' || status === 'closed') trip.actualStart ??= new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString()
+    if (status === 'closed') trip.actualEnd ??= changedAt
+    // Статус рейса — по самому «отстающему» заказу: рейс закрыт, когда доставлено всё.
+    const rank = { forming: 0, loading: 1, sent: 2, closed: 3 } as const
+    if (trip.orders.length === 0 || rank[status] < rank[trip.status]) trip.status = status
+    if (changedAt > trip.changedAt) trip.changedAt = changedAt
+    trip.orders.push({ orderGuid: o.orderGuid, number: o.number, clientGuid: o.clientGuid })
+    trips.set(guid, trip)
+  }
+  return [...trips.values()]
+}
+
+/** Рейс заказа — тот же расчёт, что в `mockTrips`. */
+function orderTripGuid(state: MockState, o: MockOrder, status: OrderStatusT): string | null {
+  if (!['assembled', 'shipped', 'delivered'].includes(status)) return null
+  const region = state.data.clients.find(c => c.guid === o.clientGuid)?.region
+  return region ? tripGuid(region.guid, new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString().slice(0, 10)) : null
+}
+
 /** Между запросами остатков меняются несколько позиций — клиенту есть что синхронизировать. */
 function moveStock(state: MockState, now: number) {
   state.stockTicks++
@@ -175,6 +232,8 @@ function newClient(state: MockState, name: string | undefined, now: number): Cli
     unp: String(190000000 + Math.floor(state.rand() * 9_999_999)),
     address: 'г. Минск, ул. Новая, 1',
     city: 'Минск',
+    region: data.clients.find(c => c.city === 'Минск')?.region ?? null,
+    shipmentBlocked: false,
     managerEmail: 'manager1@example.by',
     contract,
     deliveryAddresses: [{ guid: guidFrom(state.rand), city: 'Минск', address: 'г. Минск, ул. Новая, 1' }],
@@ -301,10 +360,22 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         number: o.number,
         status,
         shipmentDate: status === 'shipped' || status === 'delivered' ? new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString().slice(0, 10) : null,
+        tripGuid: orderTripGuid(state, o, status),
         changedAt: new Date(changedAt).toISOString(),
       }
     }).filter(r => Date.parse(r.changedAt) >= since(q.changedSince))
     return ok(paginate(byChange(rows, r => r.changedAt, r => r.orderGuid), q.page, q.pageSize))
+  }
+
+  if (method === 'GET' && path === '/delivery-schedule') {
+    return ok({ items: state.data.schedules })
+  }
+
+  if (method === 'GET' && path === '/trips') {
+    const q = list()
+    if (!q) return error('validation', 'Bad list parameters')
+    const rows = mockTrips(state, now).filter(t => Date.parse(t.changedAt) >= since(q.changedSince))
+    return ok(paginate(byChange(rows, t => t.changedAt, t => t.guid), q.page, q.pageSize))
   }
 
   return error('not_found', `No route ${method} ${path}`)

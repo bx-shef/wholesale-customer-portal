@@ -9,7 +9,7 @@
  */
 import type { z } from 'zod'
 import {
-  CatalogPage, ClientsPage, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
+  CatalogPage, ClientsPage, DeliverySchedulePage, TripsPage, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
   PricesPage, StockPage,
 } from '../../shared/onec/schemas'
 
@@ -117,6 +117,16 @@ export class OnecClient {
   /** Картинка товара в base64 (§2.8). */
   image(id: string) {
     return this.request('GET', `/image/${encodeURIComponent(id)}`, ImageFile)
+  }
+
+  /** График доставки по регионам целиком (§2.8): справочник маленький, без страниц. */
+  deliverySchedule() {
+    return this.request('GET', '/delivery-schedule', DeliverySchedulePage)
+  }
+
+  /** Задания на перевозку по изменениям (§2.9). */
+  trips(params: ListParams = {}) {
+    return this.request('GET', '/trips', TripsPage, { query: params })
   }
 
   orderStatus(params: ListParams = {}) {

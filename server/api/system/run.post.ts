@@ -4,7 +4,7 @@ import { manualRunVerdict } from '../../utils/manualRun'
 
 const running = new Set<string>()
 const lastStartedAt = new Map<string, number>()
-const body = z.object({ flow: z.enum(['clients', 'catalog', 'prices', 'stock', 'orders']) })
+const body = z.object({ flow: z.enum(['clients', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
 
 export default defineEventHandler(async (event) => {
   guardOnecTest(event)
@@ -27,6 +27,8 @@ export default defineEventHandler(async (event) => {
     prices: () => syncPrices(),
     stock: () => syncStock(),
     orders: () => runOrderSync(),
+    schedule: () => syncDeliverySchedule(),
+    trips: () => syncTrips(),
   }[flow]
   console.info(`[system] manual run ${flow}`)
   void Promise.resolve().then(job)

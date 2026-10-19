@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
   const session = await resolveClientSession(event)
   if (!session) throw createError({ statusCode: 401 })
   try {
-    return await loadProfile(session.companyId, { directory: useAccessDirectory(), call: useB24Call(), contractOf: guid => useClientStore().get(guid)?.contract ?? null })
+    return await loadProfile(session.companyId, { directory: useAccessDirectory(), call: useB24Call(), contractOf: guid => useClientStore().get(guid)?.contract ?? null, shipmentBlockedOf: guid => useClientStore().get(guid)?.shipmentBlocked ?? false })
   }
   catch (e) {
     if ((e as { statusCode?: number }).statusCode === 404) throw createError({ statusCode: 404, message: 'Компания не найдена' })

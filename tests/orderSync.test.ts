@@ -16,7 +16,7 @@ const stages: DealStage[] = [
   { id: 'C9:WON', name: 'Доставлена', sort: 30, semantics: 'success' },
   { id: 'C9:LOSE', name: 'Отменена', sort: 40, semantics: 'failure' },
 ]
-const minskTueFri = [{ city: 'Минск', weekdays: [2, 5], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 600, arrivalToMinutes: 840, exceptions: [] }]
+const minskTueFri = [{ region: g(400), weekdays: [2, 5], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 600, arrivalToMinutes: 840, exceptions: [] }]
 const draft = (n: number, over: Partial<OrderDraft> = {}): OrderDraft => ({
   requestId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, companyId: 7, contactId: 5, clientGuid: g(100), contractGuid: g(200),
   addressGuid: g(300), addressText: 'Минск, ул. 1', slot: { date: '2026-10-13', arrivalFrom: '2026-10-13T07:00:00.000Z', arrivalTo: '2026-10-13T11:00:00.000Z', cutoffAt: '2026-10-12T13:00:00.000Z' },
@@ -32,7 +32,7 @@ describe('синхронизация заявок', () => {
   beforeEach(() => {
     db = new DatabaseSync(':memory:')
     migrate(db)
-    createClientStore(db).save([{ guid: g(100), name: 'ООО «К»', unp: '', address: '', city: 'Минск', managerEmail: '', contractGuid: g(200),
+    createClientStore(db).save([{ guid: g(100), name: 'ООО «К»', unp: '', address: '', city: 'Минск', region: { guid: g(400), name: 'Минск' }, shipmentBlocked: false, managerEmail: '', contractGuid: g(200),
       deliveryAddresses: [{ guid: g(300), city: 'Минск', address: 'ул. 1' }], changedAt: NOW.toISOString(), deleted: false }])
     stageOf = {}
     deps = {

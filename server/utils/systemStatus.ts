@@ -34,6 +34,8 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     'строки прайса': one('SELECT count(*) AS n FROM price_list'),
     'виды цен': one('SELECT count(DISTINCT price_type_guid) AS n FROM price_list'),
     'строки остатков': one('SELECT count(*) AS n FROM stock'),
+    'регионы в графике': one('SELECT count(*) AS n FROM delivery_schedule'),
+    'рейсы на неделю': one('SELECT count(*) AS n FROM trip WHERE deleted = 0 AND planned_start >= ? AND planned_start < ?', new Date(now - 86_400_000).toISOString(), new Date(now + 7 * 86_400_000).toISOString()),
     'диалоги ИИ за сутки': one('SELECT count(*) AS n FROM ai_dialog WHERE created_at > ?', new Date(now - 86_400_000).toISOString()),
   }
   const orders: Record<string, number> = {}

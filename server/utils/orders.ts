@@ -163,6 +163,8 @@ export interface OrderListRow {
   currency: string
   onecNumber: string | null
   shipmentDate: string | null
+  /** Задание на перевозку 1С, в которое попал заказ. */
+  tripGuid: string | null
   items: OrderItem[]
 }
 
@@ -210,8 +212,9 @@ export function createOrderStore(db: DatabaseSync) {
   const setNote = db.prepare('UPDATE order_request SET error = ?, updated_at = ? WHERE id = ?')
   const byOnec = db.prepare('SELECT * FROM order_request WHERE onec_order_guid = ?')
   const applyOnec = db.prepare('UPDATE order_request SET status = ?, shipment_date = ?, onec_number = ?, updated_at = ? WHERE id = ?')
+  const setTrip = db.prepare('UPDATE order_request SET trip_guid = ? WHERE id = ? AND trip_guid IS NOT ?')
   const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
-      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, items
+      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, trip_guid AS tripGuid, items
     FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
 
   return {
@@ -268,6 +271,11 @@ export function createOrderStore(db: DatabaseSync) {
      */
     findForStatus(orderGuid: string): OrderRowDb | undefined {
       return byOnec.get(orderGuid.toLowerCase()) as unknown as OrderRowDb | undefined
+    },
+    /** Рейс заказа: 1С может перенести заказ в другой рейс и без смены статуса. */
+    setTrip(id: number, tripGuid: string | null): boolean {
+      const guid = tripGuid?.toLowerCase() ?? null
+      return Number(setTrip.run(guid, id, guid).changes) > 0
     },
     applyStatus(id: number, status: string, shipmentDate: string | null, number: string, now: string) {
       applyOnec.run(status, shipmentDate, number, now, id)
@@ -339,7 +347,7 @@ export async function submitOrder(
   // Рейс — подсказка клиенту и менеджеру, а не условие: сбой «Рейсов» заявку не останавливает.
   let slot: DeliverySlot | null = null
   try {
-    slot = nextDelivery(await deps.schedules(), address.city, now)
+    slot = nextDelivery(await deps.schedules(), client.regionGuid, now)
   }
   catch (e) {
     console.error(`[orders] schedules: ${(e as Error).name}`)

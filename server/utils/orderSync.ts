@@ -119,8 +119,8 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
         }
         // Дата — на момент подтверждения: менеджер мог подтвердить уже после отсечки.
         if (schedules === undefined) schedules = await deps.schedules().catch(() => null)
-        const city = deps.clients.get(row.client_guid)?.addresses.find(a => a.guid === row.address_guid)?.city
-        const slot = schedules && city ? nextDelivery(schedules, city, now) : null
+        const region = deps.clients.get(row.client_guid)?.regionGuid
+        const slot = schedules ? nextDelivery(schedules, region, now) : null
         const from = slot?.arrivalFrom ?? null
         const items = JSON.parse(row.items) as OrderItem[]
         const created = await deps.createOnecOrder({
@@ -160,7 +160,9 @@ export function applyOnecStatuses(rows: OrderStatusRowT[], deps: Pick<OrderSyncD
   let applied = 0
   for (const r of rows) {
     const order = deps.orders.findForStatus(r.orderGuid)
-    if (!order || !isForward(order.status, r.status)) continue
+    if (!order) continue
+    deps.orders.setTrip(order.id, r.tripGuid)
+    if (!isForward(order.status, r.status)) continue
     deps.orders.applyStatus(order.id, r.status, r.shipmentDate, r.number, iso)
     applied++
   }

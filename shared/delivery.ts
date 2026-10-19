@@ -11,7 +11,8 @@ const DAY_MS = 86_400_000
 const LOOKAHEAD_DAYS = 28
 
 export interface TripSchedule {
-  city: string
+  /** Бизнес-регион 1С (GUID): график ведёт логист в 1С по регионам (docs/onec-contract.md §2.8). */
+  region: string
   /** Дни недели ISO: 1 — понедельник … 7 — воскресенье. */
   weekdays: number[]
   /** Отсечка: за сколько дней до рейса и до какого времени (минуты от полуночи по Минску). */
@@ -73,14 +74,15 @@ const minskDate = (ms: number) => new Date(ms + MINSK_OFFSET_MIN * 60_000).toISO
 const isoWeekday = (date: string) => ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
 const atMinutes = (date: string, minutes: number) => new Date(minskMidnight(date) + minutes * 60_000).toISOString()
 
-const sameCity = (a: string, b: string) => a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е')
+const sameRegion = (a: string, b: string) => a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е')
 
-/** Ближайший рейс в город, на который заявка ещё успевает. Нет расписания или рейсов на 4 недели — null. */
-export function nextDelivery(schedules: TripSchedule[], city: string, now: Date): DeliverySlot | null {
+/** Ближайший рейс в регион, на который заявка ещё успевает. Нет региона, графика или рейсов на 4 недели — null. */
+export function nextDelivery(schedules: TripSchedule[], region: string | null | undefined, now: Date): DeliverySlot | null {
+  if (!region) return null
   const today = minskDate(now.getTime())
   let best: DeliverySlot | null = null
   for (const s of schedules) {
-    if (!sameCity(s.city, city) || s.weekdays.length === 0) continue
+    if (!sameRegion(s.region, region) || s.weekdays.length === 0) continue
     for (let d = 0; d <= LOOKAHEAD_DAYS; d++) {
       const date = minskDate(minskMidnight(today) + d * DAY_MS + 12 * 3_600_000)
       if (!s.weekdays.includes(isoWeekday(date)) || s.exceptions.includes(date)) continue
@@ -93,6 +95,20 @@ export function nextDelivery(schedules: TripSchedule[], city: string, now: Date)
     }
   }
   return best
+}
+
+/** Строка графика из 1С (§2.8) → расписание для расчёта. Время уже проверено схемой (`ЧЧ:ММ`). */
+export function scheduleFromOnec(row: { regionGuid: string, weekdays: number[], cutoffDaysBefore: number, cutoffTime: string, arrivalFrom: string, arrivalTo: string, exceptions: string[] }): TripSchedule {
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  return {
+    region: row.regionGuid.toLowerCase(),
+    weekdays: row.weekdays,
+    cutoffDaysBefore: row.cutoffDaysBefore,
+    cutoffMinutes: min(row.cutoffTime),
+    arrivalFromMinutes: min(row.arrivalFrom),
+    arrivalToMinutes: min(row.arrivalTo),
+    exceptions: row.exceptions,
+  }
 }
 
 /** «пт, 16 октября, 10:00–14:00» — как в docs/spec.md §8. */

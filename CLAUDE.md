@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-15
+> Last reviewed: 2026-10-19
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -39,7 +39,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
 | `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
-| `app/pages/b24/{app,company-tab,install}.vue`, `server/api/b24/company-tab.post.ts`, `server/utils/managerTab.ts` | страница приложения в коробке, установка и вкладка «Личный кабинет» в карточке компании: ответственный за компанию или админ выдаёт и отзывает ключи; права — ответом портала на токен фрейма |
+| `app/pages/b24/{app,company-tab,install}.vue` (на `app` — вкладка «Ближайшие доставки»), `server/api/b24/company-tab.post.ts`, `server/utils/managerTab.ts` | страница приложения в коробке, установка и вкладка «Личный кабинет» в карточке компании: ответственный за компанию или админ выдаёт и отзывает ключи; права — ответом портала на токен фрейма |
 | `shared/onec/schemas.ts` | контракт 1С (zod) — единственный источник; OpenAPI — `contracts/onec.openapi.yaml` |
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
@@ -56,11 +56,12 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/onecGuard.ts` | бережём 1С: один запрос за раз, пауза 10 минут после трёх сбоев подряд (`onec-contract.md` §1.8) |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса) |
-| `shared/delivery.ts` | расписание рейсов (§8 спецификации): ближайший рейс и окно прибытия по Минску |
+| `shared/delivery.ts` | ближайший рейс в бизнес-регион клиента и окно прибытия по Минску (§8 спецификации) |
+| `server/utils/{delivery,deliverySync,deliveriesTab}.ts`, `server/tasks/sync/{schedule,trips}.ts`, `server/api/b24/deliveries.post.ts` | доставка ведётся только в 1С: график по регионам (раз в час) и задания на перевозку (раз в 10 минут) в базу ЛК; рейс заказа клиенту; вкладка «Ближайшие доставки» на странице приложения в коробке |
 | `server/utils/aiChat.ts`, `server/api/ai/chat.post.ts`, `app/components/AiChatPanel.vue` | ИИ-помощник панелью справа (AI SDK + B24ChatMessages, стрим): DeepSeek + инструменты каталога с ценами договора; карточки — из выхода `show_products`, не из текста модели |
 | `server/utils/aiJournal.ts`, `server/api/ai/rate.post.ts`, `server/mcp/handlers/admin/tools/ai_dialogs.ts` | журнал диалогов помощника и оценка 👍/👎; разбор — `make ai-dialogs` |
 | `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |
-| `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), расписание рейсов, стадии воронки, комментарий в ленте, дело «перезвонить» |
+| `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), стадии воронки, комментарий в ленте, дело «перезвонить» |
 | `server/utils/orderSync.ts`, `orderSyncRun.ts`, `server/tasks/sync/orders.ts` | раз в 2 минуты: досылка заявок без сделки, подтверждение менеджером → заказ 1С, статусы 1С → заявки и сделки; вручную — `sync_orders` |
 | `server/api/{cart/quote,delivery,orders,callback}` | корзина, адреса и рейсы, заявки, звонок — только с сессией |
 | `server/api/catalog/*` | список, фильтры, карточка — только с сессией, цены по компании сессии |

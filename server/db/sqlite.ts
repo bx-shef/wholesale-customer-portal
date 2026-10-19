@@ -162,6 +162,29 @@ export const MIGRATIONS: string[] = [
      value TEXT NOT NULL,
      updated_at TEXT NOT NULL
    );`,
+  // Доставка ведётся в 1С (решение владельца 2026-10-19): регион клиента, график по регионам,
+  // задания на перевозку — ЛК только читает (docs/onec-contract.md §2.1, §2.8, §2.9).
+  `ALTER TABLE onec_client ADD COLUMN region_guid TEXT;
+   ALTER TABLE onec_client ADD COLUMN region_name TEXT;
+   ALTER TABLE onec_client ADD COLUMN shipment_blocked INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE order_request ADD COLUMN trip_guid TEXT;
+   CREATE TABLE delivery_schedule (
+     region_guid TEXT PRIMARY KEY,
+     region_name TEXT NOT NULL,
+     data TEXT NOT NULL
+   );
+   CREATE TABLE trip (
+     guid TEXT PRIMARY KEY,
+     number TEXT NOT NULL,
+     status TEXT NOT NULL,
+     planned_start TEXT NOT NULL,
+     data TEXT NOT NULL,
+     changed_at TEXT NOT NULL,
+     deleted INTEGER NOT NULL DEFAULT 0
+   );
+   CREATE INDEX trip_planned ON trip (planned_start);
+   -- Регион и запрет отгрузки — у всех клиентов, а не только изменённых: перечитать целиком.
+   DELETE FROM sync_cursor WHERE flow = 'clients';`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

@@ -8,6 +8,8 @@ export const MANUAL_MIN_INTERVAL_MS: Record<string, number> = {
   prices: 10 * 60_000,
   stock: 2 * 60_000,
   orders: 2 * 60_000,
+  schedule: 10 * 60_000,
+  trips: 5 * 60_000,
 }
 
 export type ManualRunVerdict = { ok: true } | { ok: false, reason: 'busy' | 'too-soon', retryInMs: number }

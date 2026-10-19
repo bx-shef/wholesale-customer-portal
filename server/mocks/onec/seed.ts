@@ -3,7 +3,7 @@
  * 12 разделов, 500 товаров со связями «аналог». Один seed — одни и те же GUID, цены и остатки
  * на любой машине: контрактные тесты и демо опираются на повторяемость.
  */
-import type { ClientT, ContractT, ItemT, SectionT } from '../../../shared/onec/schemas'
+import type { ClientT, ContractT, DeliveryScheduleT, ItemT, SectionT } from '../../../shared/onec/schemas'
 
 /** Момент «до всех изменений»: changedAt сида лежат после него, changedSince=SEED_EPOCH отдаёт всё. */
 import { createHash } from 'node:crypto'
@@ -35,6 +35,8 @@ export interface SeedData {
   priceTypes: PriceType[]
   warehouses: Warehouse[]
   clients: ClientT[]
+  /** График доставки по бизнес-регионам (§2.8): регион — город. */
+  schedules: DeliveryScheduleT[]
   contracts: ContractT[]
   sections: SectionT[]
   items: ItemT[]
@@ -79,6 +81,23 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     { guid: guidFrom(rand), name: 'Склад Гомель' },
   ]
 
+  // Регионы и график — своим генератором: GUID остальных записей от них не зависят.
+  const regionRand = prng(seed ^ 0x4e9)
+  const schedules: DeliveryScheduleT[] = CITIES.map((name, i) => ({
+    regionGuid: guidFrom(regionRand),
+    regionName: name,
+    weekdays: i === 0 ? [1, 2, 3, 4, 5] : [[2, 5], [1, 4], [3], [2, 4], [5]][(i - 1) % 5]!,
+    cutoffDaysBefore: 1,
+    cutoffTime: '15:00',
+    arrivalFrom: i === 0 ? '09:00' : '10:00',
+    arrivalTo: i === 0 ? '13:00' : '16:00',
+    exceptions: [],
+  }))
+  const regionOf = (city: string) => {
+    const s = schedules.find(x => x.regionName === city)!
+    return { guid: s.regionGuid, name: s.regionName }
+  }
+
   const contracts: ContractT[] = []
   const clients: ClientT[] = []
   for (let i = 0; i < 5; i++) {
@@ -100,6 +119,9 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       unp: String(190000000 + Math.floor(rand() * 9_999_999)),
       address: `г. ${city}, ул. Складская, ${i + 1}`,
       city,
+      region: regionOf(city),
+      // Пятый клиент — в сегменте запрета отгрузки: заявку ЛК принимает, отгрузку решает 1С.
+      shipmentBlocked: i === 4,
       managerEmail: `manager${(i % 2) + 1}@example.by`,
       contract,
       deliveryAddresses: [{ guid: guidFrom(rand), city, address: `г. ${city}, ул. Строителей, ${10 + i}` }],
@@ -116,6 +138,8 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       unp: '190000000',
       address: 'г. Минск, ул. Складская, 1',
       city: 'Минск',
+      region: regionOf('Минск'),
+      shipmentBlocked: false,
       managerEmail: '',
       contract: contracts[0]!,
       deliveryAddresses: [{ guid: guidFrom(prng(i + 1000)), city: 'Минск', address: 'г. Минск, ул. Строителей, 1' }],
@@ -186,5 +210,5 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     }
   }
 
-  return { priceTypes, warehouses, clients, contracts, sections, items, basePrice, stock, images }
+  return { schedules, priceTypes, warehouses, clients, contracts, sections, items, basePrice, stock, images }
 }

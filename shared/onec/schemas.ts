@@ -43,12 +43,19 @@ export const Contract = z.object({
   currency: Currency,
 })
 
+/** Бизнес-регион клиента в 1С: по нему — график доставки (§2.8). */
+export const Region = z.object({ guid: Guid, name: z.string() })
+
 export const Client = z.object({
   guid: Guid,
   name: z.string(),
   unp: z.string(),
   address: z.string(),
   city: z.string(),
+  /** Бизнес-регион; `null` — не задан, дату доставки клиенту не обещаем. */
+  region: Region.nullable(),
+  /** Клиент в сегменте запрета отгрузки: заявку ЛК принимает, отгрузку решает 1С. Только для показа. */
+  shipmentBlocked: z.boolean(),
   managerEmail: z.string(),
   /** Договор для заказов из ЛК; `null` — договора нет, цен клиенту не показываем. */
   contract: Contract.nullable(),
@@ -136,13 +143,50 @@ export const OrderStatusRow = z.object({
   number: z.string().min(1).max(64),
   status: OrderStatus,
   shipmentDate: DateOnly.nullable(),
+  /** Задание на перевозку (§2.9), в которое попал заказ; `null` — ещё не запланирован. */
+  tripGuid: Guid.nullable(),
   changedAt: DateTime,
+})
+
+/** `ЧЧ:ММ` по Минску. */
+export const ClockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+
+/** График доставки по бизнес-региону (§2.8): ведёт логист в 1С, ЛК только читает. */
+export const DeliverySchedule = z.object({
+  regionGuid: Guid,
+  regionName: z.string(),
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+  cutoffDaysBefore: z.number().int().min(0).max(14),
+  cutoffTime: ClockTime,
+  arrivalFrom: ClockTime,
+  arrivalTo: ClockTime,
+  exceptions: z.array(DateOnly).max(366),
+})
+export const DeliverySchedulePage = z.object({ items: z.array(DeliverySchedule).max(PAGE_SIZE_MAX) })
+
+export const TripStatus = z.enum(['forming', 'loading', 'sent', 'closed'])
+
+/** Задание на перевозку (§2.9): рейс с заказами. Водителя и экспедитора 1С не передаёт. */
+export const Trip = z.object({
+  guid: Guid,
+  number: z.string().min(1).max(64),
+  status: TripStatus,
+  plannedStart: DateTime,
+  plannedEnd: DateTime.nullable(),
+  actualStart: DateTime.nullable(),
+  actualEnd: DateTime.nullable(),
+  vehicle: z.string(),
+  regionGuids: z.array(Guid),
+  orders: z.array(z.object({ orderGuid: Guid, number: z.string().min(1).max(64), clientGuid: Guid })),
+  changedAt: DateTime,
+  deleted: z.boolean(),
 })
 
 export const ClientsPage = page(Client)
 export const StockPage = page(Stock)
 export const OrderStatusPage = page(OrderStatusRow)
 export const PricesPage = page(Price)
+export const TripsPage = page(Trip)
 
 export type ClientT = z.infer<typeof Client>
 export type ContractT = z.infer<typeof Contract>
@@ -157,6 +201,10 @@ export type OrderRequestT = z.input<typeof OrderRequest>
 export type OrderCreatedT = z.infer<typeof OrderCreated>
 export type OrderLineFactT = z.infer<typeof OrderLineFact>
 export type OrderStatusRowT = z.infer<typeof OrderStatusRow>
+export type RegionT = z.infer<typeof Region>
+export type DeliveryScheduleT = z.infer<typeof DeliverySchedule>
+export type TripT = z.infer<typeof Trip>
+export type TripStatusT = z.infer<typeof TripStatus>
 
 /** Коды ошибок контракта: HTTP-код и `error` в теле. */
 export const ERROR_CODES = {

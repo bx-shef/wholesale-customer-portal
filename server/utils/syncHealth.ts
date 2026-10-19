@@ -14,6 +14,8 @@ export const FLOWS: Record<string, { label: string, staleMs: number }> = {
   prices: { label: 'прайс', staleMs: 60 * 60_000 },
   stock: { label: 'остатки', staleMs: 30 * 60_000 },
   orders: { label: 'статусы заказов', staleMs: 20 * 60_000 },
+  schedule: { label: 'график доставки', staleMs: 3 * 60 * 60_000 },
+  trips: { label: 'рейсы', staleMs: 40 * 60_000 },
 }
 
 /** Сбоев подряд, после которых сообщаем: один сбой — обычная случайность, следующий запуск его поправит. */
