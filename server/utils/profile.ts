@@ -9,12 +9,14 @@ import type { AccessDirectory, B24Call } from '../services/b24Access'
 export interface Profile {
   company: { id: number, title: string }
   contract: ContractT | null
+  /** Сегмент запрета отгрузки в 1С: заявки принимаются, отгрузку решает 1С. */
+  shipmentBlocked: boolean
   manager: { name: string, phone: string | null, email: string | null } | null
 }
 
 export async function loadProfile(
   companyId: number,
-  deps: { directory: AccessDirectory, call: B24Call, contractOf: (clientGuid: string) => ContractT | null },
+  deps: { directory: AccessDirectory, call: B24Call, contractOf: (clientGuid: string) => ContractT | null, shipmentBlockedOf?: (clientGuid: string) => boolean },
 ): Promise<Profile> {
   // Компании нет — 404 (удалили или объединили в CRM); сбой CRM пробрасывается и станет 503.
   const company = await deps.directory.getCompany(companyId)
@@ -22,6 +24,7 @@ export async function loadProfile(
 
   // Договор и менеджер — не обязательны для показа профиля: сбой одного не прячет остальное.
   const contract = company.onecGuid ? deps.contractOf(company.onecGuid) : null
+  const shipmentBlocked = company.onecGuid ? deps.shipmentBlockedOf?.(company.onecGuid) ?? false : false
 
   let manager: Profile['manager'] = null
   if (company.assignedById) {
@@ -41,5 +44,5 @@ export async function loadProfile(
     }
   }
 
-  return { company: { id: company.id, title: company.title }, contract, manager }
+  return { company: { id: company.id, title: company.title }, contract, shipmentBlocked, manager }
 }

@@ -163,6 +163,20 @@ export async function runOnecProbe(input: ProbeInput, now: () => number = Date.n
     return `строк на первой странице: ${page.items.length}`
   })
 
+  await check('delivery-schedule', 'GET /delivery-schedule — график доставки по регионам', async () => {
+    const { items } = await client.deliverySchedule()
+    if (items.length === 0) throw new Error('график пуст: нужен хотя бы один бизнес-регион')
+    const regions = new Set(items.map(s => s.regionGuid.toLowerCase()))
+    const withRegion = clients.filter(c => c.region && !c.deleted)
+    const missing = withRegion.filter(c => !regions.has(c.region!.guid.toLowerCase()))
+    return `регионов в графике: ${items.length}${missing.length ? `; у ${missing.length} клиентов регион не из графика — дату доставки им не назовём` : ''}`
+  })
+
+  await check('trips', 'GET /trips — задания на перевозку', async () => {
+    const page = await client.trips({ pageSize: 50 })
+    return `рейсов на первой странице: ${page.items.length}`
+  })
+
   await check('orders-status', 'GET /orders/status — статусы', async () => {
     const page = await client.orderStatus({ pageSize: 50 })
     return `заказов на первой странице: ${page.items.length}`

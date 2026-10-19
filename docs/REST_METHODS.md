@@ -1,6 +1,6 @@
 # Исходящие вызовы REST Битрикс24
 
-> Last reviewed: 2026-10-14
+> Last reviewed: 2026-10-19
 
 Реестр каждого метода, который зовёт ЛК. Добавили вызов в код — добавьте строку сюда:
 `tests/repoGuards.test.ts` сверяет имена методов в `app/`, `server/`, `shared/`, `scripts/` с этим
@@ -22,14 +22,14 @@
 | `crm.company.userfield.list` | `shared/b24SetupRun.ts` | приложение | 📄 | ищем `UF_CRM_1C_GUID` |
 | `crm.company.userfield.add` | `shared/b24Setup.ts` | приложение | 📄 | `FIELD_NAME` без префикса `UF_CRM_` — портал добавляет его сам |
 | `crm.type.list` | `shared/b24SetupRun.ts`, `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | ответ `result.types[]`; `id` типа ≠ `entityTypeId` |
-| `crm.type.add` | `shared/b24Setup.ts` | приложение | 📄 | «Доступ в ЛК», «Рейсы» |
+| `crm.type.add` | `shared/b24Setup.ts` | приложение | 📄 | «Доступ в ЛК» («Рейсы» сняты 2026-10-19: график ведётся в 1С) |
 | `userfieldconfig.list` | `shared/b24SetupRun.ts` | приложение | 📄 | `entityId` смарт-процесса — `CRM_<id типа>` |
 | `userfieldconfig.add` | `shared/b24Setup.ts` | приложение | 📄 | код поля `UF_CRM_<id типа>_<POSTFIX>` |
 | `crm.category.list` | `shared/b24SetupRun.ts`, `server/services/b24Orders.ts` | приложение | 📄 | ответ `result.categories[]` |
 | `crm.category.add` | `shared/b24Setup.ts` | приложение | 📄 | воронка сделок «Заявки ЛК», `entityTypeId: 2` |
 | `crm.item.fields` | `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | ключи UF в `crm.item.*` — camelCase, правило не описано: ищем по исходному коду поля |
 | `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | приложение | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект; телефон шлём в двух записях (с «+» и без) — как CRM хранит «+», не описано |
-| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts`, `b24Orders.ts` | приложение | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по связи обмена 1С (`originatorId = ONE_C`, `originId = GUID`), затем по `UF_CRM_1C_GUID` (`shared/onecLink.ts`); «Рейсы» — всё расписание (одна запись на город), пропуск кривых строк с записью в журнал; результат перепроверяем |
+| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts`, `b24Orders.ts` | приложение | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по связи обмена 1С (`originatorId = ONE_C`, `originId = GUID`), затем по `UF_CRM_1C_GUID` (`shared/onecLink.ts`); результат перепроверяем |
 | `crm.item.get` | `server/services/b24Access.ts`, `b24Orders.ts`, `server/api/callback.post.ts` | приложение | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID`. «Нет записи» — только NOT_FOUND; прочие сбои пробрасываются (иначе простой CRM = отзыв ключа); контакт (`entityTypeId: 3`) — имя для «Заказать звонок»; сделка (`entityTypeId: 2`) — `stageId` |
 | `crm.item.add` | `server/services/b24Access.ts`, `b24Companies.ts` | приложение | 📄 | новая запись доступа с `contactId`, `companyId`; новая компания из 1С |
 | `crm.item.update` | `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | перевыпуск, отзыв, последний вход; стадия сделки при закрытии заказа 1С |
@@ -44,8 +44,8 @@
 | `crm.company.contact.items.get` | `server/services/b24Access.ts` | токен фрейма сотрудника | 📄 | контакты компании для вкладки; несуществующая компания — пустой массив, не ошибка |
 | `crm.contact.get` | `server/services/b24Access.ts` | токен фрейма сотрудника | 📄 | имя, `PHONE[]`, `EMAIL[]` (мультиполя `{ VALUE }`) контакта для вкладки |
 | `crm.company.get` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | сотрудник видит компанию; сверяем `ID`, `ASSIGNED_BY_ID` — ответственный |
-| `user.current` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | кто открыл вкладку: `ID` сверяем с ответственным за компанию |
-| `user.admin` | `server/utils/managerTab.ts` | токен фрейма сотрудника | 📄 | администратор портала выдаёт ключи и не будучи ответственным; ответ — `true`/`false` |
+| `user.current` | `server/utils/managerTab.ts`, `deliveriesTab.ts` | токен фрейма сотрудника | 📄 | кто открыл вкладку: `ID` сверяем с ответственным за компанию |
+| `user.admin` | `server/utils/managerTab.ts`, `deliveriesTab.ts` | токен фрейма сотрудника | 📄 | администратор портала выдаёт ключи и не будучи ответственным; ответ — `true`/`false` |
 | `placement.unbind` | `app/pages/b24/install.vue` | приложение (фрейм) | 📄 | перед `bind` при переустановке — сменить обработчик иначе нельзя; ошибку глотаем |
 | `placement.bind` | `app/pages/b24/install.vue` | приложение (фрейм) | 📄 | вкладка `CRM_COMPANY_DETAIL_TAB` «Личный кабинет»; вебхуком нельзя (`WRONG_AUTH_TYPE`) |
 

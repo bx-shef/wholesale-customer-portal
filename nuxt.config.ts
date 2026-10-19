@@ -51,6 +51,8 @@ export default defineNuxtConfig({
       '1-59/5 * * * *': ['monitor:alerts'],
       '*/2 * * * *': ['sync:orders'],
       '7 * * * *': ['sync:catalog'],
+      '13 * * * *': ['sync:schedule'],
+      '4-59/10 * * * *': ['sync:trips'],
       '17 3 * * *': ['maintenance:prune'],
     },
     routeRules: { '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } } },

@@ -92,10 +92,11 @@ describe('профиль', () => {
     const directory = { getCompany: async () => company } as never
     const call = async () => [{ ID: '9', NAME: 'Чужой' }, { ID: '3', NAME: 'Анна', LAST_NAME: 'Иванова', WORK_PHONE: '+375171234567', EMAIL: 'a@x.by' }]
     const contract = { guid: 'c', number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid: 'p', paymentDelayDays: 14, creditLimit: 5000, debt: 0, currency: 'BYN' }
-    const ok = await loadProfile(7, { directory, call, contractOf: guid => (guid === 'g' ? contract : null) })
-    expect(ok).toEqual({ company: { id: 7, title: 'ООО' }, contract, manager: { name: 'Анна Иванова', phone: '+375171234567', email: 'a@x.by' } })
+    const ok = await loadProfile(7, { directory, call, contractOf: guid => (guid === 'g' ? contract : null), shipmentBlockedOf: guid => guid === 'g' })
+    expect(ok).toEqual({ company: { id: 7, title: 'ООО' }, contract, shipmentBlocked: true, manager: { name: 'Анна Иванова', phone: '+375171234567', email: 'a@x.by' } })
     const none = await loadProfile(7, { directory, call, contractOf: () => null })
     expect(none.contract).toBeNull()
+    expect(none.shipmentBlocked).toBe(false)
     expect(none.manager?.name).toBe('Анна Иванова')
   })
 })

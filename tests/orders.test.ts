@@ -17,7 +17,7 @@ const item = (n: number, over: Partial<ItemT> = {}): ItemT => ({
   description: '', properties: {}, images: [], analogs: [], changedAt: at, deleted: false, ...over,
 })
 const client = (over: Partial<ClientT> = {}): ClientT => ({
-  guid: g(100), name: 'ООО «Клиент»', unp: '1', address: '', city: 'Минск', managerEmail: '', contract: { guid: g(200), number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid: g(201), paymentDelayDays: 0, creditLimit: 0, debt: 0, currency: 'BYN' },
+  guid: g(100), name: 'ООО «Клиент»', unp: '1', address: '', city: 'Минск', region: { guid: g(400), name: 'Минск' }, shipmentBlocked: false, managerEmail: '', contract: { guid: g(200), number: 'ОПТ-1', date: '2026-01-01', priceTypeGuid: g(201), paymentDelayDays: 0, creditLimit: 0, debt: 0, currency: 'BYN' },
   deliveryAddresses: [{ guid: g(300), city: 'Минск', address: 'ул. Строителей, 1' }], changedAt: at, deleted: false, ...over,
 })
 const REQ = '11111111-1111-4111-8111-111111111111'
@@ -58,7 +58,7 @@ describe('правила корзины', () => {
 })
 
 describe('расписание рейсов', () => {
-  const minsk: TripSchedule = { city: 'Минск', weekdays: [2, 5], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 10 * 60, arrivalToMinutes: 14 * 60, exceptions: [] }
+  const minsk: TripSchedule = { region: 'Минск', weekdays: [2, 5], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 10 * 60, arrivalToMinutes: 14 * 60, exceptions: [] }
   // 2026-10-12 — понедельник. Время по Минску = UTC+3.
   const at = (iso: string) => new Date(iso)
 
@@ -83,10 +83,10 @@ describe('расписание рейсов', () => {
   })
 
   it('город — без регистра и с ё = е; из двух расписаний — раньше приезжающее', () => {
-    const fast = { ...minsk, city: 'Солигорск', weekdays: [4], cutoffDaysBefore: 0 }
-    const slow = { ...minsk, city: 'Солигорск', weekdays: [6] }
+    const fast = { ...minsk, region: 'Солигорск', weekdays: [4], cutoffDaysBefore: 0 }
+    const slow = { ...minsk, region: 'Солигорск', weekdays: [6] }
     expect(nextDelivery([slow, fast], 'солигорск', at('2026-10-12T08:00:00Z'))?.date).toBe('2026-10-15')
-    expect(nextDelivery([{ ...minsk, city: 'Берёза' }], 'береза', at('2026-10-12T08:00:00Z'))?.date).toBe('2026-10-13')
+    expect(nextDelivery([{ ...minsk, region: 'Берёза' }], 'береза', at('2026-10-12T08:00:00Z'))?.date).toBe('2026-10-13')
   })
 
   it('поздний вечер по Минску — уже следующий день, а не по UTC', () => {
@@ -127,7 +127,7 @@ describe('заявка', () => {
     deps = {
       store, clients, orders: createOrderStore(db),
       b24: { createDeal: vi.fn(async () => 501) },
-      schedules: vi.fn(async () => [{ city: 'Минск', weekdays: [3], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 10 * 60, arrivalToMinutes: 14 * 60, exceptions: [] }]),
+      schedules: vi.fn(async () => [{ region: g(400), weekdays: [3], cutoffDaysBefore: 1, cutoffMinutes: 16 * 60, arrivalFromMinutes: 10 * 60, arrivalToMinutes: 14 * 60, exceptions: [] }]),
       prices: vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, priceOf(i, i === g(1) ? 2.5 : 10)]))),
       now: () => new Date('2026-10-12T10:00:00Z'),
     }

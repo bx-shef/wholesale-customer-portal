@@ -23,8 +23,8 @@ const fromMock = sorted([
 const fromOpenApi = sorted([...read('contracts/onec.openapi.yaml').matchAll(/^ {2}(\/\S+):\n {4}(get|post):/gm)].map(m => `${m[2]!.toUpperCase()} ${norm(m[1]!)}`))
 
 describe('1С: спецификация = клиент ЛК = мок = OpenAPI', () => {
-  it('семь методов, одинаковые во всех четырёх местах', () => {
-    expect(fromDoc).toHaveLength(7)
+  it('девять методов, одинаковые во всех четырёх местах', () => {
+    expect(fromDoc).toHaveLength(9)
     expect(fromClient).toEqual(fromDoc)
     expect(fromMock).toEqual(fromDoc)
     expect(fromOpenApi).toEqual(fromDoc)
@@ -53,5 +53,9 @@ describe('1С: спецификация = клиент ЛК = мок = OpenAPI',
     expect(order.items).toHaveLength(1)
     const status = await c.orderStatus({ pageSize: 5 })
     expect(status.items.map(o => o.orderGuid)).toContain(order.orderGuid)
+    const schedule = await c.deliverySchedule()
+    expect(schedule.items.map(s => s.regionGuid)).toContain(client.region!.guid)
+    const trips = await c.trips({ pageSize: 50 })
+    expect(trips.items.length).toBeGreaterThan(0)
   })
 })

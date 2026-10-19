@@ -1,17 +1,13 @@
 /**
  * Заявки ЛК в CRM коробки (docs/spec.md §4): сделка в воронке «Заявки ЛК» с товарами, ближайший
- * рейс из смарт-процесса «Рейсы», «Заказать звонок» — делом ответственному за компанию.
+ * «Заказать звонок» — делом ответственному за компанию.
  * Транспорт — `call(method, params)` (B24Hook), в тестах — подделка.
  */
-import { DEAL_CATEGORY_NAME, SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
-import { parseDates, parseTime, parseWeekdays, type TripSchedule } from '../../shared/delivery'
-import { isNotFound, resolveFieldKey, type B24Call } from './b24Access'
+import { DEAL_CATEGORY_NAME } from '../../shared/b24Setup'
+import { isNotFound, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
 export const DEAL_ORIGINATOR = 'wholesale-portal'
-const TRIPS_TITLE = SMART_PROCESSES.find(sp => sp.title === 'Рейсы')!.title
-/** Записей расписания — по одной на город; больше сотни — это уже не расписание, а ошибка ввода. */
-const SCHEDULES_MAX = 100
 
 /** `unknown` — портал отдал семантику, которую мы не знаем: по такой стадии заказ не создаём. */
 export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' | 'unknown' }
@@ -30,7 +26,6 @@ export interface DealInput {
 }
 
 export function createB24Orders(call: B24Call) {
-  let tripsMeta: Promise<{ entityTypeId: number, fields: Record<'city' | 'weekdays' | 'cutoffTime' | 'cutoffDays' | 'arrivalFrom' | 'arrivalTo' | 'exceptions', string> }> | undefined
   let categoryId: Promise<number> | undefined
   // Ошибка не кэшируется: после pnpm b24:setup следующий вызов найдёт смарт-процесс и воронку.
   const retryable = <T>(get: () => Promise<T> | undefined, set: (v: Promise<T> | undefined) => void, load: () => Promise<T>) => {
@@ -44,25 +39,6 @@ export function createB24Orders(call: B24Call) {
     return p
   }
 
-  const getTripsMeta = () => retryable(() => tripsMeta, v => (tripsMeta = v), async () => {
-    const { types } = await call('crm.type.list', { filter: { title: TRIPS_TITLE } }) as { types: { id: number, entityTypeId: number, title: string }[] }
-    const type = types.find(t => t.title === TRIPS_TITLE)
-    if (!type) throw new Error(`Smart process «${TRIPS_TITLE}» not found — run pnpm b24:setup`)
-    const { fields } = await call('crm.item.fields', { entityTypeId: type.entityTypeId }) as { fields: Record<string, unknown> }
-    const pick = (postfix: string) => {
-      const key = resolveFieldKey(Object.keys(fields), spFieldName(Number(type.id), postfix))
-      if (!key) throw new Error(`Field ${spFieldName(Number(type.id), postfix)} not found — run pnpm b24:setup`)
-      return key
-    }
-    return {
-      entityTypeId: Number(type.entityTypeId),
-      fields: {
-        city: pick('CITY'), weekdays: pick('WEEKDAYS'), cutoffTime: pick('CUTOFF_TIME'), cutoffDays: pick('CUTOFF_DAYS'),
-        arrivalFrom: pick('ARRIVAL_FROM'), arrivalTo: pick('ARRIVAL_TO'), exceptions: pick('EXCEPTIONS'),
-      },
-    }
-  })
-
   const getCategoryId = () => retryable(() => categoryId, v => (categoryId = v), async () => {
     const { categories } = await call('crm.category.list', { entityTypeId: 2 }) as { categories: { id: number, name: string }[] }
     const cat = categories.find(c => c.name === DEAL_CATEGORY_NAME)
@@ -71,31 +47,6 @@ export function createB24Orders(call: B24Call) {
   })
 
   return {
-    /**
-     * Расписание рейсов. Запись без дней недели или с непонятным временем пропускается — и пишется в
-     * журнал: менеджер видит, какую строку «Рейсов» поправить, а клиенту дату согласуют вручную.
-     */
-    async schedules(): Promise<TripSchedule[]> {
-      const m = await getTripsMeta()
-      const f = m.fields
-      const { items } = await call('crm.item.list', { entityTypeId: m.entityTypeId, select: ['id', ...Object.values(f)] }) as { items: Record<string, unknown>[] }
-      const out: TripSchedule[] = []
-      for (const i of items.slice(0, SCHEDULES_MAX)) {
-        const str = (k: keyof typeof f) => String(i[f[k]] ?? '')
-        const cutoff = parseTime(str('cutoffTime'))
-        const from = parseTime(str('arrivalFrom'))
-        const to = parseTime(str('arrivalTo'))
-        const weekdays = parseWeekdays(str('weekdays'))
-        const days = Number(i[f.cutoffDays] ?? 1)
-        if (!str('city').trim() || !weekdays.length || cutoff === null || from === null || to === null || to < from || !Number.isInteger(days) || days < 0 || days > 14) {
-          console.warn(`[trips] schedule ${String(i.id)} skipped: fill city, weekdays, times HH:MM, cutoff days 0–14`)
-          continue
-        }
-        out.push({ city: str('city'), weekdays, cutoffDaysBefore: days, cutoffMinutes: cutoff, arrivalFromMinutes: from, arrivalToMinutes: to, exceptions: parseDates(str('exceptions')) })
-      }
-      return out
-    },
-
     /** Сделка с товарами. Повтор с тем же requestId находит прежнюю сделку и перезаписывает товары. */
     async createDeal(input: DealInput): Promise<number> {
       const found = await call('crm.deal.list', {

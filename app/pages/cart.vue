@@ -17,7 +17,7 @@ if (meError.value?.statusCode === 401) await navigateTo('/login')
 const cart = useCart()
 const quote = ref<Quote | null>(null)
 const quoteFailed = ref(false)
-const { data: delivery } = await useFetch<{ addresses: Address[], status: string }>('/api/delivery', { headers })
+const { data: delivery } = await useFetch<{ addresses: Address[], status: string, shipmentBlocked?: boolean }>('/api/delivery', { headers })
 
 const addressGuid = ref('')
 watch(delivery, (d) => {
@@ -118,6 +118,7 @@ async function submit() {
         />
 
         <template v-else>
+          <B24Alert v-if="delivery?.shipmentBlocked" color="air-primary-warning" title="Отгрузка приостановлена" description="Заявки принимаем, но отгрузку сейчас подтверждает менеджер — обычно это вопрос оплаты. Свяжитесь с вашим менеджером." class="mb-2" />
           <B24Alert v-if="quoteFailed" color="air-primary-alert" title="Не удалось пересчитать корзину" description="Проверьте связь и обновите страницу." />
           <B24Alert v-else-if="quote?.priceStatus === 'unavailable'" color="air-primary-warning" title="Цены временно недоступны" description="Отправить заявку можно, когда ответит учётная система. Обновите страницу через минуту." />
           <B24Alert v-else-if="quote?.priceStatus === 'no-contract'" color="air-primary-warning" title="Договор не подключён" description="Обратитесь к менеджеру — после подключения можно будет отправлять заявки." />

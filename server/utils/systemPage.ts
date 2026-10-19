@@ -88,7 +88,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   }
   const STATE = { ok: 'в порядке', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
-  const FLOWS = { clients: 'клиенты и договоры', catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов' }
+  const FLOWS = { clients: 'клиенты и договоры', catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы' }
   async function api(path, body) {
     const res = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-lk-stand': '1' }, body: JSON.stringify(body) } : {})
     const data = await res.json().catch(() => ({}))

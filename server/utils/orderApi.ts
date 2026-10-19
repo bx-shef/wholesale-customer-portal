@@ -26,22 +26,9 @@ export function useB24Orders(): B24Orders {
   return b24.api
 }
 
-/**
- * Расписание рейсов: одно на все города, кэш 10 минут (docs/spec.md §4 говорит «1 ч» — сокращено,
- * чтобы правка менеджера доходила быстро). Одновременные запросы ждут один ответ CRM; сбой
- * запоминается на минуту — лежащая CRM не получает по запросу на каждый экран корзины.
- */
-const SCHEDULE_TTL_MS = 10 * 60_000
-const SCHEDULE_FAIL_MS = 60_000
-let schedule: { until: number, value: Promise<TripSchedule[]> } | undefined
-export function cachedSchedules(now = Date.now()): Promise<TripSchedule[]> {
-  if (schedule && schedule.until > now) return schedule.value
-  const value = useB24Orders().schedules()
-  schedule = { until: now + SCHEDULE_TTL_MS, value }
-  value.catch(() => {
-    if (schedule?.value === value) schedule.until = Date.now() + SCHEDULE_FAIL_MS
-  })
-  return value
+/** График доставки — из базы ЛК (его привозит из 1С `sync:schedule`): к 1С и CRM не ходим. */
+export function cachedSchedules(): Promise<TripSchedule[]> {
+  return Promise.resolve(useDelivery().schedules())
 }
 
 /** Лимиты на контакт: заявки — 10 в час, пересчёт корзины — 60 в минуту, звонок — раз в 10 минут. */

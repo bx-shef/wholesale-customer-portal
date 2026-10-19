@@ -349,6 +349,85 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /delivery-schedule:
+    get:
+      summary: График доставки по бизнес-регионам, целиком (ведёт логист в 1С)
+      responses:
+        "200":
+          description: Весь график
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverySchedulePage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /trips:
+    get:
+      summary: Задания на перевозку (рейсы) по изменениям
+      parameters:
+        - name: changedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Только изменённое строго позже этого момента, включая пометку удаления
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 500
+      responses:
+        "200":
+          description: Страница
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripsPage"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   securitySchemes:
     bearer:
@@ -386,6 +465,22 @@ components:
           type: string
         city:
           type: string
+        region:
+          anyOf:
+            - type: object
+              properties:
+                guid:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                name:
+                  type: string
+              required:
+                - guid
+                - name
+              additionalProperties: false
+            - type: "null"
+        shipmentBlocked:
+          type: boolean
         managerEmail:
           type: string
         contract:
@@ -455,6 +550,8 @@ components:
         - unp
         - address
         - city
+        - region
+        - shipmentBlocked
         - managerEmail
         - contract
         - deliveryAddresses
@@ -481,6 +578,22 @@ components:
                 type: string
               city:
                 type: string
+              region:
+                anyOf:
+                  - type: object
+                    properties:
+                      guid:
+                        type: string
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                      name:
+                        type: string
+                    required:
+                      - guid
+                      - name
+                    additionalProperties: false
+                  - type: "null"
+              shipmentBlocked:
+                type: boolean
               managerEmail:
                 type: string
               contract:
@@ -550,6 +663,8 @@ components:
               - unp
               - address
               - city
+              - region
+              - shipmentBlocked
               - managerEmail
               - contract
               - deliveryAddresses
@@ -1099,6 +1214,11 @@ components:
               format: date
               pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
             - type: "null"
+        tripGuid:
+          anyOf:
+            - type: string
+              pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            - type: "null"
         changedAt:
           type: string
           format: date-time
@@ -1109,6 +1229,7 @@ components:
         - number
         - status
         - shipmentDate
+        - tripGuid
         - changedAt
       additionalProperties: false
     OrderStatusPage:
@@ -1144,6 +1265,11 @@ components:
                     format: date
                     pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
                   - type: "null"
+              tripGuid:
+                anyOf:
+                  - type: string
+                    pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  - type: "null"
               changedAt:
                 type: string
                 format: date-time
@@ -1154,7 +1280,300 @@ components:
               - number
               - status
               - shipmentDate
+              - tripGuid
               - changedAt
+            additionalProperties: false
+        nextPage:
+          anyOf:
+            - type: integer
+              exclusiveMinimum: 0
+              maximum: 9007199254740991
+            - type: "null"
+      required:
+        - items
+        - nextPage
+      additionalProperties: false
+    DeliverySchedule:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        regionGuid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        regionName:
+          type: string
+        weekdays:
+          minItems: 1
+          maxItems: 7
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+        cutoffDaysBefore:
+          type: integer
+          minimum: 0
+          maximum: 14
+        cutoffTime:
+          type: string
+          pattern: ^([01]\d|2[0-3]):[0-5]\d$
+        arrivalFrom:
+          type: string
+          pattern: ^([01]\d|2[0-3]):[0-5]\d$
+        arrivalTo:
+          type: string
+          pattern: ^([01]\d|2[0-3]):[0-5]\d$
+        exceptions:
+          maxItems: 366
+          type: array
+          items:
+            type: string
+            format: date
+            pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+      required:
+        - regionGuid
+        - regionName
+        - weekdays
+        - cutoffDaysBefore
+        - cutoffTime
+        - arrivalFrom
+        - arrivalTo
+        - exceptions
+      additionalProperties: false
+    DeliverySchedulePage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          maxItems: 500
+          type: array
+          items:
+            type: object
+            properties:
+              regionGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              regionName:
+                type: string
+              weekdays:
+                minItems: 1
+                maxItems: 7
+                type: array
+                items:
+                  type: integer
+                  minimum: 1
+                  maximum: 7
+              cutoffDaysBefore:
+                type: integer
+                minimum: 0
+                maximum: 14
+              cutoffTime:
+                type: string
+                pattern: ^([01]\d|2[0-3]):[0-5]\d$
+              arrivalFrom:
+                type: string
+                pattern: ^([01]\d|2[0-3]):[0-5]\d$
+              arrivalTo:
+                type: string
+                pattern: ^([01]\d|2[0-3]):[0-5]\d$
+              exceptions:
+                maxItems: 366
+                type: array
+                items:
+                  type: string
+                  format: date
+                  pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+            required:
+              - regionGuid
+              - regionName
+              - weekdays
+              - cutoffDaysBefore
+              - cutoffTime
+              - arrivalFrom
+              - arrivalTo
+              - exceptions
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    Trip:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        guid:
+          type: string
+          pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        number:
+          type: string
+          minLength: 1
+          maxLength: 64
+        status:
+          type: string
+          enum:
+            - forming
+            - loading
+            - sent
+            - closed
+        plannedStart:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+        plannedEnd:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+            - type: "null"
+        actualStart:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+            - type: "null"
+        actualEnd:
+          anyOf:
+            - type: string
+              format: date-time
+              pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+            - type: "null"
+        vehicle:
+          type: string
+        regionGuids:
+          type: array
+          items:
+            type: string
+            pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        orders:
+          type: array
+          items:
+            type: object
+            properties:
+              orderGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              number:
+                type: string
+                minLength: 1
+                maxLength: 64
+              clientGuid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+            required:
+              - orderGuid
+              - number
+              - clientGuid
+            additionalProperties: false
+        changedAt:
+          type: string
+          format: date-time
+          pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+        deleted:
+          type: boolean
+      required:
+        - guid
+        - number
+        - status
+        - plannedStart
+        - plannedEnd
+        - actualStart
+        - actualEnd
+        - vehicle
+        - regionGuids
+        - orders
+        - changedAt
+        - deleted
+      additionalProperties: false
+    TripsPage:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              guid:
+                type: string
+                pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              number:
+                type: string
+                minLength: 1
+                maxLength: 64
+              status:
+                type: string
+                enum:
+                  - forming
+                  - loading
+                  - sent
+                  - closed
+              plannedStart:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+              plannedEnd:
+                anyOf:
+                  - type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  - type: "null"
+              actualStart:
+                anyOf:
+                  - type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  - type: "null"
+              actualEnd:
+                anyOf:
+                  - type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                  - type: "null"
+              vehicle:
+                type: string
+              regionGuids:
+                type: array
+                items:
+                  type: string
+                  pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+              orders:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    orderGuid:
+                      type: string
+                      pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                    number:
+                      type: string
+                      minLength: 1
+                      maxLength: 64
+                    clientGuid:
+                      type: string
+                      pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                  required:
+                    - orderGuid
+                    - number
+                    - clientGuid
+                  additionalProperties: false
+              changedAt:
+                type: string
+                format: date-time
+                pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+              deleted:
+                type: boolean
+            required:
+              - guid
+              - number
+              - status
+              - plannedStart
+              - plannedEnd
+              - actualStart
+              - actualEnd
+              - vehicle
+              - regionGuids
+              - orders
+              - changedAt
+              - deleted
             additionalProperties: false
         nextPage:
           anyOf:

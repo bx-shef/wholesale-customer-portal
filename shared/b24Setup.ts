@@ -43,20 +43,7 @@ export const SMART_PROCESSES: SmartProcessSpec[] = [
       { postfix: 'LAST_LOGIN', userTypeId: 'datetime', label: 'Последний вход' },
     ],
   },
-  {
-    title: 'Рейсы',
-    isClientEnabled: false,
-    fields: [
-      // Расписание по docs/spec.md §8 (разбор — shared/delivery.ts): одна запись — один город.
-      { postfix: 'CITY', userTypeId: 'string', label: 'Город' },
-      { postfix: 'WEEKDAYS', userTypeId: 'string', label: 'Дни недели (пн, ср, пт)' },
-      { postfix: 'CUTOFF_TIME', userTypeId: 'string', label: 'Приём заявок до (16:00)' },
-      { postfix: 'CUTOFF_DAYS', userTypeId: 'integer', label: 'Отсечка за дней до рейса' },
-      { postfix: 'ARRIVAL_FROM', userTypeId: 'string', label: 'Прибытие с (10:00)' },
-      { postfix: 'ARRIVAL_TO', userTypeId: 'string', label: 'Прибытие до (14:00)' },
-      { postfix: 'EXCEPTIONS', userTypeId: 'string', label: 'Без рейса (даты через запятую)' },
-    ],
-  },
+
 ]
 
 /** Что прочитано с портала. */

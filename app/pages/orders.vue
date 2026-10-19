@@ -17,12 +17,17 @@ interface Order {
   currency: string
   onecNumber: string | null
   shipmentDate: string | null
+  /** Рейс из задания на перевозку 1С: формируется → к погрузке → отправлено → закрыто. */
+  trip: { plannedStart: string, status: 'forming' | 'loading' | 'sent' | 'closed' } | null
   items: { name: string, sku: string, qty: number, unit: string, price: number, vatRate: number }[]
 }
 
 const headers = useRequestHeaders(['cookie'])
 const { data, error } = await useFetch<{ items: Order[] }>('/api/orders', { headers })
 if (error.value?.statusCode === 401) await navigateTo('/login')
+
+const TRIP_STATUS = { forming: 'рейс формируется', loading: 'готовится к погрузке', sent: 'машина в пути', closed: 'рейс завершён' } as const
+const tripDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long' })
 
 /** Путь заявки: где она сейчас — от «Новая» до «Доставлена». */
 const STEPS = [
@@ -66,7 +71,10 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
               </template>
             </p>
             <p class="text-sm">
-              <template v-if="o.shipmentDate">
+              <template v-if="o.trip">
+                Рейс: <b>{{ tripDate(o.trip.plannedStart) }}</b> · {{ TRIP_STATUS[o.trip.status] }}
+              </template>
+              <template v-else-if="o.shipmentDate">
                 Отгрузка: <b>{{ date(o.shipmentDate) }}</b>
               </template>
               <template v-else-if="o.deliveryFrom && o.deliveryTo">

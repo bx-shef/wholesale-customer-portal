@@ -17,10 +17,10 @@ function configured(): PortalState {
 }
 
 describe('planSetup', () => {
-  it('на пустом портале создаёт поле компании, оба смарт-процесса и воронку', () => {
+  it('на пустом портале создаёт поле компании, смарт-процесс «Доступ в ЛК» и воронку', () => {
     const { calls, pending } = planSetup(empty)
-    expect(calls.map(c => c.method)).toEqual(['crm.company.userfield.add', 'crm.type.add', 'crm.type.add', 'crm.category.add'])
-    expect(pending).toHaveLength(2)
+    expect(calls.map(c => c.method)).toEqual(['crm.company.userfield.add', 'crm.type.add', 'crm.category.add'])
+    expect(pending).toHaveLength(1)
   })
 
   it('код поля компании передаётся без префикса UF_CRM_', () => {

@@ -34,6 +34,7 @@ async function requestCallback() {
       <B24Container class="py-6 flex flex-col gap-4 max-w-xl">
         <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-warning" title="Не удалось загрузить профиль. Обновите страницу." />
         <template v-else-if="data">
+          <B24Alert v-if="data.shipmentBlocked" color="air-primary-warning" title="Отгрузка приостановлена" description="Заявки принимаем, но отгрузку сейчас подтверждает менеджер — обычно это вопрос оплаты. Свяжитесь с вашим менеджером." />
           <B24Card>
             <template #header>
               <h2 class="font-semibold">

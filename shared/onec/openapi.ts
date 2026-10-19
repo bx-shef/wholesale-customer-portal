@@ -25,7 +25,7 @@ export function buildOnecOpenApi() {
     Error: s.ErrorBody, Client: s.Client, ClientsPage: s.ClientsPage, Contract: s.Contract, Section: s.Section,
     Item: s.Item, CatalogPage: s.CatalogPage, Price: s.Price, PricesPage: s.PricesPage, OrderLineFact: s.OrderLineFact,
     Stock: s.Stock, StockPage: s.StockPage, OrderRequest: s.OrderRequest, OrderCreated: s.OrderCreated,
-    OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage, ImageRef: s.ImageRef, ImageFile: s.ImageFile,
+    OrderStatusRow: s.OrderStatusRow, OrderStatusPage: s.OrderStatusPage, DeliverySchedule: s.DeliverySchedule, DeliverySchedulePage: s.DeliverySchedulePage, Trip: s.Trip, TripsPage: s.TripsPage, ImageRef: s.ImageRef, ImageFile: s.ImageFile,
   }
   return {
     openapi: '3.1.0',
@@ -60,6 +60,8 @@ export function buildOnecOpenApi() {
         },
       },
       '/orders/status': { get: { summary: 'Статусы заказов', parameters: listParams, responses: { 200: { description: 'Страница', content: content('OrderStatusPage') }, ...errors } } },
+      '/delivery-schedule': { get: { summary: 'График доставки по бизнес-регионам, целиком (ведёт логист в 1С)', responses: { 200: { description: 'Весь график', content: content('DeliverySchedulePage') }, ...errors } } },
+      '/trips': { get: { summary: 'Задания на перевозку (рейсы) по изменениям', parameters: listParams, responses: { 200: { description: 'Страница', content: content('TripsPage') }, ...errors } } },
     },
     components: {
       securitySchemes: { bearer: { type: 'http', scheme: 'bearer' }, basic: { type: 'http', scheme: 'basic' } },
