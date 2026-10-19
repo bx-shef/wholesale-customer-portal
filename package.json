@@ -26,7 +26,7 @@
     "@ai-sdk/vue": "^4.0.140",
     "@bitrix24/b24icons-vue": "^2.0.8",
     "@bitrix24/b24jssdk": "^3.0.0",
-    "@bitrix24/b24ui-nuxt": "^2.14.0",
+    "@bitrix24/b24ui-nuxt": "^2.15.0",
     "@nuxt/content": "^3.16.1",
     "@nuxtjs/mcp-toolkit": "^0.24.1",
     "ai": "^7.0.140",
