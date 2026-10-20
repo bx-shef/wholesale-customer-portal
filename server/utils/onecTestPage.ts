@@ -38,7 +38,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <header><img src="/logo.png" alt=""><h1>Проверка HTTP-сервиса 1С для ЛК</h1></header>
+  <header><img src="/logo.png" alt=""><h1>Проверка связи с 1С для ЛК</h1></header>
   <div class="card">
     <p class="muted">Стенд по очереди вызывает методы контракта <b>с сервера ЛК</b> и сверяет ответы с описанием:
     <a href="https://github.com/bx-shef/wholesale-customer-portal/blob/main/docs/onec-contract.md" target="_blank" rel="noopener">спецификация</a>.
@@ -46,6 +46,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
     <form id="f">
       <div class="row">
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
+        <label><input type="radio" name="target" value="odata"> OData 1С — разведка полей</label>
         <label><input type="radio" name="target" value="mock"> Мок ЛК (эталон контракта)</label>
       </div>
       <div id="onec-fields">
@@ -82,7 +83,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   const $ = (id) => document.getElementById(id)
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   const target = () => document.querySelector('input[name=target]:checked').value
-  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock' }))
+  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock'; $('baseUrl').placeholder = target() === 'odata' ? 'https://1c.algena.by:8202/KA_Work_test/odata/standard.odata' : 'https://1c.algena.by/base/hs/lk' }))
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
   document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
   const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }
@@ -164,9 +165,12 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       localStorage.removeItem(STORE)
     }
   })().catch(() => {})
+  // Поля OData — только имена и типы: значений стенд не читает.
+  const fieldsHtml = (types) => !types ? '' : '<details><summary>Поля</summary>' + types.map((t) => '<p><b>' + esc(t.name) + '</b><br><code>'
+    + t.properties.map((p) => esc(p.name + ': ' + p.type)).join('<br>') + '</code></p>').join('') + '</details>'
   $('f').addEventListener('submit', async (e) => {
     e.preventDefault()
-    if (target() === 'onec') {
+    if (target() !== 'mock') {
       if ($('remember').checked) await remember().catch(() => {})
       else if (localStorage.getItem(STORE)) await forget(false).catch(() => {})
     }
@@ -186,8 +190,9 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       const fail = data.checks.filter((c) => c.status === 'fail').length
       report.innerHTML = '<div class="summary ' + (fail ? 'fail' : 'ok') + '">' + esc(data.target) + ': пройдено ' + ok + ' из ' + data.checks.length
         + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + (data.ms / 1000).toFixed(1) + ' с</div><table>'
-        + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span></td><td class="ms">' + (c.status === 'skip' ? '' : c.ms + ' мс') + '</td></tr>').join('')
-        + '</table>'
+        + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span>' + fieldsHtml(c.fields) + '</td><td class="ms">' + (c.status === 'skip' ? '' : c.ms + ' мс') + '</td></tr>').join('')
+        + '</table>' + (data.fieldsText ? '<button id="copy" type="button" class="secondary">Скопировать поля для разработчика</button>' : '')
+      if (data.fieldsText) $('copy').addEventListener('click', () => navigator.clipboard.writeText(data.fieldsText).then(() => { $('copy').textContent = 'Скопировано' }))
     }
     catch (err) {
       report.innerHTML = '<p class="err">' + esc(err.message) + '</p>'
