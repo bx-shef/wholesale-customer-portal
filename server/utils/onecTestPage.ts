@@ -48,6 +48,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
         <label><input type="radio" name="target" value="odata"> OData 1С — разведка полей</label>
         <label><input type="radio" name="target" value="odata-catalog"> OData 1С — каталог</label>
+        <label><input type="radio" name="target" value="odata-prices"> OData 1С — цены и остатки</label>
         <label><input type="radio" name="target" value="mock"> Мок ЛК (эталон контракта)</label>
       </div>
       <div id="onec-fields">
@@ -84,7 +85,20 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   const $ = (id) => document.getElementById(id)
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   const target = () => document.querySelector('input[name=target]:checked').value
-  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock'; $('baseUrl').placeholder = target().startsWith('odata') ? 'https://1c.algena.by:8202/KA_Work_test/odata/standard.odata' : 'https://1c.algena.by/base/hs/lk' }))
+  const applyTarget = () => { $('onec-fields').hidden = target() === 'mock'; $('baseUrl').placeholder = target().startsWith('odata') ? 'https://1c.algena.by:8202/KA_Work_test/odata/standard.odata' : 'https://1c.algena.by/base/hs/lk' }
+  // Выбранный режим помним всегда: это не доступ, шифровать нечего.
+  const TARGET_KEY = 'lk-onec-test-target'
+  try {
+    const savedTarget = localStorage.getItem(TARGET_KEY)
+    const radio = savedTarget && document.querySelector('input[name=target][value="' + CSS.escape(savedTarget) + '"]')
+    if (radio) radio.checked = true
+  }
+  catch {}
+  applyTarget()
+  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => {
+    applyTarget()
+    try { localStorage.setItem(TARGET_KEY, target()) } catch {}
+  }))
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
   document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
   const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }

@@ -179,3 +179,61 @@ export async function runODataCatalogProbe(input: ODataProbeInput, now: () => nu
   }
   return checks
 }
+
+/**
+ * Цены и остатки через клиент OData: способ чтения прайса, счётчики, образцы.
+ * Цены и остатки — не персональные данные; названия товаров берём из каталога для образца.
+ */
+export async function runODataPricesProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000 })
+  const checks: ODataCheck[] = []
+  const names = await client.list<{ Ref_Key: string, Description?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,Description', $filter: 'IsFolder eq false' })
+    .then(rows => new Map(rows.map(r => [r.Ref_Key.toLowerCase(), r.Description ?? ''])))
+    .catch(() => new Map<string, string>())
+  const priceTypes = (await client.names('Catalog_ВидыЦен')).map
+  const name = (g: string) => names.get(g) || g
+
+  let started = now()
+  try {
+    const p = await client.prices()
+    const byType = new Map<string, number>()
+    for (const i of p.items) byType.set(i.priceTypeGuid, (byType.get(i.priceTypeGuid) ?? 0) + 1)
+    const currencies = [...new Set(p.items.map(i => i.currency))].join(', ')
+    checks.push({
+      id: 'prices',
+      title: 'Прайс по видам цен',
+      status: p.items.length ? 'ok' : 'fail',
+      detail: `строк: ${p.items.length}, видов цен: ${byType.size}, валюты: ${currencies || '—'}, с НДС: ${p.items.filter(i => i.vatRate > 0).length}; чтение: ${p.via === 'slice' ? 'срез последних' : 'все записи регистра (среза нет — медленнее)'}${p.missing.length ? `; не читаются: ${p.missing.join(', ')}` : ''}`,
+      fields: [
+        { name: 'Виды цен (строк)', properties: [...byType].sort((a, b) => b[1] - a[1]).map(([g, n]) => ({ name: `${priceTypes.get(g) || g}: ${n}`, type: '' })) },
+        { name: 'Образец', properties: p.items.slice(0, 10).map(i => ({ name: `${name(i.itemGuid)} · ${priceTypes.get(i.priceTypeGuid) || i.priceTypeGuid} · ${i.price} ${i.currency} · НДС ${i.vatRate}%`, type: '' })) },
+      ],
+      ms: now() - started,
+    })
+  }
+  catch (e) {
+    checks.push({ id: 'prices', title: 'Прайс по видам цен', status: 'fail', detail: reason(e), ms: now() - started })
+  }
+
+  started = now()
+  try {
+    const s = await client.stock()
+    const wh = new Map<string, number>()
+    for (const r of s) wh.set(r.warehouseName || r.warehouseGuid, (wh.get(r.warehouseName || r.warehouseGuid) ?? 0) + 1)
+    checks.push({
+      id: 'stock',
+      title: 'Остатки по складам',
+      status: s.length ? 'ok' : 'fail',
+      detail: `строк: ${s.length}, складов: ${wh.size}, с остатком больше нуля: ${s.filter(r => r.available > 0).length}`,
+      fields: [
+        { name: 'Склады (строк)', properties: [...wh].sort((a, b) => b[1] - a[1]).map(([n, c]) => ({ name: `${n}: ${c}`, type: '' })) },
+        { name: 'Образец', properties: s.filter(r => r.available > 0).slice(0, 10).map(r => ({ name: `${name(r.itemGuid)} · ${r.warehouseName} · ${r.available}`, type: '' })) },
+      ],
+      ms: now() - started,
+    })
+  }
+  catch (e) {
+    checks.push({ id: 'stock', title: 'Остатки по складам', status: 'fail', detail: reason(e), ms: now() - started })
+  }
+  return checks
+}
