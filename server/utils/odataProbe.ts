@@ -25,6 +25,16 @@ export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
   { name: 'Catalog_БизнесРегионы', why: 'бизнес-регионы' },
   { name: 'Document_ЗаказКлиента', why: 'заказы: запись и статусы' },
   { name: 'Document_ЗаданиеНаПеревозку', why: 'рейсы' },
+  // Второй круг (разведка 2026-10-20): на них ссылаются поля первых шестнадцати.
+  { name: 'Catalog_УпаковкиЕдиницыИзмерения', why: 'единица и кратность товара' },
+  { name: 'Catalog_Марки', why: 'бренд товара' },
+  { name: 'Catalog_Валюты', why: 'код валюты цены и соглашения' },
+  { name: 'Catalog_СтавкиНДС', why: 'ставка НДС товара' },
+  { name: 'Catalog_Организации', why: 'организация в заказе' },
+  { name: 'Catalog_Пользователи', why: 'менеджер клиента' },
+  { name: 'ChartOfCharacteristicTypes_ДополнительныеРеквизитыИСведения', why: 'имена свойств товара' },
+  { name: 'AccumulationRegister_РасчетыСКлиентами', why: 'долг клиента' },
+  { name: 'Document_РеализацияТоваровУслуг', why: 'отгрузка заказа (статус «отгружен»)' },
 ]
 
 export interface ODataType {
