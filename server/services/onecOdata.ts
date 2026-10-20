@@ -185,24 +185,57 @@ export class ODataClient {
    * Если 1С срез не отдаёт — все записи регистра и последняя по дате (`via: 'records'`).
    * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
    */
-  async prices(opts: { priceTypes?: string[] } = {}): Promise<{ items: PriceT[], via: 'slice' | 'records', missing: string[] }> {
+  async prices(opts: { priceTypes?: string[] } = {}): Promise<PricesResult> {
     const set = 'InformationRegister_ЦеныНоменклатуры25'
     const fields = 'Period,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key'
     const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
-    let rows: PriceRow[]
-    let via: 'slice' | 'records' = 'slice'
-    try {
-      rows = await this.listPath<PriceRow>(`${encodeURIComponent(set)}/SliceLast()`, `${set}/SliceLast`, { $select: fields, ...filter })
-    }
-    catch (e) {
-      if (!(e instanceof OnecError) || e.kind !== 'http') throw e
-      via = 'records'
-      rows = await this.list<PriceRow>(`${set}_RecordType`, { $select: `${fields},Active`, ...filter })
+    const slice = `${encodeURIComponent(set)}/SliceLast()`
+    // Пути по очереди: как 1С отдаёт срез, на этой базе не замерено — пробуем и пишем, что вышло.
+    const attempts: Array<{ via: PricesResult['via'], load: () => Promise<PriceRow[]> }> = [
+      { via: 'slice', load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { $select: fields, ...filter }) },
+      { via: 'slice', load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter }) },
+      { via: 'records', load: () => this.recordSets(set) },
+    ]
+    const tried: string[] = []
+    let rows: PriceRow[] | null = null
+    let via: PricesResult['via'] = 'slice'
+    for (const a of attempts) {
+      try {
+        rows = await a.load()
+        via = a.via
+        if (rows.length) break
+        tried.push(`${a.via}: пусто`)
+      }
+      catch (e) {
+        if (!(e instanceof OnecError) || (e.kind !== 'http' && e.kind !== 'contract')) throw e
+        tried.push(`${a.via}: ${e.message}`)
+      }
     }
     const currencies = await this.currencies()
     const vat = await this.vatByItem()
-    const items = mapPrices(rows, { currencies: currencies.map, vat: vat.map })
-    return { items: checked(Price, items, 'prices'), via, missing: [currencies.error && 'Catalog_Валюты', vat.error && 'Catalog_СтавкиНДС'].filter((x): x is string => !!x) }
+    const stats = emptyPriceStats()
+    const items = mapPrices(rows ?? [], { currencies: currencies.map, vat: vat.map }, stats)
+    return {
+      items: checked(Price, items, 'prices'),
+      via,
+      tried,
+      stats,
+      missing: [currencies.error && 'Catalog_Валюты', vat.error && 'Catalog_СтавкиНДС'].filter((x): x is string => !!x),
+    }
+  }
+
+  /**
+   * Записи регистра, подчинённого регистратору: набор `InformationRegister_X` — это наборы записей
+   * документов (`Recorder` + `RecordSet`). Читаем страницами и разворачиваем строки.
+   */
+  async recordSets(set: string, pageSize = 200, maxPages = 2000): Promise<PriceRow[]> {
+    const out: PriceRow[] = []
+    for (let page = 0; page < maxPages; page++) {
+      const sets = await this.list<{ RecordSet?: PriceRow[] }>(set, { $top: pageSize, $skip: page * pageSize })
+      for (const rs of sets) out.push(...(rs.RecordSet ?? []))
+      if (sets.length < pageSize) return out
+    }
+    throw new OnecError('contract', `1C OData ${set}: more than ${maxPages} pages`)
   }
 
   /** Остатки (§2.5): `ВНаличии − КОтгрузке` по номенклатуре и складу. */
@@ -249,6 +282,26 @@ export class ODataClient {
   }
 }
 
+export interface PriceStats {
+  read: number
+  inactive: number
+  /** Цена характеристики или упаковки — ЛК продаёт товар целиком. */
+  variant: number
+  noRef: number
+  noCurrency: number
+  noPrice: number
+}
+export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, variant: 0, noRef: 0, noCurrency: 0, noPrice: 0 })
+
+export interface PricesResult {
+  items: PriceT[]
+  via: 'slice' | 'records'
+  /** Что не сработало до удачного пути — для стенда. */
+  tried: string[]
+  stats: PriceStats
+  missing: string[]
+}
+
 export interface PriceRow {
   Period?: string
   Active?: boolean
@@ -293,14 +346,15 @@ const money = (v: number) => Math.round(v * 100) / 100
  * при чтении записей (`records`) берём последнюю активную по дате. Без валюты строку не отдаём:
  * цену в неизвестной валюте клиенту не покажешь.
  */
-export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, string>, vat: Map<string, number> }): PriceT[] {
+export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, string>, vat: Map<string, number> }, stats = emptyPriceStats()): PriceT[] {
   const last = new Map<string, PriceRow>()
+  stats.read += rows.length
   for (const r of rows) {
-    if (r.Active === false) continue
-    if (ref(r.ХарактеристикаЦО_Key) || ref(r.УпаковкаЦО_Key)) continue
+    if (r.Active === false) { stats.inactive++; continue }
+    if (ref(r.ХарактеристикаЦО_Key) || ref(r.УпаковкаЦО_Key)) { stats.variant++; continue }
     const item = ref(r.Номенклатура_Key)
     const type = ref(r.ВидЦены_Key)
-    if (!item || !type) continue
+    if (!item || !type) { stats.noRef++; continue }
     const key = `${item}|${type}`
     const prev = last.get(key)
     if (!prev || (r.Period ?? '') >= (prev.Period ?? '')) last.set(key, r)
@@ -308,7 +362,8 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
   const out: PriceT[] = []
   for (const r of last.values()) {
     const currency = ref(r.Валюта_Key) && look.currencies.get(ref(r.Валюта_Key)!)
-    if (!currency || typeof r.Цена !== 'number' || r.Цена < 0) continue
+    if (!currency) { stats.noCurrency++; continue }
+    if (typeof r.Цена !== 'number' || r.Цена < 0) { stats.noPrice++; continue }
     const item = ref(r.Номенклатура_Key)!
     out.push({
       priceTypeGuid: ref(r.ВидЦены_Key)!,
