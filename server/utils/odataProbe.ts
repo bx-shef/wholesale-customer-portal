@@ -6,6 +6,7 @@
  * Чистое ядро: `fetch` внедряется, тесты гоняют его на фикстуре.
  */
 import { onecAuthHeader, type OnecAuth } from '../services/onec'
+import { ODataClient } from '../services/onecOdata'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
 export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
@@ -141,4 +142,40 @@ export function fieldsText(checks: ODataCheck[]): string {
   return checks
     .flatMap(c => [`# ${c.title}: ${c.detail}`, ...(c.fields ?? []).flatMap(t => [`## ${t.name}`, ...t.properties.map(p => `${p.name}: ${p.type}`)])])
     .join('\n')
+}
+
+/**
+ * Каталог через клиент OData — тот, которым будет ходить ЛК: справочники, первая страница,
+ * проверка схемой контракта и образец товаров. Товары — не персональные данные, их показываем.
+ */
+export async function runODataCatalogProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs })
+  const checks: ODataCheck[] = []
+  let started = now()
+  const look = await client.catalogLookups()
+  checks.push({
+    id: 'lookups',
+    title: 'Справочники каталога: единицы и марки',
+    status: look.missing.length ? 'skip' : 'ok',
+    detail: `единиц: ${look.units.size}, марок: ${look.brands.size}${look.missing.length ? `; не читаются: ${look.missing.join(', ')} — будут «шт» и пустой бренд` : ''}`,
+    ms: now() - started,
+  })
+  started = now()
+  try {
+    const page = await client.catalog({ page: 1, pageSize: 50 }, look)
+    const withSection = page.items.filter(i => i.sectionGuid !== page.sections[0]?.guid).length
+    const sample = page.items.slice(0, 10).map(i => `${i.sku || '—'} · ${i.name} · ${i.unit}${i.brand ? ` · ${i.brand}` : ''}${i.images.length ? ' · есть картинка' : ''}${i.deleted ? ' · помечен на удаление' : ''}`)
+    checks.push({
+      id: 'catalog',
+      title: 'Каталог по контракту (первые 50 товаров)',
+      status: page.items.length ? 'ok' : 'fail',
+      detail: `разделов: ${page.sections.length}, товаров: ${page.items.length}, в группах: ${withSection}, с артикулом: ${page.items.filter(i => i.sku).length}, с картинкой: ${page.items.filter(i => i.images.length).length}, дальше есть: ${page.nextPage ? 'да' : 'нет'}`,
+      fields: [{ name: 'Образец', properties: sample.map(name => ({ name, type: '' })) }],
+      ms: now() - started,
+    })
+  }
+  catch (e) {
+    checks.push({ id: 'catalog', title: 'Каталог по контракту (первые 50 товаров)', status: 'fail', detail: reason(e), ms: now() - started })
+  }
+  return checks
 }
