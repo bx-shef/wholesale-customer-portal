@@ -58,3 +58,60 @@ describe('ODataClient.catalog', () => {
     await expect(bad.catalog({}, none)).rejects.toMatchObject({ kind: 'contract' })
   })
 })
+
+describe('цены и остатки', () => {
+  const look = { currencies: new Map([[G(90), 'BYN']]), vat: new Map([[G(20), 20]]) }
+
+  it('mapPrices: последняя цена, без характеристик и неизвестной валюты', async () => {
+    const { mapPrices } = await import('../server/services/onecOdata')
+    const rows = [
+      { Period: '2026-01-01T00:00:00', Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 10, Валюта_Key: G(90) },
+      { Period: '2026-03-01T00:00:00', Номенклатура_Key: G(20).toUpperCase(), ВидЦены_Key: G(30), Цена: 12.345, Валюта_Key: G(90) },
+      { Period: '2026-04-01T00:00:00', Active: false, Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 99, Валюта_Key: G(90) },
+      { Period: '2026-05-01T00:00:00', Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 50, Валюта_Key: G(90), ХарактеристикаЦО_Key: G(1) },
+      { Period: '2026-01-01T00:00:00', Номенклатура_Key: G(21), ВидЦены_Key: G(30), Цена: 5, Валюта_Key: G(91) },
+    ]
+    expect(mapPrices(rows, look)).toEqual([{ priceTypeGuid: G(30), itemGuid: G(20), price: 12.35, currency: 'BYN', vatRate: 20, changedAt: '2026-03-01T00:00:00+03:00', deleted: false }])
+  })
+
+  it('mapStock: свободный остаток не меньше нуля', async () => {
+    const { mapStock } = await import('../server/services/onecOdata')
+    const rows = [
+      { Номенклатура_Key: G(20), Склад_Key: G(40), ВНаличииBalance: 10, КОтгрузкеBalance: 3 },
+      { Номенклатура_Key: G(21), Склад_Key: G(40), ВНаличииBalance: 1, КОтгрузкеBalance: 4 },
+      { Номенклатура_Key: G(22), Склад_Key: EMPTY_REF, ВНаличииBalance: 5 },
+    ]
+    expect(mapStock(rows, new Map([[G(40), 'Основной']]), AT)).toEqual([
+      { itemGuid: G(20), warehouseGuid: G(40), warehouseName: 'Основной', available: 7, changedAt: AT },
+      { itemGuid: G(21), warehouseGuid: G(40), warehouseName: 'Основной', available: 0, changedAt: AT },
+    ])
+  })
+
+  it('currencyCode и vatPercent', async () => {
+    const { currencyCode, vatPercent } = await import('../server/services/onecOdata')
+    expect([currencyCode('933', 'руб.'), currencyCode('', 'usd'), currencyCode('1', 'x')]).toEqual(['BYN', 'USD', null])
+    expect([vatPercent(10), vatPercent(undefined, '20%'), vatPercent(undefined, 'Без НДС')]).toEqual([10, 20, 0])
+  })
+
+  it('prices: без среза — записи регистра; stock — через Balance', async () => {
+    const urls: string[] = []
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('SliceLast')) return new Response('', { status: 400 })
+      if (url.includes('_RecordType')) return Response.json({ value: [{ Period: '2026-01-01T00:00:00', Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 1, Валюта_Key: G(90) }] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(90), Code: '933', Description: 'руб.' }] })
+      if (url.includes('Catalog_СтавкиНДС')) return Response.json({ value: [{ Ref_Key: G(60), Description: '20%' }] })
+      if (url.includes('Catalog_Номенклатура')) return Response.json({ value: [{ Ref_Key: G(20), СтавкаНДС_Key: G(60) }] })
+      if (url.includes('/Balance(')) return Response.json({ value: [{ Номенклатура_Key: G(20), Склад_Key: G(40), ВНаличииBalance: 2 }] })
+      if (url.includes('Catalog_Склады')) return Response.json({ value: [{ Ref_Key: G(40), Description: 'Склад' }] })
+      return new Response('', { status: 404 })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x/odata', auth: { kind: 'bearer', token: 't' }, fetch: fake, now: () => new Date(AT) })
+    const p = await c.prices({ priceTypes: [G(30)] })
+    expect(p).toMatchObject({ via: 'records', missing: [], items: [{ price: 1, currency: 'BYN', vatRate: 20 }] })
+    expect(urls.find(u => u.includes('_RecordType'))).toContain(`ВидЦены_Key eq guid'${G(30)}'`)
+    expect(await c.stock()).toEqual([{ itemGuid: G(20), warehouseGuid: G(40), warehouseName: 'Склад', available: 2, changedAt: AT }])
+    expect(urls.some(u => u.includes("/Balance(Dimensions='Номенклатура,Склад')?"))).toBe(true)
+  })
+})

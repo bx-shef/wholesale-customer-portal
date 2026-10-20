@@ -2,12 +2,12 @@
 import { z } from 'zod'
 import { mockFetch } from '../mocks/onec/fetch'
 import { checkBaseUrl, runOnecProbe } from '../utils/onecProbe'
-import { fieldsText, runODataCatalogProbe, runODataProbe } from '../utils/odataProbe'
+import { fieldsText, runODataCatalogProbe, runODataPricesProbe, runODataProbe } from '../utils/odataProbe'
 import { createRateLimiter } from '../utils/rateLimit'
 
 const runs = createRateLimiter(30, 60 * 60_000)
 const body = z.object({
-  target: z.enum(['onec', 'odata', 'odata-catalog', 'mock']),
+  target: z.enum(['onec', 'odata', 'odata-catalog', 'odata-prices', 'mock']),
   baseUrl: z.string().max(500).optional(),
   authKind: z.enum(['bearer', 'basic']).default('bearer'),
   token: z.string().max(500).optional(),
@@ -36,6 +36,10 @@ export default defineEventHandler(async (event) => {
     ? { kind: 'basic' as const, login: (d.login ?? '').trim(), password: d.password ?? '' }
     : { kind: 'bearer' as const, token: (d.token ?? '').trim() }
   if (auth.kind === 'basic' ? !auth.login || !auth.password : !auth.token) throw createError({ statusCode: 400, message: auth.kind === 'basic' ? 'Укажите логин и пароль' : 'Укажите токен' })
+  if (d.target === 'odata-prices') {
+    const checks = await runODataPricesProbe({ baseUrl, auth, fetch })
+    return { target: baseUrl, ms: Date.now() - started, checks }
+  }
   if (d.target === 'odata-catalog') {
     const checks = await runODataCatalogProbe({ baseUrl, auth, fetch })
     return { target: baseUrl, ms: Date.now() - started, checks }

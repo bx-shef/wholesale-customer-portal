@@ -6,7 +6,7 @@
  * Ответ проверяется схемой контракта: «прошло здесь» значит «ЛК прочитает».
  */
 import type { z } from 'zod'
-import { CatalogPage, PAGE_SIZE_MAX, type ItemT, type SectionT } from '../../shared/onec/schemas'
+import { CatalogPage, PAGE_SIZE_MAX, Price, Stock, type ItemT, type PriceT, type SectionT, type StockT } from '../../shared/onec/schemas'
 import { OnecError, onecAuthHeader, type OnecAuth } from './onec'
 
 /** Пустая ссылка 1С: поле `_Key` без значения. */
@@ -94,10 +94,19 @@ export class ODataClient {
   }
 
   /** Строки набора: `value` из ответа 1С. */
-  async list<T>(set: string, query: Record<string, string | number>): Promise<T[]> {
+  list<T>(set: string, query: Record<string, string | number>): Promise<T[]> {
+    return this.listPath(encodeURIComponent(set), set, query)
+  }
+
+  /**
+   * Строки по готовому пути: набор с функцией 1С (`…/SliceLast()`, `…/Balance(…)`).
+   * `path` уже закодирован, `label` — для текста ошибки.
+   */
+  async listPath<T>(path: string, label: string, query: Record<string, string | number>): Promise<T[]> {
+    const set = label
     const qs = Object.entries({ ...query, $format: 'json' })
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')
-    const url = `${this.base}/${encodeURIComponent(set)}?${qs}`
+    const url = `${this.base}/${path}?${qs}`
     let res: Response
     try {
       res = await this.fetchImpl(url, {
@@ -170,4 +179,165 @@ export class ODataClient {
       missing: [units.error && 'Catalog_УпаковкиЕдиницыИзмерения', brands.error && 'Catalog_Марки'].filter((x): x is string => !!x),
     }
   }
+
+  /**
+   * Прайс по видам цен (§2.4) — действующие цены: срез последних `InformationRegister_ЦеныНоменклатуры25`.
+   * Если 1С срез не отдаёт — все записи регистра и последняя по дате (`via: 'records'`).
+   * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
+   */
+  async prices(opts: { priceTypes?: string[] } = {}): Promise<{ items: PriceT[], via: 'slice' | 'records', missing: string[] }> {
+    const set = 'InformationRegister_ЦеныНоменклатуры25'
+    const fields = 'Period,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key'
+    const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
+    let rows: PriceRow[]
+    let via: 'slice' | 'records' = 'slice'
+    try {
+      rows = await this.listPath<PriceRow>(`${encodeURIComponent(set)}/SliceLast()`, `${set}/SliceLast`, { $select: fields, ...filter })
+    }
+    catch (e) {
+      if (!(e instanceof OnecError) || e.kind !== 'http') throw e
+      via = 'records'
+      rows = await this.list<PriceRow>(`${set}_RecordType`, { $select: `${fields},Active`, ...filter })
+    }
+    const currencies = await this.currencies()
+    const vat = await this.vatByItem()
+    const items = mapPrices(rows, { currencies: currencies.map, vat: vat.map })
+    return { items: checked(Price, items, 'prices'), via, missing: [currencies.error && 'Catalog_Валюты', vat.error && 'Catalog_СтавкиНДС'].filter((x): x is string => !!x) }
+  }
+
+  /** Остатки (§2.5): `ВНаличии − КОтгрузке` по номенклатуре и складу. */
+  async stock(): Promise<StockT[]> {
+    const set = 'AccumulationRegister_ТоварыНаСкладах'
+    const rows = await this.listPath<StockRow>(
+      `${encodeURIComponent(set)}/Balance(Dimensions='${encodeURIComponent('Номенклатура,Склад')}')`,
+      `${set}/Balance`,
+      { $select: 'Номенклатура_Key,Склад_Key,ВНаличииBalance,КОтгрузкеBalance' },
+    )
+    const warehouses = await this.names('Catalog_Склады')
+    const changedAt = (this.options.now?.() ?? new Date()).toISOString()
+    return checked(Stock, mapStock(rows, warehouses.map, changedAt), 'stock')
+  }
+
+  /** Валюта по ссылке: буквенный код из наименования или по числовому коду. */
+  async currencies(): Promise<{ map: Map<string, string>, error?: string }> {
+    try {
+      const rows = await this.list<{ Ref_Key: string, Code?: string, Description?: string }>('Catalog_Валюты', { $select: 'Ref_Key,Code,Description' })
+      return { map: new Map(rows.flatMap((r) => {
+        const code = currencyCode(r.Code, r.Description)
+        return code ? [[r.Ref_Key.toLowerCase(), code] as const] : []
+      })) }
+    }
+    catch (e) {
+      return { map: new Map(), error: (e as Error).message }
+    }
+  }
+
+  /** Ставка НДС товара в процентах: номенклатура → `Catalog_СтавкиНДС`. */
+  async vatByItem(): Promise<{ map: Map<string, number>, error?: string }> {
+    try {
+      const rates = await this.list<{ Ref_Key: string, Description?: string, Ставка?: number }>('Catalog_СтавкиНДС', {})
+      const rate = new Map(rates.map(r => [r.Ref_Key.toLowerCase(), vatPercent(r.Ставка, r.Description)]))
+      const items = await this.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,СтавкаНДС_Key', $filter: 'IsFolder eq false' })
+      return { map: new Map(items.flatMap((i) => {
+        const v = ref(i.СтавкаНДС_Key) && rate.get(ref(i.СтавкаНДС_Key)!)
+        return typeof v === 'number' ? [[i.Ref_Key.toLowerCase(), v] as const] : []
+      })) }
+    }
+    catch (e) {
+      return { map: new Map(), error: (e as Error).message }
+    }
+  }
+}
+
+export interface PriceRow {
+  Period?: string
+  Active?: boolean
+  Номенклатура_Key: string
+  ВидЦены_Key: string
+  Цена?: number
+  Валюта_Key?: string
+  ХарактеристикаЦО_Key?: string
+  УпаковкаЦО_Key?: string
+}
+
+export interface StockRow {
+  Номенклатура_Key: string
+  Склад_Key: string
+  ВНаличииBalance?: number
+  КОтгрузкеBalance?: number
+}
+
+/** Часовой пояс дат 1С: база в Минске, даты в OData без смещения. */
+export const ONEC_TZ = '+03:00'
+const ISO_NUM: Record<string, string> = { 933: 'BYN', 643: 'RUB', 840: 'USD', 978: 'EUR', 156: 'CNY', 985: 'PLN' }
+
+export function currencyCode(code?: string, description?: string): string | null {
+  const d = (description ?? '').trim().toUpperCase()
+  if (/^[A-Z]{3}$/.test(d)) return d
+  const c = (code ?? '').trim()
+  if (/^[A-Z]{3}$/.test(c.toUpperCase())) return c.toUpperCase()
+  return ISO_NUM[String(Number(c))] ?? null
+}
+
+/** «20%», «Без НДС», число из поля `Ставка`. */
+export function vatPercent(rate?: number, description?: string): number {
+  if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) return rate
+  const m = /(\d+(?:[.,]\d+)?)\s*%/.exec(description ?? '')
+  return m ? Number(m[1]!.replace(',', '.')) : 0
+}
+
+const money = (v: number) => Math.round(v * 100) / 100
+
+/**
+ * Действующая цена на товар и вид цен. Цены характеристик и упаковок ЛК не продаёт — пропускаем;
+ * при чтении записей (`records`) берём последнюю активную по дате. Без валюты строку не отдаём:
+ * цену в неизвестной валюте клиенту не покажешь.
+ */
+export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, string>, vat: Map<string, number> }): PriceT[] {
+  const last = new Map<string, PriceRow>()
+  for (const r of rows) {
+    if (r.Active === false) continue
+    if (ref(r.ХарактеристикаЦО_Key) || ref(r.УпаковкаЦО_Key)) continue
+    const item = ref(r.Номенклатура_Key)
+    const type = ref(r.ВидЦены_Key)
+    if (!item || !type) continue
+    const key = `${item}|${type}`
+    const prev = last.get(key)
+    if (!prev || (r.Period ?? '') >= (prev.Period ?? '')) last.set(key, r)
+  }
+  const out: PriceT[] = []
+  for (const r of last.values()) {
+    const currency = ref(r.Валюта_Key) && look.currencies.get(ref(r.Валюта_Key)!)
+    if (!currency || typeof r.Цена !== 'number' || r.Цена < 0) continue
+    const item = ref(r.Номенклатура_Key)!
+    out.push({
+      priceTypeGuid: ref(r.ВидЦены_Key)!,
+      itemGuid: item,
+      price: money(r.Цена),
+      currency,
+      vatRate: look.vat.get(item) ?? 0,
+      changedAt: `${(r.Period ?? '2000-01-01T00:00:00').slice(0, 19)}${ONEC_TZ}`,
+      deleted: false,
+    })
+  }
+  return out
+}
+
+/** Свободный остаток: `ВНаличии − КОтгрузке`, не меньше нуля; пустые склады и товары пропускаем. */
+export function mapStock(rows: StockRow[], warehouses: Map<string, string>, changedAt: string): StockT[] {
+  return rows.flatMap((r) => {
+    const item = ref(r.Номенклатура_Key)
+    const wh = ref(r.Склад_Key)
+    if (!item || !wh) return []
+    const available = Math.max(0, (r.ВНаличииBalance ?? 0) - (r.КОтгрузкеBalance ?? 0))
+    return [{ itemGuid: item, warehouseGuid: wh, warehouseName: warehouses.get(wh) ?? '', available: Math.round(available * 1000) / 1000, changedAt }]
+  })
+}
+
+function checked<T>(schema: z.ZodType<T>, rows: T[], what: string): T[] {
+  for (const [i, row] of rows.entries()) {
+    const parsed = schema.safeParse(row)
+    if (!parsed.success) throw new OnecError('contract', `1C OData ${what}: row ${i} breaks contract at ${parsed.error.issues.slice(0, 3).map(x => x.path.join('.')).join(', ')}`)
+  }
+  return rows
 }

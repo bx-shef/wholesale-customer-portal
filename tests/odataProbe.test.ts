@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fieldsText, ODATA_SETS, parseMetadata, runODataCatalogProbe, runODataProbe, typesOf } from '../server/utils/odataProbe'
+import { fieldsText, ODATA_SETS, parseMetadata, runODataCatalogProbe, runODataPricesProbe, runODataProbe, typesOf } from '../server/utils/odataProbe'
 
 const META = `<?xml version="1.0"?><edmx:Edmx><edmx:DataServices><Schema>
 <EntityType Name="Catalog_ЗоныДоставки"><Key><PropertyRef Name="Ref_Key"/></Key>
@@ -62,5 +62,27 @@ describe('runODataCatalogProbe', () => {
     const checks = await runODataCatalogProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
     expect(checks.map(c => c.status)).toEqual(['skip', 'ok'])
     expect(checks[1]!.fields![0]!.properties[0]!.name).toBe('K1 · Клей · шт')
+  })
+})
+
+describe('runODataPricesProbe', () => {
+  it('прайс и остатки с образцами по названиям', async () => {
+    const G = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('SliceLast')) return Response.json({ value: [{ Period: '2026-01-01T00:00:00', Номенклатура_Key: G(1), ВидЦены_Key: G(2), Цена: 3.5, Валюта_Key: G(3) }] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(3), Code: '933', Description: 'BYN' }] })
+      if (url.includes('Catalog_ВидыЦен')) return Response.json({ value: [{ Ref_Key: G(2), Description: 'Опт' }] })
+      if (url.includes('Catalog_СтавкиНДС')) return Response.json({ value: [] })
+      if (url.includes('Catalog_Номенклатура')) return Response.json({ value: [{ Ref_Key: G(1), Description: 'Клей' }] })
+      if (url.includes('/Balance(')) return Response.json({ value: [{ Номенклатура_Key: G(1), Склад_Key: G(4), ВНаличииBalance: 5 }] })
+      if (url.includes('Catalog_Склады')) return Response.json({ value: [{ Ref_Key: G(4), Description: 'Минск' }] })
+      return new Response('', { status: 404 })
+    }
+    const checks = await runODataPricesProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    expect(checks.map(c => c.status)).toEqual(['ok', 'ok'])
+    expect(checks[0]!.detail).toContain('чтение: срез последних')
+    expect(checks[0]!.fields![1]!.properties[0]!.name).toBe('Клей · Опт · 3.5 BYN · НДС 0%')
+    expect(checks[1]!.fields![1]!.properties[0]!.name).toBe('Клей · Минск · 5')
   })
 })
