@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fieldsText, ODATA_SETS, parseMetadata, runODataProbe, typesOf } from '../server/utils/odataProbe'
+import { fieldsText, ODATA_SETS, parseMetadata, runODataCatalogProbe, runODataProbe, typesOf } from '../server/utils/odataProbe'
 
 const META = `<?xml version="1.0"?><edmx:Edmx><edmx:DataServices><Schema>
 <EntityType Name="Catalog_ЗоныДоставки"><Key><PropertyRef Name="Ref_Key"/></Key>
@@ -48,5 +48,19 @@ describe('runODataProbe', () => {
   it('без $metadata дальше не идёт', async () => {
     const checks = await runODataProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: async () => new Response('', { status: 401 }) })
     expect(checks).toEqual([expect.objectContaining({ id: 'metadata', status: 'fail', detail: 'HTTP 401' })])
+  })
+})
+
+describe('runODataCatalogProbe', () => {
+  it('без справочников — пропуск, каталог проходит схему', async () => {
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('Марки') || url.includes('Упаковки')) return new Response('', { status: 404 })
+      if (url.includes('IsFolder eq true')) return Response.json({ value: [] })
+      return Response.json({ value: [{ Ref_Key: '00000000-0000-0000-0000-000000000009', Description: 'Клей', Артикул: 'K1' }] })
+    }
+    const checks = await runODataCatalogProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    expect(checks.map(c => c.status)).toEqual(['skip', 'ok'])
+    expect(checks[1]!.fields![0]!.properties[0]!.name).toBe('K1 · Клей · шт')
   })
 })

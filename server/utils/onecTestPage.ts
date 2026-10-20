@@ -47,6 +47,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       <div class="row">
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
         <label><input type="radio" name="target" value="odata"> OData 1С — разведка полей</label>
+        <label><input type="radio" name="target" value="odata-catalog"> OData 1С — каталог</label>
         <label><input type="radio" name="target" value="mock"> Мок ЛК (эталон контракта)</label>
       </div>
       <div id="onec-fields">
@@ -83,7 +84,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   const $ = (id) => document.getElementById(id)
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
   const target = () => document.querySelector('input[name=target]:checked').value
-  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock'; $('baseUrl').placeholder = target() === 'odata' ? 'https://1c.algena.by:8202/KA_Work_test/odata/standard.odata' : 'https://1c.algena.by/base/hs/lk' }))
+  document.querySelectorAll('input[name=target]').forEach((r) => r.addEventListener('change', () => { $('onec-fields').hidden = target() === 'mock'; $('baseUrl').placeholder = target().startsWith('odata') ? 'https://1c.algena.by:8202/KA_Work_test/odata/standard.odata' : 'https://1c.algena.by/base/hs/lk' }))
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
   document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
   const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }
@@ -167,7 +168,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   })().catch(() => {})
   // Поля OData — только имена и типы: значений стенд не читает.
   const fieldsHtml = (types) => !types ? '' : '<details><summary>Поля</summary>' + types.map((t) => '<p><b>' + esc(t.name) + '</b><br><code>'
-    + t.properties.map((p) => esc(p.name + ': ' + p.type)).join('<br>') + '</code></p>').join('') + '</details>'
+    + t.properties.map((p) => esc(p.type ? p.name + ': ' + p.type : p.name)).join('<br>') + '</code></p>').join('') + '</details>'
   $('f').addEventListener('submit', async (e) => {
     e.preventDefault()
     if (target() !== 'mock') {
