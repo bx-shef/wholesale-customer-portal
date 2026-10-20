@@ -203,7 +203,9 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
       id: 'prices',
       title: 'Прайс по видам цен',
       status: p.items.length ? 'ok' : 'fail',
-      detail: `строк: ${p.items.length}, видов цен: ${byType.size}, валюты: ${currencies || '—'}, с НДС: ${p.items.filter(i => i.vatRate > 0).length}; чтение: ${p.via === 'slice' ? 'срез последних' : 'все записи регистра (среза нет — медленнее)'}${p.missing.length ? `; не читаются: ${p.missing.join(', ')}` : ''}`,
+      detail: `строк: ${p.items.length}, видов цен: ${byType.size}, валюты: ${currencies || '—'}, с НДС: ${p.items.filter(i => i.vatRate > 0).length}; чтение: ${p.via === 'slice' ? 'срез последних' : 'наборы записей регистра (медленнее)'}`
+        + `; прочитано записей: ${p.stats.read}, отброшено: неактивных ${p.stats.inactive}, характеристик и упаковок ${p.stats.variant}, без ссылок ${p.stats.noRef}, без валюты ${p.stats.noCurrency}, без цены ${p.stats.noPrice}`
+        + `${p.missing.length ? `; не читаются: ${p.missing.join(', ')}` : ''}${p.tried.length ? `; не сработало: ${p.tried.join(' | ')}` : ''}`,
       fields: [
         { name: 'Виды цен (строк)', properties: [...byType].sort((a, b) => b[1] - a[1]).map(([g, n]) => ({ name: `${priceTypes.get(g) || g}: ${n}`, type: '' })) },
         { name: 'Образец', properties: p.items.slice(0, 10).map(i => ({ name: `${name(i.itemGuid)} · ${priceTypes.get(i.priceTypeGuid) || i.priceTypeGuid} · ${i.price} ${i.currency} · НДС ${i.vatRate}%`, type: '' })) },
