@@ -25,6 +25,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   .row label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 400; }
   button { margin-top: 16px; padding: 10px 20px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .6; cursor: wait; }
+  button.secondary { margin-top: 0; padding: 6px 12px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
   td.st { width: 72px; font-weight: 700; white-space: nowrap; }
@@ -41,7 +42,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   <div class="card">
     <p class="muted">Стенд по очереди вызывает методы контракта <b>с сервера ЛК</b> и сверяет ответы с описанием:
     <a href="https://github.com/bx-shef/wholesale-customer-portal/blob/main/docs/onec-contract.md" target="_blank" rel="noopener">спецификация</a>.
-    Все запросы идут с заголовком <code>X-LK-Test: 1</code>. Токен и пароль не сохраняются и не пишутся в журнал.</p>
+    Все запросы идут с заголовком <code>X-LK-Test: 1</code>. Сервер ЛК токен и пароль не сохраняет и в журнал не пишет.</p>
     <form id="f">
       <div class="row">
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
@@ -68,6 +69,10 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       <div class="row">
         <label><input id="allowOrder" type="checkbox"> Проверить создание заказа — уходит с <code>test: true</code>; если 1С тестовый документ всё же создаёт, — только на тестовой базе</label>
       </div>
+      <div class="row">
+        <label><input id="remember" type="checkbox"> Запомнить адрес и доступ на этом устройстве (пароль и токен — зашифрованы ключом браузера)</label>
+        <button id="forget" type="button" class="secondary" hidden>Забыть доступ</button>
+      </div>
       <button id="go" type="submit">Проверить</button>
     </form>
   </div>
@@ -81,8 +86,90 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
   document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
   const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }
+
+  /*
+   * «Запомнить на этом устройстве»: адрес и логин — открыто, пароль и токен — AES-GCM ключом,
+   * который браузер создаёт неэкспортируемым и держит в IndexedDB. В localStorage — только
+   * шифротекст: скопировать его на другой компьютер и расшифровать нельзя. Скрипт на самой
+   * странице расшифровать может — это защита от утечки хранилища, а не от взлома страницы.
+   */
+  const STORE = 'lk-onec-test'
+  function keyDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(STORE, 1)
+      req.onupgradeneeded = () => req.result.createObjectStore('keys')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+  }
+  const idb = (db, mode, fn) => new Promise((resolve, reject) => {
+    const tx = db.transaction('keys', mode)
+    const req = fn(tx.objectStore('keys'))
+    tx.oncomplete = () => resolve(req.result)
+    tx.onerror = () => reject(tx.error)
+  })
+  async function cryptoKey(create) {
+    const db = await keyDb()
+    let key = await idb(db, 'readonly', (s) => s.get('k'))
+    if (!key && create) {
+      key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+      await idb(db, 'readwrite', (s) => s.put(key, 'k'))
+    }
+    return key || null
+  }
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+  async function seal(text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await cryptoKey(true), new TextEncoder().encode(text))
+    return b64(iv) + '.' + b64(data)
+  }
+  async function unseal(sealed) {
+    const key = await cryptoKey(false)
+    if (!key || !sealed) return ''
+    const [iv, data] = sealed.split('.')
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, key, unb64(data)))
+  }
+  async function remember() {
+    const secret = authKind() === 'basic' ? $('password').value : $('token').value
+    localStorage.setItem(STORE, JSON.stringify({ baseUrl: $('baseUrl').value, authKind: authKind(), login: $('login').value, secret: await seal(secret) }))
+    $('forget').hidden = false
+  }
+  async function forget(clearFields) {
+    localStorage.removeItem(STORE)
+    // Ключ тоже удаляем: старый шифротекст, если где-то остался, расшифровать будет нечем.
+    try { indexedDB.deleteDatabase(STORE) } catch {}
+    $('forget').hidden = true
+    if (!clearFields) return
+    $('remember').checked = false
+    $('token').value = ''
+    $('password').value = ''
+  }
+  $('forget').addEventListener('click', () => { forget(true).catch(() => {}) })
+  ;(async () => {
+    const saved = JSON.parse(localStorage.getItem(STORE) || 'null')
+    if (!saved) return
+    $('baseUrl').value = saved.baseUrl || ''
+    $('login').value = saved.login || ''
+    document.querySelector('input[name=authKind][value="' + (saved.authKind === 'basic' ? 'basic' : 'bearer') + '"]').checked = true
+    $('basic-fields').hidden = saved.authKind !== 'basic'
+    $('bearer-fields').hidden = saved.authKind === 'basic'
+    $('remember').checked = true
+    $('forget').hidden = false
+    try {
+      $(saved.authKind === 'basic' ? 'password' : 'token').value = await unseal(saved.secret)
+    }
+    catch {
+      // Ключ браузера потерян (очистка данных сайта) — шифротекст бесполезен, просим ввести заново.
+      localStorage.removeItem(STORE)
+    }
+  })().catch(() => {})
   $('f').addEventListener('submit', async (e) => {
     e.preventDefault()
+    if (target() === 'onec') {
+      if ($('remember').checked) await remember().catch(() => {})
+      else if (localStorage.getItem(STORE)) await forget(false).catch(() => {})
+    }
     const report = $('report')
     $('go').disabled = true
     report.hidden = false
