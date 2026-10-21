@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
   // Долгие прогоны — в фоне: ответ сразу, результат страница забирает с /api/onec-test/result.
   const job = standJobs.start(async () => {
     if (d.target === 'odata-prices') {
-      const checks = await runODataPricesProbe({ baseUrl, auth, fetch })
+      const checks = await runODataPricesProbe({ baseUrl, auth, fetch, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata-catalog') {

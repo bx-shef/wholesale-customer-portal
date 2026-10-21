@@ -6,7 +6,7 @@
  * Чистое ядро: `fetch` внедряется, тесты гоняют его на фикстуре.
  */
 import { onecAuthHeader, type OnecAuth } from '../services/onec'
-import { ODataClient } from '../services/onecOdata'
+import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
 export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
@@ -85,6 +85,8 @@ export interface ODataProbeInput {
   auth: OnecAuth
   fetch: typeof fetch
   timeoutMs?: number
+  /** Склады для остатков (только для цен и остатков). */
+  stockWarehouses?: string[]
 }
 
 export async function runODataProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
@@ -187,7 +189,7 @@ export async function runODataCatalogProbe(input: ODataProbeInput, now: () => nu
  * Цены и остатки — не персональные данные; названия товаров берём из каталога для образца.
  */
 export async function runODataPricesProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
-  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000 })
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, stockWarehouses: input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES })
   const checks: ODataCheck[] = []
   const priceTypes = (await client.names('Catalog_ВидыЦен')).map
   // Названия — только для образца (10 товаров): весь справочник ради них не читаем.
@@ -236,7 +238,7 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
     for (const r of s) wh.set(r.warehouseName || r.warehouseGuid, (wh.get(r.warehouseName || r.warehouseGuid) ?? 0) + 1)
     checks.push({
       id: 'stock',
-      title: 'Остатки по складам',
+      title: `Остатки: ${(input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES).join(', ')}`,
       status: s.length ? 'ok' : 'fail',
       detail: `строк: ${s.length}, складов: ${wh.size}, с остатком больше нуля: ${s.filter(r => r.available > 0).length}`,
       fields: [

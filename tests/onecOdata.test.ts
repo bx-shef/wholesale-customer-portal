@@ -138,3 +138,19 @@ describe('prices: второй регистр', () => {
     expect(p.tried[1]).toContain('пусто')
   })
 })
+
+describe('stock: склады', () => {
+  it('оставляет только заданные склады, без учёта регистра', async () => {
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('/Balance(')) return Response.json({ value: [
+        { Номенклатура_Key: G(20), Склад_Key: G(40), ВНаличииBalance: 2 },
+        { Номенклатура_Key: G(20), Склад_Key: G(41), ВНаличииBalance: 9 },
+      ] })
+      if (url.includes('Catalog_Склады')) return Response.json({ value: [{ Ref_Key: G(40), Description: 'Основной склад' }, { Ref_Key: G(41), Description: 'Грузовой автомобиль' }] })
+      return new Response('', { status: 404 })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake, now: () => new Date(AT), stockWarehouses: ['основной СКЛАД'] })
+    expect((await c.stock()).map(s => s.warehouseName)).toEqual(['Основной склад'])
+  })
+})
