@@ -33,17 +33,19 @@ function load(fetchImpl: (req: Request) => Promise<Response>) {
     caches: caches.api, fetch: fetchImpl, URL, Request, Response, setTimeout, clearTimeout, Promise,
   }
   runInNewContext(src, ctx)
+  const pending: Promise<unknown>[] = []
   const fetchEvent = async (path: string, method = 'GET') => {
     let out: Promise<Response> | undefined
-    handlers.fetch!({ request: new Request(ORIGIN + path, { method }), respondWith: (p: Promise<Response>) => { out = p } })
+    handlers.fetch!({ request: new Request(ORIGIN + path, { method }), respondWith: (p: Promise<Response>) => { out = p }, waitUntil: (p: Promise<unknown>) => { pending.push(p) } })
     return out
   }
+  const settled = () => Promise.all(pending)
   const message = async (data: unknown) => {
     let w: Promise<unknown> | undefined
     handlers.message!({ data, waitUntil: (p: Promise<unknown>) => { w = p } })
     await w
   }
-  return { ctx, caches, handlers, fetchEvent, message }
+  return { ctx, caches, handlers, fetchEvent, message, settled }
 }
 
 const ok = (body: string, init: ResponseInit = {}) => {
@@ -58,6 +60,7 @@ describe('sw.js: cacheRule', () => {
   const at = (p: string, m = 'GET') => rule(ORIGIN + p, m)
   it('статика с хешем — сначала кэш; логотип и иконка — мимо (без хеша устарели бы навсегда)', () => {
     for (const p of ['/_nuxt/app.js', '/images/abc.def']) expect(at(p)).toBe('static')
+    expect(at('/_nuxt/builds/latest.json')).toBeNull()
     for (const p of ['/logo.png', '/favicon.svg', '/sw.js']) expect(at(p)).toBeNull()
   })
   it('каталог и его страницы — сначала сеть', () => {
@@ -122,6 +125,44 @@ describe('sw.js: каталог без сети — только своей ко
   })
 })
 
+describe('sw.js: гонки', () => {
+  it('медленная сеть: отдали сохранённое, а пришедший потом редирект на вход всё равно стёр каталог', async () => {
+    let mode: 'ok' | 'slow' = 'ok'
+    let release!: (r: Response) => void
+    const sw = load(async () => {
+      if (mode === 'ok') return ok('цены')
+      return new Promise<Response>((r) => { release = r })
+    })
+    await sw.message({ type: 'lk-company', id: '7' })
+    await sw.fetchEvent('/api/catalog/list')
+    await sw.settled()
+    mode = 'slow'
+    const timeoutSrc = /NETWORK_TIMEOUT_MS = (\d+)/.exec(src)![1]
+    expect(Number(timeoutSrc)).toBeLessThanOrEqual(5000)
+    sw.ctx.setTimeout = (fn: () => void) => { fn(); return 0 }
+    const res = await sw.fetchEvent('/api/catalog/list')
+    expect(await res!.text()).toBe('цены')
+    const redirect = ok('вход')
+    Object.defineProperty(redirect, 'redirected', { value: true })
+    release(redirect)
+    await sw.settled()
+    expect(sw.caches.store.has('lk-data-7')).toBe(false)
+  })
+
+  it('ответ, пришедший после смены компании, в кэш не пишется', async () => {
+    let release!: (r: Response) => void
+    const sw = load(() => new Promise<Response>((r) => { release = r }))
+    await sw.message({ type: 'lk-company', id: '7' })
+    const res = sw.fetchEvent('/api/catalog/list')
+    await new Promise(r => setTimeout(r, 0))
+    await sw.message({ type: 'lk-clear' })
+    release(ok('цены А'))
+    await res
+    await sw.settled()
+    expect(sw.caches.store.get('lk-data-7')?.size ?? 0).toBe(0)
+  })
+})
+
 describe('sw.js: статика и обновление', () => {
   it('попадание в кэш — без сети; не 200 не сохраняется', async () => {
     let calls = 0
@@ -161,7 +202,9 @@ describe('страница и сервер чистят каталог при в
   it('login.vue, AppHeader.vue (в finally), выход шлёт Clear-Site-Data, префикс кэша совпадает', () => {
     expect(readFileSync(join(root, 'app/pages/login.vue'), 'utf8')).toContain('await clearCatalogCache()')
     const header = readFileSync(join(root, 'app/components/AppHeader.vue'), 'utf8')
-    expect(header).toMatch(/finally \{[^}]*await clearCatalogCache\(\)/)
+    // Выход: сохранённое стирается до запроса; без сети на /login не уходим.
+    expect(header.indexOf('await clearCatalogCache()')).toBeLessThan(header.indexOf("$fetch('/api/auth/logout'"))
+    expect(header).toMatch(/catch \{[^}]*logoutError\.value = [^}]*return\s*\}/)
     expect(header).toContain('setCacheCompany(')
     expect(readFileSync(join(root, 'server/api/auth/logout.post.ts'), 'utf8')).toContain("'Clear-Site-Data', '\"cache\", \"storage\"'")
     const prefix = /DATA_CACHE_PREFIX = '([^']+)'/.exec(readFileSync(join(root, 'app/composables/usePwa.ts'), 'utf8'))![1]

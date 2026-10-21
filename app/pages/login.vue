@@ -14,6 +14,8 @@ async function submit() {
     await $fetch('/api/auth/login', { method: 'POST', body: { login: login.value, key: key.value } })
     // Кэш каталога — цены прежнего вошедшего: новому их не показываем.
     await clearCatalogCache()
+    // Выход снимает воркер (`Clear-Site-Data`) — ставим заново, чтобы каталог снова был без сети.
+    registerServiceWorker()
     await navigateTo('/')
   }
   catch (e) {
