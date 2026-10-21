@@ -21,18 +21,24 @@ export const AI_MESSAGE_MAX = 1000
 export const AI_STEPS_MAX = 5
 export const AI_CARDS_MAX = 6
 export const AI_SEARCH_LIMIT = 8
+/** Аналогов в ответе `get_product`; `find_analogs` отдаёт до `AI_ANALOGS_MAX`. */
+export const AI_PRODUCT_ANALOGS = 5
+export const AI_ANALOGS_MAX = 12
+/** Товаров в одном сравнении. */
+export const AI_COMPARE_MAX = 4
 /** Сообщений клиента в сутки на контакт. */
 export const AI_DAILY_LIMIT = 50
 
 export interface ChatCatalog {
   search: (q: string, inStock: boolean) => Promise<CatalogItemView[]>
-  details: (guid: string) => Promise<{ item: CatalogItemView & { description: string }, analogs: CatalogItemView[] } | null>
+  details: (guid: string) => Promise<{ item: CatalogItemView & { description: string, properties?: Record<string, string> }, analogs: CatalogItemView[] } | null>
 }
 
 export const SYSTEM_PROMPT = `Ты — помощник оптового покупателя в личном кабинете поставщика стройматериалов.
 Правила:
 - Цены и остатки называй ТОЛЬКО из ответов инструментов. Нет в ответе — так и скажи.
-- Ищи товары инструментом search_products (короткий запрос: 1–3 слова); подробности и аналоги — get_product.
+- Ищи товары инструментом search_products (короткий запрос: 1–3 слова); подробности — get_product;
+  замену товару — find_analogs; «чем отличаются» — compare_products (2–4 товара).
 - Нет нужного или нет в наличии — предложи аналоги в наличии.
 - Вопросы не про ассортимент, заказы и доставку вежливо отклоняй.
 - Товары, которые советуешь, ОБЯЗАТЕЛЬНО покажи инструментом show_products — клиент увидит карточки
@@ -47,6 +53,8 @@ function brief(i: CatalogItemView) {
 
 export const searchInput = z.object({ query: z.string().min(1).max(100), in_stock: z.boolean().optional() })
 export const productInput = z.object({ guid: z.string().min(1).max(64) })
+export const analogsInput = z.object({ guid: z.string().min(1).max(64), in_stock: z.boolean().optional() })
+export const compareInput = z.object({ guids: z.array(z.string().min(1).max(64)).min(2).max(AI_COMPARE_MAX) })
 export const showInput = z.object({ guids: z.array(z.string().max(64)).min(1).max(AI_CARDS_MAX) })
 
 /**
@@ -69,7 +77,34 @@ export function chatToolHandlers(catalog: ChatCatalog) {
       const d = await catalog.details(guid)
       if (!d) return { error: 'Товар не найден' }
       remember([d.item, ...d.analogs])
-      return { ...brief(d.item), description: d.item.description.slice(0, 500), analogs: d.analogs.map(brief) }
+      return { ...brief(d.item), description: d.item.description.slice(0, 500), analogs: d.analogs.slice(0, AI_PRODUCT_ANALOGS).map(brief) }
+    },
+    /** Аналоги товара из каталога (1С), по желанию — только в наличии. Модель их не придумывает. */
+    async analogs({ guid, in_stock }: z.infer<typeof analogsInput>) {
+      const d = await catalog.details(guid)
+      if (!d) return { error: 'Товар не найден' }
+      const items = d.analogs.filter(a => !in_stock || a.available > 0).slice(0, AI_ANALOGS_MAX)
+      remember([d.item, ...items])
+      return { for: d.item.name, found: items.length, items: items.map(brief) }
+    },
+    /**
+     * Сравнение 2–4 товаров: те же поля и общий список свойств — у кого свойства нет, «—».
+     * Разные значения помечены, чтобы модель не выискивала их сама.
+     */
+    async compare({ guids }: z.infer<typeof compareInput>) {
+      const found: Array<CatalogItemView & { properties?: Record<string, string> }> = []
+      for (const g of [...new Set(guids)]) {
+        const d = await catalog.details(g)
+        if (d) found.push(d.item)
+      }
+      if (found.length < 2) return { error: 'Для сравнения нужно хотя бы два товара из каталога' }
+      remember(found)
+      const keys = [...new Set(found.flatMap(i => Object.keys(i.properties ?? {})))].slice(0, 30)
+      const properties = keys.map((k) => {
+        const values = found.map(i => i.properties?.[k] ?? '—')
+        return { name: k, values, differs: new Set(values).size > 1 }
+      })
+      return { items: found.map(brief), properties }
     },
     /** Выход — карточки для экрана: данные каталога, а не слова модели. */
     async show({ guids }: z.infer<typeof showInput>) {

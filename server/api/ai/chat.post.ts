@@ -2,7 +2,7 @@
 // договора клиента. Только с сессией. Правила безопасности — server/utils/aiChat.ts.
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai'
-import { lastQuestion, topicPrompt, AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, chatToolHandlers, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
+import { lastQuestion, topicPrompt, AI_DAILY_LIMIT, AI_SEARCH_LIMIT, AI_STEPS_MAX, analogsInput, chatToolHandlers, compareInput, productInput, sanitizeHistory, searchInput, showInput, SYSTEM_PROMPT } from '../../utils/aiChat'
 import { createRateLimiter } from '../../utils/rateLimit'
 
 const daily = createRateLimiter(AI_DAILY_LIMIT, 24 * 60 * 60_000)
@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
       const d = await catalogItem(ctx.store, guid, ctx.pricing, ctx.prices)
       if (!d) return null
       const { analogs, ...item } = d.item
-      return { item, analogs: analogs.slice(0, 5) }
+      return { item, analogs }
     },
   })
   const topic = typeof body?.product === 'string' ? body.product.slice(0, 64) : null
@@ -39,6 +39,8 @@ export default defineEventHandler(async (event) => {
     tools: {
       search_products: tool({ description: 'Поиск товаров каталога: название, артикул, бренд. Возвращает цену и остаток клиента.', inputSchema: searchInput, execute: h.search }),
       get_product: tool({ description: 'Карточка товара по guid: описание, цена, остаток, аналоги.', inputSchema: productInput, execute: h.product }),
+      find_analogs: tool({ description: 'Аналоги товара по guid из каталога; in_stock — только в наличии.', inputSchema: analogsInput, execute: h.analogs }),
+      compare_products: tool({ description: 'Сравнить 2–4 товара по guid: цена, остаток, свойства; differs — где значения разные.', inputSchema: compareInput, execute: h.compare }),
       show_products: tool({ description: 'Показать клиенту товары карточками с кнопкой «В корзину». Только guid из ответов инструментов.', inputSchema: showInput, execute: h.show }),
     },
     onFinish: ({ steps }) => journal.finish(dialogId, { answer: steps.map(s => s.text).filter(Boolean).join('\n\n'), products: h.shown(), ok: true }),

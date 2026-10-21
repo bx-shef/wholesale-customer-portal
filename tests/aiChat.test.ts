@@ -87,3 +87,47 @@ describe('ИИ-помощник: журнал и оценка', () => {
     expect(h.shown()).toEqual(['g2', 'g1'])
   })
 })
+
+describe('ИИ-помощник: аналоги и сравнение', () => {
+  const v = (g: string, available: number, properties?: Record<string, string>) => ({ guid: g, sku: g, name: `Товар ${g}`, sectionGuid: 's', brand: '', unit: 'шт', packQty: 1, minQty: 1, available, image: null, price: null, description: '', properties })
+  const analogs = Array.from({ length: 15 }, (_, i) => v(`a${i}`, i % 2))
+  const catalog = {
+    search: async () => [],
+    details: async (g: string) => {
+      if (g === 'g1') return { item: v('g1', 0, { Цвет: 'белый', Вес: '25 кг' }), analogs }
+      if (g === 'g2') return { item: v('g2', 5, { Цвет: 'белый', Вес: '20 кг', Марка: 'М150' }), analogs: [] }
+      return null
+    },
+  }
+
+  it('find_analogs: из каталога, фильтр наличия, не больше AI_ANALOGS_MAX; их можно показать', async () => {
+    const { AI_ANALOGS_MAX } = await import('../server/utils/aiChat')
+    const h = chatToolHandlers(catalog)
+    const all = await h.analogs({ guid: 'g1' })
+    expect('items' in all && all.items).toHaveLength(AI_ANALOGS_MAX)
+    const stock = await h.analogs({ guid: 'g1', in_stock: true })
+    expect('items' in stock && stock.items.every(i => i.available > 0)).toBe(true)
+    expect((await h.show({ guids: ['a1'] })).items.map(i => i.guid)).toEqual(['a1'])
+    expect(await h.analogs({ guid: 'nope' })).toEqual({ error: 'Товар не найден' })
+  })
+
+  it('get_product отдаёт не больше AI_PRODUCT_ANALOGS аналогов', async () => {
+    const { AI_PRODUCT_ANALOGS } = await import('../server/utils/aiChat')
+    const p = await chatToolHandlers(catalog).product({ guid: 'g1' })
+    expect('analogs' in p && p.analogs).toHaveLength(AI_PRODUCT_ANALOGS)
+  })
+
+  it('compare_products: общий список свойств, «—» где нет, differs по значениям; меньше двух — ошибка', async () => {
+    const h = chatToolHandlers(catalog)
+    const r = await h.compare({ guids: ['g1', 'g2', 'nope'] })
+    if (!('properties' in r)) throw new Error('нет сравнения')
+    expect(r.items.map(i => i.guid)).toEqual(['g1', 'g2'])
+    expect(r.properties).toEqual([
+      { name: 'Цвет', values: ['белый', 'белый'], differs: false },
+      { name: 'Вес', values: ['25 кг', '20 кг'], differs: true },
+      { name: 'Марка', values: ['—', 'М150'], differs: true },
+    ])
+    expect((await h.show({ guids: ['g2'] })).items).toHaveLength(1)
+    expect(await h.compare({ guids: ['g1', 'g1'] })).toMatchObject({ error: expect.any(String) })
+  })
+})
