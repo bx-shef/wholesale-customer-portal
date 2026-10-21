@@ -52,7 +52,7 @@ describe('рейсы по OData: чтение', () => {
     const seen: string[] = []
     const rows = await readTrips(client(fake([doc()], seen)), new Date('2026-10-21T09:00:00Z'))
     expect(rows[0]!.trip.orders).toEqual([{ orderGuid: G(70), number: 'ЗК-7', clientGuid: G(9) }])
-    expect(seen[0]).toContain("ДатаВремяРейсаПланС ge datetime'2026-10-07T12:00:00'")
+    expect(seen[0]).toContain("Posted eq true and ДатаВремяРейсаПланС ge datetime'2026-10-14T12:00:00' and ДатаВремяРейсаПланС le datetime'2026-11-20T12:00:00'")
     const orderQuery = seen.find(u => u.includes('Document_ЗаказКлиента'))!
     expect(orderQuery).toContain(G(70))
     expect(orderQuery).not.toContain(G(71))
@@ -63,11 +63,58 @@ describe('рейсы по OData: чтение', () => {
     migrate(db)
     let clock = new Date('2026-10-21T09:00:00Z')
     let docs = [doc()]
-    const api = new OdataOnec(client(async (u, i) => fake(docs)(u, i)), sqliteVersionStore(db), { now: () => clock, ttlMs: 0 })
+    const api = new OdataOnec(client(async (u, i) => fake(docs)(u, i)), sqliteVersionStore(db), { now: () => clock, ttlMs: 0, tripsEnabled: true })
     const first = (await api.trips({})).items[0]!.changedAt
     clock = new Date('2026-10-21T10:00:00Z')
     expect((await api.trips({})).items[0]!.changedAt).toBe(first)
     docs = [doc({ DataVersion: 'v2' })]
     expect((await api.trips({})).items[0]!.changedAt).toBe('2026-10-21T10:00:00.000Z')
+  })
+})
+
+describe('рейсы по OData: края', () => {
+  const client = (f: typeof fetch) => new ODataClient({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: f })
+  it('удалённый, пустой номер, кривые GUID распоряжений не попадают в фильтр', () => {
+    const t = mapTrip(doc({ DeletionMark: true, Number: '  ', Распоряжения: [{ Распоряжение: "x') or (1 eq 1", Распоряжение_Type: ORDER_TYPE }] }), orders, '')!
+    expect(t).toMatchObject({ deleted: true, number: G(1).toUpperCase(), orders: [] })
+    expect(mapTrip(doc(), orders, '')!.deleted).toBe(false)
+    expect(mapTrip(doc({ ДатаВремяРейсаПланС: undefined }), orders, '')).toBeNull()
+  })
+
+  it('заказы пачками по 40; сломанный рейс пропущен; пустой DataVersion — версия пустая; нет табличных частей — ошибка', async () => {
+    const many = Array.from({ length: 41 }, (_, i) => ({ Распоряжение: G(200 + i), Распоряжение_Type: ORDER_TYPE }))
+    const seen: string[] = []
+    const docs = [doc({ Распоряжения: many }), doc({ Ref_Key: G(2), DataVersion: '', Number: 'ЗП-2' }), doc({ Ref_Key: G(3), АвтомобильГосударственныйНомер: undefined, Маршрут: [{ Зона_Key: G(50) }], Статус: 'Отправлено', ДатаВремяРейсаПланС: 'кривая' })]
+    const f: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      seen.push(url)
+      if (url.includes('Document_ЗаданиеНаПеревозку')) return Response.json({ value: docs })
+      const ids = [...url.matchAll(/guid'([^']+)'/g)].map(m => m[1])
+      return Response.json({ value: ids.map(id => ({ Ref_Key: id, Number: 'ЗК', Партнер_Key: G(9) })) })
+    }
+    const stats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }
+    const rows = await readTrips(client(f), new Date('2026-10-21T09:00:00Z'), stats)
+    expect(seen.filter(u => u.includes('Document_ЗаказКлиента'))).toHaveLength(2)
+    expect(rows.find(r => r.trip.guid === G(1))!.trip.orders).toHaveLength(41)
+    expect(rows.find(r => r.trip.guid === G(2))!.version).toBe('')
+    expect(stats).toMatchObject({ read: 3, broken: 1 })
+    const bare: typeof fetch = async () => Response.json({ value: [{ Ref_Key: G(1), ДатаВремяРейсаПланС: '2026-10-23T08:00:00' }] })
+    await expect(readTrips(client(bare), new Date())).rejects.toMatchObject({ kind: 'contract' })
+  })
+
+  it('рейсы выключены — отказ 501; включены — заказ знает свой рейс', async () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const f: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('Document_ЗаданиеНаПеревозку')) return Response.json({ value: [doc()] })
+      if (url.includes('startswith')) return Response.json({ value: [{ Ref_Key: G(70), Number: 'ЗК-7', НомерПоДаннымКлиента: 'ЛК-5', DataVersion: 'o1', Posted: true, Статус: 'КОтгрузке' }] })
+      return Response.json({ value: [{ Ref_Key: G(70), Number: 'ЗК-7', Партнер_Key: G(9) }] })
+    }
+    await expect(new OdataOnec(client(f), sqliteVersionStore(db), {}).trips({})).rejects.toMatchObject({ status: 501 })
+    const on = new OdataOnec(client(f), sqliteVersionStore(db), { tripsEnabled: true, ttlMs: 0 })
+    expect((await on.orderStatus({})).items[0]).toMatchObject({ orderGuid: G(70), tripGuid: G(1) })
+    const off = new OdataOnec(client(f), sqliteVersionStore(db), { ttlMs: 0 })
+    expect((await off.orderStatus({})).items[0]!.tripGuid).toBeNull()
   })
 })

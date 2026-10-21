@@ -12,8 +12,10 @@ import { EMPTY_REF, ONEC_TZ, type ODataClient } from './onecOdata'
 import { listAll } from './onecOdataClients'
 
 export const TRIP_SET = 'Document_ЗаданиеНаПеревозку'
-/** Окно рейсов: прошлые — 14 дней (для «доставлен»), будущие — все, что уже запланированы. */
-export const TRIP_PAST_DAYS = 14
+/** Окно рейсов по плановому началу: 7 дней назад (для «доставлен») и 30 вперёд — бережём 1С. */
+export const TRIP_PAST_DAYS = 7
+export const TRIP_AHEAD_DAYS = 30
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export interface TripDocRow {
   Ref_Key: string
@@ -30,7 +32,11 @@ export interface TripDocRow {
   Распоряжения?: Array<{ Распоряжение?: string, Распоряжение_Type?: string }>
 }
 
-const ref = (v: string | undefined) => (v && v !== EMPTY_REF ? v.toLowerCase() : null)
+/** Ссылка 1С: только настоящий GUID — он попадает в `$filter`, кривое значение пропускаем. */
+const ref = (v: string | undefined) => {
+  const g = (v ?? '').toLowerCase()
+  return g && g !== EMPTY_REF && GUID.test(g) ? g : null
+}
 
 /** Дата-время 1С (местное, без зоны) → ISO с зоной Минска; пустое (`0001-…`) — `null`. */
 export function onecDateTime(v: string | undefined): string | null {
@@ -57,7 +63,7 @@ export const isClientOrder = (type: string | undefined) => /Document_Заказ�
  */
 export function mapTrip(d: TripDocRow, orders: Map<string, { number: string, clientGuid: string }>, changedAt: string): TripT | null {
   const plannedStart = onecDateTime(d.ДатаВремяРейсаПланС)
-  if (!plannedStart) return null
+  if (!plannedStart || !ref(d.Ref_Key)) return null
   const zones = [...new Set((d.Маршрут ?? []).flatMap(m => (ref(m.Зона_Key) ? [ref(m.Зона_Key)!] : [])))]
   const tripOrders = (d.Распоряжения ?? []).flatMap((r) => {
     const g = ref(r.Распоряжение)
@@ -80,13 +86,21 @@ export function mapTrip(d: TripDocRow, orders: Map<string, { number: string, cli
   }
 }
 
-/** Рейсы окна с версией документа: момент изменения ставит вызывающий (`stampByVersion`). */
-export async function readTrips(client: ODataClient, now: Date): Promise<Array<{ trip: TripT, version: string }>> {
-  const since = new Date(now.getTime() - TRIP_PAST_DAYS * 86_400_000 + 3 * 3_600_000).toISOString().slice(0, 19)
+export interface TripStats { read: number, noPlan: number, broken: number, ordersMissing: number }
+
+/**
+ * Рейсы окна с версией документа: момент изменения ставит вызывающий (`stampByVersion`). Только
+ * проведённые (черновик — не рейс). Рейс, ломающий контракт, пропускается со счётчиком — поток
+ * из-за одного документа не падает; не пришли табличные части вовсе — ошибка: значит, 1С их не отдаёт.
+ */
+export async function readTrips(client: ODataClient, now: Date, stats: TripStats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }): Promise<Array<{ trip: TripT, version: string }>> {
+  const at = (days: number) => new Date(now.getTime() + days * 86_400_000 + 3 * 3_600_000).toISOString().slice(0, 19)
   const docs = await listAll<TripDocRow>(client, TRIP_SET, {
     $select: 'Ref_Key,Number,DataVersion,DeletionMark,Статус,ДатаВремяРейсаПланС,ДатаВремяРейсаПланПо,ДатаВремяРейсаФактС,ДатаВремяРейсаФактПо,АвтомобильГосударственныйНомер,Маршрут,Распоряжения',
-    $filter: `ДатаВремяРейсаПланС ge datetime'${since}'`,
+    $filter: `Posted eq true and ДатаВремяРейсаПланС ge datetime'${at(-TRIP_PAST_DAYS)}' and ДатаВремяРейсаПланС le datetime'${at(TRIP_AHEAD_DAYS)}'`,
   })
+  stats.read = docs.length
+  if (docs.length && docs.every(d => d.Маршрут === undefined && d.Распоряжения === undefined)) throw new OnecError('contract', `1C OData ${TRIP_SET}: tabular parts Маршрут/Распоряжения not returned`)
   const want = [...new Set(docs.flatMap(d => (d.Распоряжения ?? []).flatMap(r => (isClientOrder(r.Распоряжение_Type) && ref(r.Распоряжение) ? [ref(r.Распоряжение)!] : []))))]
   const orders = new Map<string, { number: string, clientGuid: string }>()
   for (let i = 0; i < want.length; i += 40) {
@@ -95,18 +109,25 @@ export async function readTrips(client: ODataClient, now: Date): Promise<Array<{
       $filter: want.slice(i, i + 40).map(g => `Ref_Key eq guid'${g}'`).join(' or '),
     })
     for (const r of rows) {
-      const client = ref(r.Партнер_Key)
-      if (client) orders.set(r.Ref_Key.toLowerCase(), { number: (r.Number ?? '').trim() || r.Ref_Key, clientGuid: client })
+      const partner = ref(r.Партнер_Key)
+      if (partner) orders.set(r.Ref_Key.toLowerCase(), { number: (r.Number ?? '').trim() || r.Ref_Key, clientGuid: partner })
     }
   }
+  stats.ordersMissing = want.filter(g => !orders.has(g)).length
   const out: Array<{ trip: TripT, version: string }> = []
   for (const d of docs) {
     const trip = mapTrip(d, orders, `2000-01-01T00:00:00${ONEC_TZ}`)
-    if (!trip) continue
-    const parsed = Trip.safeParse(trip)
-    if (!parsed.success) throw new OnecError('contract', `1C OData trips: ${d.Number ?? d.Ref_Key} breaks contract at ${parsed.error.issues.slice(0, 3).map(x => x.path.join('.')).join(', ')}`)
-    // Версия — документ и заказы в нём: номер заказа или клиент сменились — рейс изменён.
-    out.push({ trip, version: `${d.DataVersion ?? ''}|${JSON.stringify(trip.orders)}` })
+    if (!trip) {
+      stats.noPlan++
+      continue
+    }
+    if (!Trip.safeParse(trip).success) {
+      stats.broken++
+      continue
+    }
+    // Версия — документ и заказы в нём (по порядку GUID); без DataVersion — пусто: «изменён всегда».
+    const ordersKey = JSON.stringify([...trip.orders].sort((a, b) => a.orderGuid.localeCompare(b.orderGuid)))
+    out.push({ trip, version: d.DataVersion ? `${d.DataVersion}|${ordersKey}` : '' })
   }
   return out
 }

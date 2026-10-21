@@ -70,7 +70,7 @@ export function useOnec(): OnecApi {
     // Один на процесс: снимок прогона и версии объектов живут между страницами синхронизации.
     // Секрет — только хешем: смена пароля пересобирает клиента, а сам пароль в памяти ключом не лежит.
     const secret = createHash('sha256').update(auth.kind === 'basic' ? `${auth.login}:${auth.password}` : auth.token).digest('hex')
-    const key = `${env.onecUrl}|${secret}|${env.onecPriceTypes.join(',')}|${env.onecStockWarehouses.join(',')}|${env.onecOdataOrders}`
+    const key = `${env.onecUrl}|${secret}|${env.onecPriceTypes.join(',')}|${env.onecStockWarehouses.join(',')}|${env.onecOdataOrders}|${env.onecOdataTrips}`
     if (odata?.key !== key) {
       const client = new ODataClient({
         baseUrl: env.onecUrl,
@@ -79,7 +79,7 @@ export function useOnec(): OnecApi {
         timeoutMs: 120_000,
         stockWarehouses: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES,
       })
-      odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, warehouseNames: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES, ordersEnabled: env.onecOdataOrders, log: line => console.info(line) }) }
+      odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, warehouseNames: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES, ordersEnabled: env.onecOdataOrders, tripsEnabled: env.onecOdataTrips, log: line => console.info(line) }) }
     }
     return odata.api
   }

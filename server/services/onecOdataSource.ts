@@ -16,7 +16,7 @@ import { pageOfSorted, sortSnapshot, stampByVersion, type SortedSnapshot, type V
 import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
 import { createOdataOrder, readOrderStatuses } from './onecOdataOrders'
-import { readTrips } from './onecOdataTrips'
+import { readTrips, type TripStats } from './onecOdataTrips'
 import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
@@ -54,6 +54,8 @@ export interface OdataOnecOptions {
   warehouseNames?: string[]
   /** Запись заказов в 1С включена (`ONEC_ODATA_ORDERS`); тестовые заказы стенда — всегда. */
   ordersEnabled?: boolean
+  /** Рейсы читаются (`ONEC_ODATA_TRIPS`): иначе `trips()` — отказ, а у заказов нет рейса. */
+  tripsEnabled?: boolean
   now?: () => Date
   ttlMs?: number
   log?: (line: string) => void
@@ -172,6 +174,20 @@ export class OdataOnec {
   async orderStatus(params: ListParams = {}): Promise<z.infer<typeof OrderStatusPage>> {
     const all = await this.snapshot('orders', async () => {
       const rows = await readOrderStatuses(this.client, this.options.now?.() ?? new Date())
+      // Рейс заказа — из рейсов (в документе заказа его нет): позднейший по плановому началу.
+      if (this.options.tripsEnabled) {
+        const tripOf = new Map<string, { guid: string, at: string }>()
+        for (const t of (await this.tripsSnapshot()).rows) {
+          for (const o of t.orders) {
+            const prev = tripOf.get(o.orderGuid)
+            if (!t.deleted && (!prev || t.plannedStart > prev.at)) tripOf.set(o.orderGuid, { guid: t.guid, at: t.plannedStart })
+          }
+        }
+        for (const r of rows) {
+          r.row.tripGuid = tripOf.get(r.row.orderGuid)?.guid ?? null
+          r.version = `${r.version}|${r.row.tripGuid ?? ''}`
+        }
+      }
       const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
       this.versions.put('order', stamped.updates)
       return sortSnapshot<OrderStatusRowT>(stamped.rows, o => o.orderGuid)
@@ -181,13 +197,19 @@ export class OdataOnec {
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
   /** Рейсы (§2.9): задания на перевозку за окно, момент — по версии документа и его заказов. */
   async trips(params: ListParams = {}): Promise<z.infer<typeof TripsPage>> {
-    const all = await this.snapshot('trips', async () => {
-      const rows = await readTrips(this.client, this.options.now?.() ?? new Date())
+    return pageOfSorted(await this.tripsSnapshot(), params)
+  }
+
+  private tripsSnapshot() {
+    if (!this.options.tripsEnabled) return Promise.reject(new OnecError('http', '1C OData trips: off (ONEC_ODATA_TRIPS) — document is not published yet', 501))
+    return this.snapshot('trips', async () => {
+      const stats: TripStats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }
+      const rows = await readTrips(this.client, this.options.now?.() ?? new Date(), stats)
       const stamped = stampByVersion(rows.map(r => ({ key: r.trip.guid, version: r.version, row: r.trip })), this.versions.get('trip'), this.nowIso())
       this.versions.put('trip', stamped.updates)
+      this.options.log?.(`[onec:odata] trips: ${stats.read} read, ${rows.length} ok, no plan ${stats.noPlan}, broken ${stats.broken}, orders not found ${stats.ordersMissing}`)
       return sortSnapshot<TripT>(stamped.rows, t => t.guid)
     })
-    return pageOfSorted(all, params)
   }
 }
 
