@@ -96,8 +96,19 @@ function toolText(p: Part) {
     const q = String(toolInput(p).query ?? '')
     return done ? `Нашёл по «${q}»: ${toolOutput<{ found: number }>(p)?.found ?? 0}` : `Ищу «${q}»`
   }
+  if (p.type === 'tool-find_analogs') {
+    const o = toolOutput<{ found?: number, total?: number, error?: string }>(p)
+    if (!done) return 'Ищу аналоги'
+    return o?.error ? 'Товар не найден' : `Аналогов: ${o?.found ?? 0}${o?.total && o.total !== o.found ? ` из ${o.total}` : ''}`
+  }
+  if (p.type === 'tool-compare_products') {
+    const o = toolOutput<{ items?: unknown[], error?: string }>(p)
+    if (!done) return 'Сравниваю товары'
+    return o?.error ? 'Сравнить не удалось' : `Сравнил товаров: ${o?.items?.length ?? 0}`
+  }
   return done ? 'Посмотрел карточку товара' : 'Смотрю карточку товара'
 }
+const STEP_TOOLS = new Set(['tool-search_products', 'tool-get_product', 'tool-find_analogs', 'tool-compare_products'])
 
 watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => {
   nextTick(() => { if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight })
@@ -141,7 +152,7 @@ watch(() => messages.value.map(m => m.parts.length).join() + chat.status, () => 
               <span v-else class="whitespace-pre-wrap text-sm">{{ part.text }}</span>
             </template>
             <B24ChatTool
-              v-else-if="part.type === 'tool-search_products' || part.type === 'tool-get_product'"
+              v-else-if="STEP_TOOLS.has(part.type)"
               :text="toolText(part)"
               :streaming="toolState(part) !== 'output-available'"
               class="text-xs"
