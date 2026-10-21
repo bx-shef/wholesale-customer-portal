@@ -4,12 +4,12 @@
  * (docs/project.md). Мок живёт в процессе, а не по HTTP к самому себе: серверу не нужно знать
  * свой адрес и порт, а запросы проходят тот же `fetch`-путь, сериализацию JSON и проверку схемой.
  */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createMockState, type MockState } from '../mocks/onec/mock'
 import { mockFetch } from '../mocks/onec/fetch'
 import { OnecClient, type OnecApi } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
-import { OdataOnec } from '../services/onecOdataSource'
+import { ODATA_UNSUPPORTED_FLOWS, OdataOnec } from '../services/onecOdataSource'
 import { sqliteVersionStore } from './odataVersions'
 import { createOnecGuard } from './onecGuard'
 
@@ -36,11 +36,25 @@ export function getMockState(): MockState {
 }
 
 let odata: { key: string, api: OdataOnec } | undefined
+let warnedMockOverOdata = false
+
+/**
+ * Потоки, которых у текущего транспорта нет (OData — docs/onec-odata.md): расписание их не
+ * запускает, «Состояние системы» не ждёт. Мок и HTTP-сервис умеют всё.
+ */
+export function onecUnsupportedFlows(): readonly string[] {
+  const env = readServerEnv()
+  return !env.onecMock && env.onecMode === 'odata' ? ODATA_UNSUPPORTED_FLOWS : []
+}
 
 export function useOnec(): OnecApi {
   const env = readServerEnv()
   const log = (e: { method: string, path: string, status: number | null, ms: number, attempt: number, error?: string }) => {
     if (e.error) console.warn(`[onec] ${e.method} ${e.path} → ${e.status ?? e.error} за ${e.ms} мс, попытка ${e.attempt}`)
+  }
+  if (env.onecMock && env.onecMode === 'odata' && !warnedMockOverOdata) {
+    warnedMockOverOdata = true
+    console.warn('[onec] ONEC_MOCK=true overrides ONEC_MODE=odata: the mock is used')
   }
   if (env.onecMock) {
     const state = getMockState()
@@ -54,7 +68,9 @@ export function useOnec(): OnecApi {
   if (!env.onecUrl || !auth) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL and ONEC_TOKEN or ONEC_LOGIN/ONEC_PASSWORD' })
   if (env.onecMode === 'odata') {
     // Один на процесс: снимок прогона и версии объектов живут между страницами синхронизации.
-    const key = `${env.onecUrl}|${auth.kind}|${env.onecPriceTypes.join(',')}|${env.onecStockWarehouses.join(',')}`
+    // Секрет — только хешем: смена пароля пересобирает клиента, а сам пароль в памяти ключом не лежит.
+    const secret = createHash('sha256').update(auth.kind === 'basic' ? `${auth.login}:${auth.password}` : auth.token).digest('hex')
+    const key = `${env.onecUrl}|${secret}|${env.onecPriceTypes.join(',')}|${env.onecStockWarehouses.join(',')}`
     if (odata?.key !== key) {
       const client = new ODataClient({
         baseUrl: env.onecUrl,

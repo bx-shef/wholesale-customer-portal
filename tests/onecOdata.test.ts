@@ -194,21 +194,21 @@ describe('картинки, снимок каталога, нулевая цен
   })
 
   it('catalogSnapshot: все страницы, версия объекта рядом с товаром', async () => {
-    const { PRICE_PAGE } = await import('../server/services/onecOdata')
-    const all = Array.from({ length: PRICE_PAGE + 2 }, (_, i) => ({ Ref_Key: G(1000 + i), Description: `Т${i}`, DataVersion: `v${i}` }))
+    const { ODATA_PAGE } = await import('../server/services/onecOdata')
+    const all = Array.from({ length: ODATA_PAGE + 2 }, (_, i) => ({ Ref_Key: G(1000 + i), Description: `Т${i}`, DataVersion: `v${i}` }))
     const fake: typeof fetch = async (u) => {
       const url = decodeURIComponent(String(u))
       if (url.includes('Catalog_ВидыНоменклатуры')) return Response.json({ value: [] })
       if (url.includes('Catalog_Номенклатура')) {
         const skip = Number(/\$skip=(\d+)/.exec(url)![1])
-        return Response.json({ value: all.slice(skip, skip + PRICE_PAGE) })
+        return Response.json({ value: all.slice(skip, skip + ODATA_PAGE) })
       }
       return Response.json({ value: [] })
     }
     const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
     const snap = await c.catalogSnapshot()
-    expect(snap.items).toHaveLength(PRICE_PAGE + 2)
-    expect(snap.items.at(-1)).toMatchObject({ version: `v${PRICE_PAGE + 1}`, item: { name: `Т${PRICE_PAGE + 1}` } })
+    expect(snap.items).toHaveLength(ODATA_PAGE + 2)
+    expect(snap.items.at(-1)).toMatchObject({ version: `v${ODATA_PAGE + 1}`, item: { name: `Т${ODATA_PAGE + 1}` } })
   })
 
   it('mapPrices: цена 0 уходит удалённой (в ЛК «нет цены»)', async () => {

@@ -4,14 +4,14 @@
  * Данных клиентов здесь нет: только потоки, счётчики и ошибки обмена.
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { FLOWS, flowHealth, healthAlerts, type FlowHealth, type FlowRunRow } from './syncHealth'
+import { activeFlows, flowHealth, healthAlerts, type FlowHealth, type FlowRunRow } from './syncHealth'
 
 const STARTED_AT = Date.now()
 
 export interface SystemStatus {
   now: string
   commit: string
-  onec: { mode: 'mock' | 'real' | 'off', failuresInRow: number, pausedUntil: string | null }
+  onec: { mode: 'mock' | 'real' | 'odata' | 'off', failuresInRow: number, pausedUntil: string | null }
   flows: FlowHealth[]
   counts: Record<string, number>
   orders: Record<string, number>
@@ -20,11 +20,11 @@ export interface SystemStatus {
   telegram: boolean
 }
 
-export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number }): SystemStatus {
+export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[] }): SystemStatus {
   const now = deps.now ?? Date.now()
   const runsOf = db.prepare(`SELECT flow, status, started_at AS startedAt, finished_at AS finishedAt, received, error
     FROM sync_run WHERE flow = ? ORDER BY id DESC LIMIT 10`)
-  const flows = Object.keys(FLOWS).map(f => flowHealth(f, runsOf.all(f) as unknown as FlowRunRow[], now, now - STARTED_AT))
+  const flows = activeFlows(deps.unsupportedFlows).map(f => flowHealth(f, runsOf.all(f) as unknown as FlowRunRow[], now, now - STARTED_AT))
   const one = (sql: string, ...params: string[]) => Number((db.prepare(sql).get(...params) as { n: number }).n)
   const counts = {
     'клиенты 1С': one('SELECT count(*) AS n FROM onec_client WHERE deleted = 0'),
@@ -61,7 +61,8 @@ export function currentSystemStatus(): SystemStatus {
   const real = !env.onecMock && !!env.onecUrl
   return readSystemStatus(useDb(), {
     guard: onecGuardState(),
-    mode: env.onecMock ? 'mock' : real ? 'real' : 'off',
+    mode: env.onecMock ? 'mock' : !real ? 'off' : env.onecMode === 'odata' ? 'odata' : 'real',
+    unsupportedFlows: onecUnsupportedFlows(),
     commit: env.commitSha || 'dev',
     telegram: resolveTelegramConfig() !== null,
   })

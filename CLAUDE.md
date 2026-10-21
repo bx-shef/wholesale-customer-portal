@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-20
+> Last reviewed: 2026-10-21
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.

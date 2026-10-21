@@ -106,19 +106,19 @@ export class ODataClient {
   }
 
   /** Строки набора: `value` из ответа 1С. */
-  list<T>(set: string, query: Record<string, string | number>): Promise<T[]> {
-    return this.listPath(encodeURIComponent(set), set, query)
+  list<T>(set: string, query: Record<string, string | number>, maxBytes?: number): Promise<T[]> {
+    return this.listPath(encodeURIComponent(set), set, query, maxBytes)
   }
 
   /**
    * Строки по готовому пути: набор с функцией 1С (`…/SliceLast()`, `…/Balance(…)`).
    * `path` уже закодирован, `label` — для текста ошибки.
    */
-  async listPath<T>(path: string, label: string, query: Record<string, string | number>): Promise<T[]> {
+  async listPath<T>(path: string, label: string, query: Record<string, string | number>, maxBytes = ODATA_MAX_RESPONSE): Promise<T[]> {
     const started = Date.now()
     const what = `${label}${query.$top !== undefined ? ` [$top=${query.$top}${query.$skip ? `, $skip=${query.$skip}` : ''}]` : ''}`
     try {
-      const rows = await this.listPathRaw<T>(path, label, query)
+      const rows = await this.listPathRaw<T>(path, label, query, maxBytes)
       this.options.onRequest?.({ label: what, ms: Date.now() - started, rows: rows.length })
       return rows
     }
@@ -128,7 +128,7 @@ export class ODataClient {
     }
   }
 
-  private async listPathRaw<T>(path: string, label: string, query: Record<string, string | number>): Promise<T[]> {
+  private async listPathRaw<T>(path: string, label: string, query: Record<string, string | number>, maxBytes: number): Promise<T[]> {
     const set = label
     const qs = Object.entries({ ...query, $format: 'json' })
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')
@@ -150,7 +150,18 @@ export class ODataClient {
       const why = body?.['odata.error']?.message?.value?.replace(/\s+/g, ' ').slice(0, 200)
       throw new OnecError('http', `1C OData ${set}: HTTP ${res.status}${why ? ` — ${why}` : ''}`, res.status)
     }
-    const body = await res.json().catch(() => null) as { value?: unknown } | null
+    // Предел ответа — до разбора: огромный ответ кладёт процесс ЛК по памяти (502, 2026-10-21).
+    const tooBig = () => new OnecError('contract', `1C OData ${set}: response is larger than ${Math.round(maxBytes / 1048576)} MB`, res.status)
+    if (Number(res.headers.get('content-length') ?? 0) > maxBytes) throw tooBig()
+    const text = await res.text().catch(() => '')
+    if (text.length > maxBytes) throw tooBig()
+    let body: { value?: unknown } | null
+    try {
+      body = JSON.parse(text) as { value?: unknown }
+    }
+    catch {
+      body = null
+    }
     if (!body || !Array.isArray(body.value)) throw new OnecError('contract', `1C OData ${set}: no "value" array`, res.status)
     return body.value as T[]
   }
@@ -206,7 +217,7 @@ export class ODataClient {
 
   /**
    * Каталог целиком — для синхронизации: разделы и все товары с версией объекта (`DataVersion`),
-   * страницами по `PRICE_PAGE` строк. Момент изменения проставляет вызывающий по версии.
+   * страницами по `ODATA_PAGE` строк. Момент изменения проставляет вызывающий по версии.
    */
   async catalogSnapshot(): Promise<{ sections: SectionT[], items: Array<{ item: ItemT, version: string }> }> {
     const look = await this.catalogLookups()
@@ -214,10 +225,10 @@ export class ODataClient {
     const select = NOMENCLATURE_FIELDS.join(',')
     const items: Array<{ item: ItemT, version: string }> = []
     for (let page = 0; ; page++) {
-      if (page >= PRICE_MAX_PAGES) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${PRICE_MAX_PAGES} pages`)
-      const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: PRICE_PAGE, $skip: page * PRICE_PAGE })
+      if (page >= ODATA_MAX_PAGES) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${ODATA_MAX_PAGES} pages`)
+      const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
       for (const r of rows) items.push({ item: mapItem(r, look, ''), version: r.DataVersion ?? '' })
-      if (rows.length < PRICE_PAGE) break
+      if (rows.length < ODATA_PAGE) break
     }
     return { sections, items }
   }
@@ -227,12 +238,13 @@ export class ODataClient {
    * (ответ программиста 2026-10-20). Тип — по расширению; не картинка — ошибка контракта.
    */
   async image(id: string): Promise<ImageFileT> {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new OnecError('contract', '1C OData image: id is not a GUID')
+    assertGuid(id)
     const set = 'Catalog_НоменклатураПрисоединенныеФайлы'
     const rows = await this.list<{ Ref_Key: string, Расширение?: string, ФайлХранилище_Base64Data?: string }>(set, {
       $select: 'Ref_Key,Расширение,ФайлХранилище_Base64Data',
       $filter: `Ref_Key eq guid'${id}'`,
-    })
+      $top: 1,
+    }, IMAGE_MAX_RESPONSE)
     const row = rows[0]
     if (!row) throw new OnecError('http', `1C OData ${set}: not found`, 404)
     const contentType = IMAGE_EXT[(row.Расширение ?? '').toLowerCase().replace(/^\./, '')]
@@ -259,12 +271,12 @@ export class ODataClient {
    * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
    */
   async prices(opts: { priceTypes?: string[], limit?: number, items?: string[] } = {}): Promise<PricesResult> {
-    const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
+    const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${assertGuid(g)}'`).join(' or ') } : {}
     // Цены продажи — в `ЦеныНоменклатуры` (ответ программиста 1С 2026-10-21; `ЦеныНоменклатуры25`
     // пуст). Срез последних 1С отдаёт; читаем его страницами: в регистре сотни тысяч записей,
     // один большой ответ кладёт процесс ЛК по памяти (502 того же дня).
     const register = PRICE_REGISTERS[0]
-    const pageSize = Math.min(opts.limit ?? PRICE_PAGE, PRICE_PAGE)
+    const pageSize = Math.min(opts.limit ?? ODATA_PAGE, ODATA_PAGE)
     const tried: string[] = []
     const via: PricesResult['via'] = 'slice'
     // Регистр подчинён регистратору: `…/SliceLast()` у самого набора 1С отвергает («лишние
@@ -279,7 +291,7 @@ export class ODataClient {
           const chunk = await this.listPath<PriceRow>(slice, `${base}/SliceLast`, { ...filter, $top: pageSize, $skip: page * pageSize })
           rows.push(...chunk)
           if (chunk.length < pageSize || (opts.limit && rows.length >= opts.limit)) break
-          if (page >= PRICE_MAX_PAGES) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${PRICE_MAX_PAGES} pages`)
+          if (page >= ODATA_MAX_PAGES) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${ODATA_MAX_PAGES} pages`)
         }
         break
       }
@@ -353,7 +365,7 @@ export class ODataClient {
       const rates = await this.list<{ Ref_Key: string, Description?: string, Ставка?: number }>('Catalog_СтавкиНДС', {})
       const rate = new Map(rates.map(r => [r.Ref_Key.toLowerCase(), vatPercent(r.Ставка, r.Description)]))
       if (items && !items.length) return { map: new Map() }
-      const filter = items ? items.map(g => `Ref_Key eq guid'${g}'`).join(' or ') : 'IsFolder eq false'
+      const filter = items ? items.map(g => `Ref_Key eq guid'${assertGuid(g)}'`).join(' or ') : 'IsFolder eq false'
       const rows = await this.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,СтавкаНДС_Key', $filter: filter })
       return { map: new Map(rows.flatMap((i) => {
         const v = ref(i.СтавкаНДС_Key) && rate.get(ref(i.СтавкаНДС_Key)!)
@@ -368,10 +380,13 @@ export class ODataClient {
 
 /** Регистры цен по порядку попыток (docs/onec-odata.md). */
 export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры'] as const
-/** Строк среза цен за один запрос и предел страниц (500 × 5000 = 2,5 млн строк). */
-export const PRICE_PAGE = 5000
+/** Строк за один запрос OData (каталог, срез цен) и предел страниц: 500 × 5000 = 2,5 млн строк. */
+export const ODATA_PAGE = 5000
+/** Предел одного ответа OData и ответа с картинкой (base64 до 5 МБ файла — около 7 МБ строки). */
+export const ODATA_MAX_RESPONSE = 64 * 1024 * 1024
+export const IMAGE_MAX_RESPONSE = 8 * 1024 * 1024
 const IMAGE_EXT: Record<string, 'image/jpeg' | 'image/png' | 'image/webp'> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
-export const PRICE_MAX_PAGES = 500
+export const ODATA_MAX_PAGES = 500
 
 export interface PriceStats {
   read: number
@@ -435,6 +450,12 @@ export function vatPercent(rate?: number, description?: string): number {
   if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) return rate
   const m = /(\d+(?:[.,]\d+)?)\s*%/.exec(description ?? '')
   return m ? Number(m[1]!.replace(',', '.')) : 0
+}
+
+/** GUID для `$filter`: в запрос 1С попадает только строго такой вид, без кавычек и операторов. */
+export function assertGuid(g: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(g)) throw new OnecError('contract', '1C OData: id is not a GUID')
+  return g
 }
 
 const money = (v: number) => Math.round(v * 100) / 100

@@ -98,7 +98,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   async function load() {
     const s = await api('/api/system/status')
     $('updated').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU') + ' · сборка ' + s.commit.slice(0, 7)
-    const mode = { mock: 'мок 1С', real: 'настоящая 1С', off: '1С не настроена' }[s.onec.mode]
+    const mode = { mock: 'мок 1С', real: 'настоящая 1С', odata: 'настоящая 1С по OData', off: '1С не настроена' }[s.onec.mode]
     $('summary').innerHTML = '<b>' + esc(mode) + '</b>'
       + (s.onec.pausedUntil ? ' · <span class="alert">обращения к 1С на паузе до ' + esc(ago(s.onec.pausedUntil).split(' · ')[0]) + '</span>' : ' · сбоев подряд: ' + Number(s.onec.failuresInRow))
       + (s.alerts.length ? '<div class="alert" style="margin-top:6px">' + s.alerts.map((a) => '⚠️ ' + esc(a.text)).join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>')
