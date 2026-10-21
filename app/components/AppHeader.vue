@@ -19,10 +19,16 @@ function openAi() {
   ai.toggle()
 }
 onMounted(() => {
-  if (me.value) cart.load(me.value.company.id)
+  if (me.value) {
+    cart.load(me.value.company.id)
+    setCacheCompany(me.value.company.id)
+  }
 })
 watch(me, (v) => {
-  if (v) cart.load(v.company.id)
+  if (v) {
+    cart.load(v.company.id)
+    setCacheCompany(v.company.id)
+  }
 })
 
 // Длинное название товара не должно наезжать на меню шапки.
@@ -31,9 +37,20 @@ const shortTitle = computed(() => {
   return t.length > 40 ? `${t.slice(0, 38)}…` : t
 })
 
+const logoutError = ref('')
 async function logout() {
-  await $fetch('/api/auth/logout', { method: 'POST' })
+  logoutError.value = ''
+  // Сохранённое с устройства уходит в любом случае.
   cart.forget()
+  await clearCatalogCache()
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' })
+  }
+  catch {
+    // Без сети сервер сессию не закрыл: «вышли» показывать нельзя — следующий вошёл бы под ней.
+    logoutError.value = 'Выйти не удалось: нет связи с сервером. Повторите, когда появится сеть.'
+    return
+  }
   await navigateTo('/login')
 }
 </script>
@@ -64,4 +81,5 @@ async function logout() {
       </nav>
     </template>
   </B24Header>
+  <B24Alert v-if="logoutError" color="air-primary-alert" :title="logoutError" class="rounded-none" />
 </template>

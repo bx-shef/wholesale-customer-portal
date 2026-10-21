@@ -6,6 +6,8 @@ import { ru } from '@bitrix24/b24ui-nuxt/locale'
 // (как в bx-shef/skills-site, где его зовёт шапка). Без вызова тёмная тема не включалась.
 useColorMode()
 const { open: aiOpen } = useAiChat()
+const online = useOnline()
+onMounted(registerServiceWorker)
 </script>
 
 <template>
@@ -13,6 +15,12 @@ const { open: aiOpen } = useAiChat()
     <NuxtLoadingIndicator color="#0075ff" />
     <!-- Открытый чат на компьютере сдвигает страницу влево, а не закрывает её (как в skills-site). -->
     <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
+      <B24Alert
+        v-if="!online"
+        color="air-primary-warning"
+        title="Нет сети: открыто сохранённое ранее, цены и остатки могли измениться. Заявку отправьте, когда сеть вернётся."
+        class="rounded-none"
+      />
       <NuxtPage />
       <AppFooter v-if="!$route.path.startsWith('/b24')" />
     </div>

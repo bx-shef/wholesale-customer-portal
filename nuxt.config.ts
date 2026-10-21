@@ -19,7 +19,12 @@ export default defineNuxtConfig({
         // Кабинет закрытый: в поиск не нужен ни сейчас, ни после запуска.
         { name: 'robots', content: 'noindex, nofollow' },
       ],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        // PWA: установка на телефон и каталог без сети (public/sw.js, app/composables/usePwa.ts).
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+        { rel: 'apple-touch-icon', href: '/icon-192.png' },
+      ],
     },
   },
 
@@ -55,7 +60,12 @@ export default defineNuxtConfig({
       '4-59/10 * * * *': ['sync:trips'],
       '17 3 * * *': ['maintenance:prune'],
     },
-    routeRules: { '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } } },
+    routeRules: {
+      '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } },
+      // Воркер и манифест — без кэша браузера: иначе исправленный sw.js доходит до клиентов с опозданием.
+      '/sw.js': { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex, nofollow' } },
+      '/manifest.webmanifest': { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex, nofollow' } },
+    },
   },
 
   eslint: {
