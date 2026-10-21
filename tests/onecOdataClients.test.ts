@@ -57,13 +57,75 @@ describe('mapClients', () => {
     expect(stats.noAgreement).toBe(1)
   })
 
-  it('без вида цен — договора нет; без валюты — BYN и счётчик', () => {
+  it('без вида цен или валюты — договора нет; соглашение с видом цен выигрывает у более позднего без него', () => {
     const s = emptyClientStats()
-    expect(mapClients(base({ agreements: [{ ...base().agreements[0]!, ВидЦен_Key: undefined }] }), TODAY, s)[0]!.client.contract).toBeNull()
+    const a0 = base().agreements[0]!
+    expect(mapClients(base({ agreements: [{ ...a0, ВидЦен_Key: undefined }] }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noPriceType).toBe(1)
     expect(mapClients(base({ currencies: new Map([[G(40), 'USD']]) }), TODAY, s)[0]!.client.contract?.currency).toBe('USD')
-    expect(mapClients(base({ currencies: new Map() }), TODAY, s)[0]!.client.contract?.currency).toBe('BYN')
+    expect(mapClients(base({ currencies: new Map() }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noCurrency).toBe(1)
+    const late = { ...a0, Ref_Key: G(7), Дата: '2026-09-01T00:00:00', ВидЦен_Key: undefined }
+    expect(mapClients(base({ agreements: [a0, late] }), TODAY)[0]!.client.contract?.guid).toBe(G(3))
+  })
+
+  it('равные даты — по ссылке, не по порядку; начало действия важнее даты', () => {
+    const a0 = base().agreements[0]!
+    const b = { ...a0, Ref_Key: G(2) }
+    expect(mapClients(base({ agreements: [a0, b] }), TODAY)[0]!.client.contract?.guid).toBe(G(2))
+    expect(mapClients(base({ agreements: [b, a0] }), TODAY)[0]!.client.contract?.guid).toBe(G(2))
+    const started = { ...a0, Ref_Key: G(9), Дата: '2025-01-01T00:00:00', ДатаНачалаДействия: '2026-06-01T00:00:00' }
+    expect(mapClients(base({ agreements: [a0, started] }), TODAY)[0]!.client.contract?.guid).toBe(G(9))
+  })
+
+  it('номер и дата — из договора, если у соглашения пусто; без обеих дат — 2000-01-01', () => {
+    const a0 = { ...base().agreements[0]!, Номер: '', Дата: '0001-01-01T00:00:00' }
+    const c = mapClients(base({ agreements: [a0], contracts: [{ Ref_Key: G(4), Номер: 'Д-1', Дата: '2025-03-04T00:00:00' }] }), TODAY)[0]!.client.contract!
+    expect(c).toMatchObject({ number: 'Д-1', date: '2025-03-04' })
+    expect(mapClients(base({ agreements: [a0], contracts: [] }), TODAY)[0]!.client.contract!.date).toBe('2000-01-01')
+  })
+
+  it('ссылки в верхнем регистре сопоставляются; удалённый контрагент и не-адрес не берутся; адреса без дублей', () => {
+    const s = emptyClientStats()
+    const H = 'abcdef00-0000-0000-0000-00000000000a'
+    const up = mapClients(base({ partners: [{ Ref_Key: H, Клиент: true }], counterparties: [{ Ref_Key: G(2), Партнер_Key: H.toUpperCase(), ИНН: '7' }], agreements: [{ ...base().agreements[0]!, Партнер_Key: H.toUpperCase() }] }), TODAY)[0]!.client
+    expect(up).toMatchObject({ unp: '7', contract: { guid: G(3) } })
+    const r = mapClients(base({
+      counterparties: [{ Ref_Key: G(2), Партнер_Key: G(1).toUpperCase(), ИНН: '1', DeletionMark: true }, { Ref_Key: G(3), Партнер_Key: G(1).toUpperCase(), ИНН: '2' }],
+      agreements: [{ ...base().agreements[0]!, Партнер_Key: G(1).toUpperCase() }],
+      contacts: [
+        ...base().contacts, ...base().contacts,
+        { Ref_Key: G(1), Тип: 'Телефон', Представление: '+375 29 000' },
+      ],
+    }), TODAY, s)[0]!.client
+    expect(r.unp).toBe('2')
+    expect(r.contract).not.toBeNull()
+    expect(r.deliveryAddresses).toHaveLength(1)
+    const none = mapClients(base({ counterparties: [{ Ref_Key: G(2), Партнер_Key: G(1), ИНН: '1', DeletionMark: true }] }), TODAY, s)[0]!.client
+    expect(none.unp).toBe('')
+  })
+
+  it('checkedClients: строка, ломающая контракт, — ошибка contract', async () => {
+    const { checkedClients } = await import('../server/services/onecOdataClients')
+    const [ok] = mapClients(base(), TODAY)
+    expect(checkedClients([ok!])).toHaveLength(1)
+    expect(() => checkedClients([{ ...ok!, client: { ...ok!.client, region: { guid: 'x', name: 'z' } } }])).toThrow(expect.objectContaining({ kind: 'contract' }))
+  })
+
+  it('unsupportedFlowsFor: клиенты по OData — только с ONEC_ODATA_CLIENTS', async () => {
+    const { unsupportedFlowsFor } = await import('../server/services/onecOdataSource')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false })).toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true })).not.toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true })).toContain('orders')
+    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false })).toEqual([])
+  })
+
+  it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {
+    const { sampleName } = await import('../server/utils/odataProbe')
+    expect(sampleName('ООО «Ромашка»')).toBe('ООО «Ромашка»')
+    expect(sampleName('Иванов Иван Иванович')).toBe('Ив… (20 симв.)')
+    expect(sampleName('ИП Иванов')).toBe('ИП… (9 симв.)')
   })
 
   it('запрет отгрузки, без зоны, не клиент, помечен на удаление', () => {
@@ -79,10 +141,13 @@ describe('mapClients', () => {
     expect(s).toMatchObject({ clients: 2, blocked: 1, noZone: 2, noUnp: 1, noAddress: 1 })
   })
 
-  it('версия меняется, когда меняется видимое клиенту; адрес — устойчивый GUID', () => {
+  it('версия меняется, когда меняется видимое клиенту; адрес — устойчивый GUID', async () => {
     const v1 = mapClients(base(), TODAY)[0]!.version
     expect(mapClients(base(), TODAY)[0]!.version).toBe(v1)
     expect(mapClients(base({ zones: new Map([[G(50), 'Минск-Юг']]) }), TODAY)[0]!.version).not.toBe(v1)
+    const { clientVersion } = await import('../server/services/onecOdataClients')
+    const c = mapClients(base(), TODAY)[0]!.client
+    expect(clientVersion({ ...c, changedAt: '2026-01-01T00:00:00+03:00' })).toBe(clientVersion(c))
     expect(addressGuid(G(1), G(60), 'А')).toBe(addressGuid(G(1), G(60), 'А'))
     expect(addressGuid(G(1), G(60), 'А')).not.toBe(addressGuid(G(1), G(60), 'Б'))
     expect(addressGuid(G(1), G(60), 'А')).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/)
@@ -116,11 +181,32 @@ describe('readClientSources и OdataOnec.clients', () => {
     expect([...src.blocked]).toEqual([G(1)])
   })
 
-  it('необязательное не читается — пусто и в missing; партнёры обязательны', async () => {
-    const src = await readClientSources(client(fake(['Catalog_СегментыПартнеров', 'Catalog_Контрагенты'])))
-    expect(src.missing).toEqual(['Catalog_Контрагенты', 'Catalog_СегментыПартнеров'])
+  it('сегменты не читаются — запрета нет и в missing; всё остальное обязательно', async () => {
+    const src = await readClientSources(client(fake(['Catalog_СегментыПартнеров'])))
+    expect(src.missing).toEqual(['Catalog_СегментыПартнеров'])
     expect(src.blocked.size).toBe(0)
-    await expect(readClientSources(client(fake(['Catalog_Партнеры'])))).rejects.toMatchObject({ status: 404 })
+    for (const set of ['Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
+      await expect(readClientSources(client(fake([set]))), set).rejects.toBeInstanceOf(Error)
+  })
+
+  it('сетевой сбой на сегментах не прячется в missing', async () => {
+    const f = fake()
+    const net: typeof fetch = async (u, i) => (decodeURIComponent(String(u)).includes('Catalog_СегментыПартнеров?') ? Promise.reject(new Error('ECONNRESET')) : f(u, i))
+    await expect(readClientSources(client(net))).rejects.toMatchObject({ kind: 'network' })
+  })
+
+  it('без сегментов с запретом участников не спрашиваем; удалённый сегмент не блокирует', async () => {
+    const urls: string[] = []
+    const f = fake()
+    const spy: typeof fetch = async (u, i) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('Catalog_СегментыПартнеров?')) return Response.json({ value: [{ Ref_Key: G(70), ЗапретОтгрузки: true, DeletionMark: true }] })
+      return f(u, i)
+    }
+    const src = await readClientSources(client(spy))
+    expect(src.blocked.size).toBe(0)
+    expect(urls.some(u => u.includes('ПартнерыПоСегменту'))).toBe(false)
   })
 
   it('OdataOnec.clients: страница контракта, момент держится, пока клиент не изменился', async () => {
@@ -161,7 +247,7 @@ describe('стенд: runODataClientsProbe', async () => {
     const fields = Object.fromEntries(c!.fields!.map(f => [f.name, f.properties.map(p => p.name)]))
     expect(fields['Статусы соглашений']).toEqual(['Действует: 1', 'Закрыто: 1'])
     expect(fields['Виды цен в соглашениях']).toEqual(['Опт: 1'])
-    expect(fields['Образец']![0]).toContain('ООО Ромашка · УНП — · Минск-Север · соглашение С-1 · Опт · BYN')
+    expect(fields['Образец']![0]).toContain('ООО Ромашка · УНП нет · Минск-Север · соглашение С-1 · Опт · BYN')
     const bad = await runODataClientsProbe({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: async () => new Response('', { status: 403 }) })
     expect(bad[0]).toMatchObject({ status: 'fail' })
     expect(bad[0]!.detail).toContain('403')

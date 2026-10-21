@@ -7,7 +7,7 @@
  */
 import { onecAuthHeader, type OnecAuth } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
-import { ACTIVE_AGREEMENT, emptyClientStats, mapClients, readClientSources } from '../services/onecOdataClients'
+import { agreementActive, emptyClientStats, mapClients, readClientSources } from '../services/onecOdataClients'
 import { minskDay } from '../services/onecOdataSource'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
@@ -261,7 +261,8 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
 
 /**
  * Клиенты и соглашения через клиент OData — тем же сопоставлением, что ЛК: счётчики, из чего
- * состоят соглашения и адреса, образец клиентов. Клиенты — юрлица; e-mail и телефоны не показываем.
+ * состоят соглашения и адреса, образец клиентов. Отчёт копируют в чат: e-mail, телефоны и адреса не
+ * показываем, УНП — только «есть/нет», название — только у организаций (у ИП это ФИО, `sampleName`).
  */
 export async function runODataClientsProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
   const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, onRequest: input.onRequest })
@@ -269,7 +270,8 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
   try {
     const src = await readClientSources(client)
     const stats = emptyClientStats()
-    const rows = mapClients(src, minskDay(new Date(now())), stats)
+    const today = minskDay(new Date(now()))
+    const rows = mapClients(src, today, stats)
     const priceTypes = (await client.names('Catalog_ВидыЦен')).map
     const count = <T>(items: T[], key: (i: T) => string) => {
       const m = new Map<string, number>()
@@ -277,12 +279,12 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
       return [...m].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name: `${name || '—'}: ${n}`, type: '' }))
     }
     const perClient = new Map<string, number>()
-    for (const a of src.agreements) if (a.Статус === ACTIVE_AGREEMENT && !a.DeletionMark && a.Партнер_Key) perClient.set(a.Партнер_Key.toLowerCase(), (perClient.get(a.Партнер_Key.toLowerCase()) ?? 0) + 1)
+    for (const a of src.agreements) if (agreementActive(a, today) && a.Партнер_Key) perClient.set(a.Партнер_Key.toLowerCase(), (perClient.get(a.Партнер_Key.toLowerCase()) ?? 0) + 1)
     const addresses = src.contacts.filter(c => c.Тип === 'Адрес')
     return [{
       id: 'clients',
       title: 'Клиенты по контракту',
-      status: rows.length ? 'ok' : 'fail',
+      status: !rows.length ? 'fail' : src.missing.length ? 'skip' : 'ok',
       detail: `клиентов: ${stats.clients}, с соглашением: ${stats.clients - stats.noAgreement}, без соглашения: ${stats.noAgreement}, с несколькими действующими: ${stats.manyAgreements} (взято самое позднее), без вида цен: ${stats.noPriceType}, без валюты: ${stats.noCurrency}`
         + `; без УНП: ${stats.noUnp}, без зоны доставки: ${stats.noZone}, без адреса: ${stats.noAddress}, с запретом отгрузки: ${stats.blocked}`
         + `${src.missing.length ? `; не читаются: ${src.missing.join(', ')}` : ''}`,
@@ -292,7 +294,7 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
         { name: 'Виды цен в соглашениях', properties: count(rows.flatMap(r => (r.client.contract ? [r.client.contract.priceTypeGuid] : [])), g => priceTypes.get(g) || g) },
         { name: 'Виды адресов (Вид_Key, строк)', properties: count(addresses, c => (c.Вид_Key ?? '').toLowerCase()) },
         { name: 'Зоны доставки (клиентов)', properties: count(rows, r => r.client.region?.name ?? 'без зоны') },
-        { name: 'Образец', properties: rows.slice(0, 10).map(({ client: c }) => ({ name: `${c.name} · УНП ${c.unp || '—'} · ${c.region?.name ?? 'без зоны'} · ${c.contract ? `соглашение ${c.contract.number || c.contract.guid} · ${priceTypes.get(c.contract.priceTypeGuid) || 'вид цен ?'} · ${c.contract.currency}` : 'без соглашения'} · адресов ${c.deliveryAddresses.length}${c.shipmentBlocked ? ' · запрет отгрузки' : ''}`, type: '' })) },
+        { name: 'Образец', properties: rows.slice(0, 10).map(({ client: c }) => ({ name: `${sampleName(c.name)} · УНП ${c.unp ? 'есть' : 'нет'} · ${c.region?.name ?? 'без зоны'} · ${c.contract ? `соглашение ${c.contract.number || c.contract.guid} · ${priceTypes.get(c.contract.priceTypeGuid) || 'вид цен ?'} · ${c.contract.currency}` : 'без соглашения'} · адресов ${c.deliveryAddresses.length}${c.shipmentBlocked ? ' · запрет отгрузки' : ''}`, type: '' })) },
       ],
       ms: now() - started,
     }]
@@ -300,4 +302,13 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
   catch (e) {
     return [{ id: 'clients', title: 'Клиенты по контракту', status: 'fail', detail: reason(e), ms: now() - started }]
   }
+}
+
+/** Организационно-правовые формы организаций: их название показываем, остальное (ИП — ФИО) — нет. */
+const ORG_FORM = /^(ООО|ОАО|ЗАО|АО|ПАО|ОДО|ЧУП|ЧТУП|ЧПУП|УП|РУП|КУП|ИООО|СООО|ИП ООО|Общество|Частное|Унитарное)[\s«"]/i
+
+/** Название клиента для отчёта стенда: организации — как есть, прочее — первые две буквы и длина. */
+export function sampleName(name: string): string {
+  const n = name.trim()
+  return ORG_FORM.test(n) ? n : `${n.slice(0, 2)}… (${n.length} симв.)`
 }

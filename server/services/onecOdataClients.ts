@@ -3,8 +3,9 @@
  * их контрагенты (УНП), соглашения, договоры, зоны доставки, сегменты запрета отгрузки и адреса —
  * в форме `Client` контракта.
  *
- * Сопоставление — чистая `mapClients`, чтение — `readClientSources`. Чего OData пока не даёт,
- * заполняется запасным значением и считается в `ClientStats`: стенд показывает, сколько таких.
+ * Сопоставление — чистая `mapClients`, чтение — `readClientSources`. Чего OData пока не даёт
+ * (e-mail менеджера, отсрочка, долг), заполняется запасным значением; сколько клиентов без
+ * соглашения, УНП, зоны и адреса — считает `ClientStats`, стенд это показывает.
  */
 import { createHash } from 'node:crypto'
 import { Client, type ClientT, type ContractT, type DeliveryAddress } from '../../shared/onec/schemas'
@@ -14,7 +15,6 @@ import { EMPTY_REF, ODATA_MAX_PAGES, ODATA_PAGE, type ODataClient } from './onec
 
 export interface PartnerRow {
   Ref_Key: string
-  DataVersion?: string
   Description?: string
   DeletionMark?: boolean
   Клиент?: boolean
@@ -52,7 +52,7 @@ export interface ClientSources {
   currencies: Map<string, string>
   /** Партнёры в сегментах с запретом отгрузки. */
   blocked: Set<string>
-  /** Объекты, которые не прочитались: поле заполнено запасным значением. */
+  /** Необязательные объекты, которые не прочитались (сегменты запрета). */
   missing: string[]
 }
 
@@ -138,19 +138,20 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
       return { guid: addressGuid(guid, ref(c.Вид_Key) ?? '', text), city: (c.Город ?? '').trim(), address: text } satisfies z.infer<typeof DeliveryAddress>
     })
     if (!addresses.length) stats.noAddress++
+    const unique = [...new Map(addresses.map(x => [x.guid, x])).values()]
     const client: ClientT = {
       guid,
       name: (p.Description ?? '').trim(),
       unp,
-      address: addresses[0]?.address ?? '',
-      city: addresses[0]?.city ?? '',
+      address: unique[0]?.address ?? '',
+      city: unique[0]?.city ?? '',
       region: zone && zoneName ? { guid: zone, name: zoneName } : null,
       shipmentBlocked: blocked,
       // E-mail менеджера — в контактной информации пользователя, справочник ещё не читаем.
       managerEmail: '',
       contract: pickContract(agreements.get(guid) ?? [], contracts, src.currencies, stats),
       // Пока все адреса партнёра: какой вид — «адрес доставки», покажет стенд (ответ 1С 2026-10-20).
-      deliveryAddresses: addresses,
+      deliveryAddresses: unique,
       changedAt: '',
       deleted: p.DeletionMark === true,
     }
@@ -159,33 +160,42 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
   return out
 }
 
-/** Соглашение клиента в форме `Contract`. Несколько действующих — самое позднее по дате. */
+/**
+ * Соглашение клиента в форме `Contract`: из действующих — только с видом цен и известной валютой
+ * (иначе цены клиента ушли бы не в той валюте); из них — самое позднее по началу действия, затем
+ * по дате, затем по ссылке. Подходящих нет — договора нет, цен клиент не видит.
+ */
 function pickContract(active: AgreementRow[], contracts: Map<string, ContractRow>, currencies: Map<string, string>, stats: ClientStats): ContractT | null {
   if (!active.length) {
     stats.noAgreement++
     return null
   }
   if (active.length > 1) stats.manyAgreements++
-  const a = [...active].sort((x, y) => (day(y.Дата) || '').localeCompare(day(x.Дата) || '') || x.Ref_Key.localeCompare(y.Ref_Key))[0]!
-  const priceType = ref(a.ВидЦен_Key)
-  if (!priceType) {
+  const withPrice = active.filter(a => ref(a.ВидЦен_Key))
+  if (!withPrice.length) {
     stats.noPriceType++
     return null
   }
-  const currency = ref(a.Валюта_Key) ? currencies.get(ref(a.Валюта_Key)!) : undefined
-  if (!currency) stats.noCurrency++
+  const usable = withPrice.filter(a => ref(a.Валюта_Key) && currencies.has(ref(a.Валюта_Key)!))
+  if (!usable.length) {
+    stats.noCurrency++
+    return null
+  }
+  const when = (a: AgreementRow) => `${day(a.ДатаНачалаДействия)}|${day(a.Дата)}`
+  const a = [...usable].sort((x, y) => when(y).localeCompare(when(x)) || x.Ref_Key.toLowerCase().localeCompare(y.Ref_Key.toLowerCase()))[0]!
   const contract = ref(a.Договор_Key) ? contracts.get(ref(a.Договор_Key)!) : undefined
   return {
     guid: a.Ref_Key.toLowerCase(),
     number: ((a.Номер || contract?.Номер) ?? '').trim(),
-    date: day(a.Дата) || day(contract?.Дата) || '2000-01-01',
-    priceTypeGuid: priceType,
+    // Дата обязательна в контракте; пустые у 1С — «0001-01-01», тогда начало действия или договор.
+    date: day(a.Дата) || day(a.ДатаНачалаДействия) || day(contract?.Дата) || '2000-01-01',
+    priceTypeGuid: ref(a.ВидЦен_Key)!,
     // Отсрочка — в табличной части «Этапы графика оплаты», её пока не читаем (docs/onec-odata.md).
     paymentDelayDays: 0,
     creditLimit: money(contract?.ДопустимаяСуммаЗадолженности),
     // Долг — в регистре расчётов, он ещё не опубликован.
     debt: 0,
-    currency: currency ?? 'BYN',
+    currency: currencies.get(ref(a.Валюта_Key)!)!,
   }
 }
 
@@ -200,47 +210,42 @@ export async function listAll<T>(client: ODataClient, set: string, query: Record
   throw new OnecError('contract', `1C OData ${set}: more than ${maxPages} pages`)
 }
 
-/** Необязательный объект: не читается — пусто, имя — в `missing`. */
-async function optional<T>(missing: string[], name: string, read: () => Promise<T>, empty: T): Promise<T> {
-  try {
-    return await read()
-  }
-  catch (e) {
-    if (e instanceof OnecError && e.kind !== 'http' && e.kind !== 'contract') throw e
-    missing.push(name)
-    return empty
-  }
-}
-
 /**
- * Прочитать всё для клиентов. Партнёры обязательны — не читаются, прогон падает; остальное
- * необязательно: поле получает запасное значение, объект называется в `missing`.
+ * Прочитать всё для клиентов. Обязательно всё, кроме сегментов: не прочиталось — прогон падает.
+ * Иначе пустой набор соглашений, адресов или зон затёр бы договоры, адреса и регионы у всех
+ * клиентов в ЛК разом (ревью PR #63). Сегменты запрета — мягко: без них запрета просто нет.
  */
 export async function readClientSources(client: ODataClient): Promise<ClientSources> {
   const missing: string[] = []
   const partners = await listAll<PartnerRow>(client, 'Catalog_Партнеры', {
-    $select: 'Ref_Key,DataVersion,Description,DeletionMark,Клиент,ЗонаДоставки_Key',
+    $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key',
     $filter: 'Клиент eq true',
   })
-  const counterparties = await optional(missing, 'Catalog_Контрагенты', () => listAll<CounterpartyRow>(client, 'Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark' }), [])
-  const agreements = await optional(missing, 'Catalog_СоглашенияСКлиентами', () => listAll<AgreementRow>(client, 'Catalog_СоглашенияСКлиентами', {
+  const counterparties = await listAll<CounterpartyRow>(client, 'Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark' })
+  const agreements = await listAll<AgreementRow>(client, 'Catalog_СоглашенияСКлиентами', {
     $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key',
-  }), [])
-  const contracts = await optional(missing, 'Catalog_ДоговорыКонтрагентов', () => listAll<ContractRow>(client, 'Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности' }), [])
-  const contacts = await optional(missing, 'Catalog_Партнеры_КонтактнаяИнформация', () => listAll<ContactRow>(client, 'Catalog_Партнеры_КонтактнаяИнформация', {
+  })
+  const contracts = await listAll<ContractRow>(client, 'Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности' })
+  const contacts = await listAll<ContactRow>(client, 'Catalog_Партнеры_КонтактнаяИнформация', {
     $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город',
-  }, 'Ref_Key,LineNumber'), [])
+  }, 'Ref_Key,LineNumber')
   const zones = await client.names('Catalog_ЗоныДоставки')
-  if (zones.error) missing.push('Catalog_ЗоныДоставки')
+  if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
   const currencies = await client.currencies()
-  if (currencies.error) missing.push('Catalog_Валюты')
-  const blocked = await optional(missing, 'Catalog_СегментыПартнеров', async () => {
+  if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
+  let blocked = new Set<string>()
+  try {
     const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
     const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
-    if (!stop.size) return new Set<string>()
-    const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
-    return new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
-  }, new Set<string>())
+    if (stop.size) {
+      const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
+      blocked = new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
+    }
+  }
+  catch (e) {
+    if (!(e instanceof OnecError) || (e.kind !== 'http' && e.kind !== 'contract')) throw e
+    missing.push('Catalog_СегментыПартнеров')
+  }
   return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked, missing }
 }
 

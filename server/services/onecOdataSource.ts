@@ -29,6 +29,15 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
  */
 export const ODATA_UNSUPPORTED_FLOWS = ['orders', 'schedule', 'trips'] as const
 
+/**
+ * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных, а клиентов — пока
+ * `ONEC_ODATA_CLIENTS` не включён (клиенты уходят в компании Б24, тестовую 1С в боевую CRM не пишем).
+ */
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean }): readonly string[] {
+  if (env.onecMock || env.onecMode !== 'odata') return []
+  return env.onecOdataClients ? ODATA_UNSUPPORTED_FLOWS : ['clients', ...ODATA_UNSUPPORTED_FLOWS]
+}
+
 export interface VersionStore {
   get(kind: string): Map<string, VersionMark>
   put(kind: string, updates: Array<{ key: string } & VersionMark>): void
