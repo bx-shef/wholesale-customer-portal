@@ -216,41 +216,38 @@ export class ODataClient {
    */
   async prices(opts: { priceTypes?: string[], limit?: number, items?: string[] } = {}): Promise<PricesResult> {
     const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
-    // В 1С:КА два регистра цен: `ЦеныНоменклатуры25` (новое ценообразование) и прежний
-    // `ЦеныНоменклатуры`. Тестовая база (2026-10-21): в первом записей нет — пробуем оба.
-    // Пути по очереди: срез последних, затем наборы записей; что не сработало — в `tried`.
-    const attempts: Array<{ via: PricesResult['via'], set: string, load: () => Promise<PriceRow[]> }> = []
-    for (const set of PRICE_REGISTERS) {
-      const slice = `${encodeURIComponent(set)}/SliceLast()`
-      attempts.push(
-        { via: 'slice', set, load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter, ...(opts.limit ? { $top: opts.limit } : {}) }) },
-        // Набор записей — документ целиком, в документе установки цен бывают десятки тысяч строк:
-        // в режиме образца (`limit`) читаем по 2 документа и не больше 3 страниц — иначе процесс
-        // ЛК упирается в память (прогон 2026-10-21 закончился 502).
-        { via: 'records', set, load: () => opts.limit ? this.recordSets(set, 2, 3, true) : this.recordSets(set) },
-      )
-    }
+    // Цены продажи — в `ЦеныНоменклатуры` (ответ программиста 1С 2026-10-21; `ЦеныНоменклатуры25`
+    // пуст). Срез последних 1С отдаёт; читаем его страницами: в регистре сотни тысяч записей,
+    // один большой ответ кладёт процесс ЛК по памяти (502 того же дня).
+    const register = PRICE_REGISTERS[0]
+    const pageSize = Math.min(opts.limit ?? PRICE_PAGE, PRICE_PAGE)
     const tried: string[] = []
-    let rows: PriceRow[] | null = null
-    let via: PricesResult['via'] = 'slice'
-    let register: string = PRICE_REGISTERS[0]
-    for (const a of attempts) {
+    const via: PricesResult['via'] = 'slice'
+    // Регистр подчинён регистратору: `…/SliceLast()` у самого набора 1С отвергает («лишние
+    // сегменты в запросе к контейнеру сущностей», прогон 2026-10-21) — срез берём у `_RecordType`.
+    // Прежний путь оставлен запасным: на какой из них ответит база, видно в `tried`.
+    let rows: PriceRow[] = []
+    for (const base of [`${register}_RecordType`, register]) {
+      const slice = `${encodeURIComponent(base)}/SliceLast()`
       try {
-        rows = await a.load()
-        via = a.via
-        register = a.set
-        if (rows.length) break
-        tried.push(`${a.set} ${a.via}: пусто`)
+        rows = []
+        for (let page = 0; ; page++) {
+          const chunk = await this.listPath<PriceRow>(slice, `${base}/SliceLast`, { ...filter, $top: pageSize, $skip: page * pageSize })
+          rows.push(...chunk)
+          if (chunk.length < pageSize || (opts.limit && rows.length >= opts.limit)) break
+          if (page >= PRICE_MAX_PAGES) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${PRICE_MAX_PAGES} pages`)
+        }
+        break
       }
       catch (e) {
-        if (!(e instanceof OnecError) || (e.kind !== 'http' && e.kind !== 'contract')) throw e
-        tried.push(`${a.set} ${a.via}: ${e.message}`)
+        if (!(e instanceof OnecError) || e.kind !== 'http') throw e
+        tried.push(`${base}/SliceLast: ${e.message}`)
       }
     }
     const currencies = await this.currencies()
-    const vat = await this.vatByItem(opts.items ?? (opts.limit ? [...new Set((rows ?? []).map(r => r.Номенклатура_Key))].slice(0, 20) : undefined))
+    const vat = await this.vatByItem(opts.items ?? (opts.limit ? [...new Set(rows.map(r => r.Номенклатура_Key))].slice(0, 20) : undefined))
     const stats = emptyPriceStats()
-    const items = mapPrices(rows ?? [], { currencies: currencies.map, vat: vat.map }, stats)
+    const items = mapPrices(rows, { currencies: currencies.map, vat: vat.map }, stats)
     return {
       items: checked(Price, items, 'prices'),
       via,
@@ -326,7 +323,10 @@ export class ODataClient {
 }
 
 /** Регистры цен по порядку попыток (docs/onec-odata.md). */
-export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры25', 'InformationRegister_ЦеныНоменклатуры'] as const
+export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры'] as const
+/** Строк среза цен за один запрос и предел страниц (500 × 5000 = 2,5 млн строк). */
+export const PRICE_PAGE = 5000
+export const PRICE_MAX_PAGES = 500
 
 export interface PriceStats {
   read: number

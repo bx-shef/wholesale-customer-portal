@@ -34,6 +34,8 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   .summary { font-weight: 600; margin-bottom: 8px; }
   .err { color: var(--fail); font-weight: 600; }
   a { color: var(--accent); }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+  #report code { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -235,6 +237,16 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + dur(data.ms) + '</div><table>'
         + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span>' + fieldsHtml(c.fields) + '</td><td class="ms">' + (c.status === 'skip' ? '' : dur(c.ms)) + '</td></tr>').join('')
         + '</table>' + ((data.log && data.log.length) ? '<details><summary>Журнал запросов к 1С (' + data.log.length + ')</summary><pre>' + esc(data.log.join('\\n')) + '</pre></details>' : '') + (data.fieldsText ? '<button id="copy" type="button" class="secondary">Скопировать поля для разработчика</button>' : '')
+      // Весь отчёт одним текстом — переслать разработчику без ручного выделения.
+      // Перевод строки — через fromCharCode: эта страница — шаблон TS, и «\\n» в нём уже ломал скрипт.
+      const NL = String.fromCharCode(10)
+      const reportText = () => [data.target + ' · ' + dur(data.ms)]
+        .concat(data.checks.flatMap((c) => [LABEL[c.status] + ' · ' + c.title + ' · ' + c.detail + (c.status === 'skip' ? '' : ' · ' + dur(c.ms))]
+          .concat((c.fields || []).flatMap((t) => ['  ' + t.name].concat(t.properties.map((p) => '    ' + (p.type ? p.name + ': ' + p.type : p.name)))))))
+        .concat((data.log && data.log.length) ? ['Журнал запросов к 1С:'].concat(data.log) : [])
+        .join(NL)
+      report.insertAdjacentHTML('afterbegin', '<button id="copy-report" type="button" class="secondary">Скопировать отчёт</button>')
+      $('copy-report').addEventListener('click', () => navigator.clipboard.writeText(reportText()).then(() => { $('copy-report').textContent = 'Скопировано' }))
       if (data.fieldsText) $('copy').addEventListener('click', () => navigator.clipboard.writeText(data.fieldsText).then(() => { $('copy').textContent = 'Скопировано' }))
     }
     catch (err) {
