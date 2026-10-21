@@ -1,6 +1,6 @@
 # wholesale-customer-portal
 
-> Last reviewed: 2026-10-11
+> Last reviewed: 2026-10-21
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Каталог с ценой клиента и остатками, заявки, дата приезда машины, ИИ-помощник на DeepSeek. Nuxt 4 + Bitrix24 UI + `@bitrix24/b24jssdk`, MCP на `@nuxtjs/mcp-toolkit`.
 
