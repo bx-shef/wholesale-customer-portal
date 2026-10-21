@@ -44,6 +44,11 @@ logs:
 ps:
 	$(COMPOSE) ps
 
+## Перезапуски контейнера: убит ли по памяти (OOMKilled), сколько раз, когда стартовал
+restarts:
+	docker inspect $(CONTAINER) --format 'OOMKilled={{.State.OOMKilled}} перезапусков={{.RestartCount}} старт={{.State.StartedAt}}'
+	$(COMPOSE) logs --tail 40 app
+
 ## Что задано и какая сборка запущена (GET /api/health изнутри контейнера)
 health:
 	@for i in $$(seq 1 30); do docker exec $(CONTAINER) node -e "$(HEALTH)" >/dev/null 2>&1 && break; sleep 1; done
