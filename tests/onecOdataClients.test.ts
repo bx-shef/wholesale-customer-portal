@@ -18,7 +18,6 @@ const base = (over: Partial<ClientSources> = {}): ClientSources => ({
   zones: new Map([[G(50), 'Минск-Север']]),
   currencies: new Map([[G(40), 'BYN']]),
   blocked: new Set(),
-  missing: [],
   ...over,
 })
 
@@ -124,6 +123,9 @@ describe('mapClients', () => {
   it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {
     const { sampleName } = await import('../server/utils/odataProbe')
     expect(sampleName('ООО «Ромашка»')).toBe('ООО «Ромашка»')
+    expect(sampleName('Частное унитарное предприятие «Бета»')).toBe('Частное унитарное предприятие «Бета»')
+    expect(sampleName('Частное лицо Иванов И.И.')).toBe('Ча… (24 симв.)')
+    expect(sampleName('Уп Иванов')).toBe('Уп… (9 симв.)')
     expect(sampleName('Иванов Иван Иванович')).toBe('Ив… (20 симв.)')
     expect(sampleName('ИП Иванов')).toBe('ИП… (9 симв.)')
   })
@@ -177,22 +179,12 @@ describe('readClientSources и OdataOnec.clients', () => {
 
   it('читает всё, запрет отгрузки — по сегменту с запретом', async () => {
     const src = await readClientSources(client(fake()))
-    expect(src.missing).toEqual([])
     expect([...src.blocked]).toEqual([G(1)])
   })
 
-  it('сегменты не читаются — запрета нет и в missing; всё остальное обязательно', async () => {
-    const src = await readClientSources(client(fake(['Catalog_СегментыПартнеров'])))
-    expect(src.missing).toEqual(['Catalog_СегментыПартнеров'])
-    expect(src.blocked.size).toBe(0)
-    for (const set of ['Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
+  it('всё обязательно: не прочиталось — прогон падает, запрет отгрузки молча не снимается', async () => {
+    for (const set of ['Catalog_СегментыПартнеров', 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', 'Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
       await expect(readClientSources(client(fake([set]))), set).rejects.toBeInstanceOf(Error)
-  })
-
-  it('сетевой сбой на сегментах не прячется в missing', async () => {
-    const f = fake()
-    const net: typeof fetch = async (u, i) => (decodeURIComponent(String(u)).includes('Catalog_СегментыПартнеров?') ? Promise.reject(new Error('ECONNRESET')) : f(u, i))
-    await expect(readClientSources(client(net))).rejects.toMatchObject({ kind: 'network' })
   })
 
   it('без сегментов с запретом участников не спрашиваем; удалённый сегмент не блокирует', async () => {
@@ -247,7 +239,7 @@ describe('стенд: runODataClientsProbe', async () => {
     const fields = Object.fromEntries(c!.fields!.map(f => [f.name, f.properties.map(p => p.name)]))
     expect(fields['Статусы соглашений']).toEqual(['Действует: 1', 'Закрыто: 1'])
     expect(fields['Виды цен в соглашениях']).toEqual(['Опт: 1'])
-    expect(fields['Образец']![0]).toContain('ООО Ромашка · УНП нет · Минск-Север · соглашение С-1 · Опт · BYN')
+    expect(fields['Образец']![0]).toContain('ОО… (11 симв.) · УНП нет · Минск-Север · соглашение С-1 · Опт · BYN')
     const bad = await runODataClientsProbe({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: async () => new Response('', { status: 403 }) })
     expect(bad[0]).toMatchObject({ status: 'fail' })
     expect(bad[0]!.detail).toContain('403')

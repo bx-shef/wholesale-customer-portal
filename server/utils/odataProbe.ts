@@ -284,10 +284,9 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
     return [{
       id: 'clients',
       title: 'Клиенты по контракту',
-      status: !rows.length ? 'fail' : src.missing.length ? 'skip' : 'ok',
+      status: rows.length ? 'ok' : 'fail',
       detail: `клиентов: ${stats.clients}, с соглашением: ${stats.clients - stats.noAgreement}, без соглашения: ${stats.noAgreement}, с несколькими действующими: ${stats.manyAgreements} (взято самое позднее), без вида цен: ${stats.noPriceType}, без валюты: ${stats.noCurrency}`
-        + `; без УНП: ${stats.noUnp}, без зоны доставки: ${stats.noZone}, без адреса: ${stats.noAddress}, с запретом отгрузки: ${stats.blocked}`
-        + `${src.missing.length ? `; не читаются: ${src.missing.join(', ')}` : ''}`,
+        + `; без УНП: ${stats.noUnp}, без зоны доставки: ${stats.noZone}, без адреса: ${stats.noAddress}, с запретом отгрузки: ${stats.blocked}`,
       fields: [
         { name: 'Статусы соглашений', properties: count(src.agreements, a => `${a.Статус ?? ''}${a.DeletionMark ? ' (удалено)' : ''}`) },
         { name: 'Действующих соглашений у клиента', properties: count([...perClient.values()], n => `${n}`) },
@@ -305,7 +304,7 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
 }
 
 /** Организационно-правовые формы организаций: их название показываем, остальное (ИП — ФИО) — нет. */
-const ORG_FORM = /^(ООО|ОАО|ЗАО|АО|ПАО|ОДО|ЧУП|ЧТУП|ЧПУП|УП|РУП|КУП|ИООО|СООО|ИП ООО|Общество|Частное|Унитарное)[\s«"]/i
+const ORG_FORM = /^(?:(?:ООО|ОАО|ЗАО|АО|ПАО|ОДО|ЧУП|ЧТУП|ЧПУП|УП|РУП|КУП|ИООО|СООО)\s*[«"]|(?:Общество с ограниченной ответственностью|Частное (?:торговое )?унитарное предприятие|Унитарное предприятие)\s)/
 
 /** Название клиента для отчёта стенда: организации — как есть, прочее — первые две буквы и длина. */
 export function sampleName(name: string): string {

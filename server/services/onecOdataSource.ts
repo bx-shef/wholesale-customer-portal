@@ -56,7 +56,6 @@ type Memo<T> = { at: number | null, value: Promise<T> }
 export class OdataOnec {
   /** Остатки приходят снимком: строки, которых нет в снимке, в ЛК надо обнулить (catalogSync). */
   readonly stockIsSnapshot = true
-  readonly unsupportedFlows: readonly string[] = ODATA_UNSUPPORTED_FLOWS
   private readonly memo = new Map<string, Memo<unknown>>()
 
   constructor(
@@ -150,7 +149,7 @@ export class OdataOnec {
       const rows = checkedClients(mapClients(src, minskDay(this.options.now?.() ?? new Date()), stats))
       const stamped = stampByVersion(rows.map(r => ({ key: r.client.guid, version: r.version, row: r.client })), this.versions.get('client'), this.nowIso())
       this.versions.put('client', stamped.updates)
-      this.options.log?.(`[onec:odata] clients: ${stats.clients}, ${stamped.updates.length} changed, no agreement ${stats.noAgreement}, several ${stats.manyAgreements}${src.missing.length ? `; missing: ${src.missing.join(', ')}` : ''}`)
+      this.options.log?.(`[onec:odata] clients: ${stats.clients}, ${stamped.updates.length} changed, no agreement ${stats.noAgreement}, several ${stats.manyAgreements}`)
       return sortSnapshot<ClientT>(stamped.rows, c => c.guid)
     })
     return pageOfSorted(all, params)

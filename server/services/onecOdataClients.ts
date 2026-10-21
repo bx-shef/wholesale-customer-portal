@@ -52,8 +52,6 @@ export interface ClientSources {
   currencies: Map<string, string>
   /** Партнёры в сегментах с запретом отгрузки. */
   blocked: Set<string>
-  /** Необязательные объекты, которые не прочитались (сегменты запрета). */
-  missing: string[]
 }
 
 export interface ClientStats {
@@ -135,7 +133,7 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
     if (blocked) stats.blocked++
     const addresses = (contacts.get(guid) ?? []).map((c) => {
       const text = (c.Представление ?? '').trim()
-      return { guid: addressGuid(guid, ref(c.Вид_Key) ?? '', text), city: (c.Город ?? '').trim(), address: text } satisfies z.infer<typeof DeliveryAddress>
+      return { guid: addressGuid(guid, ref(c.Вид_Key) ?? '', `${(c.Город ?? '').trim()}|${text}`), city: (c.Город ?? '').trim(), address: text } satisfies z.infer<typeof DeliveryAddress>
     })
     if (!addresses.length) stats.noAddress++
     const unique = [...new Map(addresses.map(x => [x.guid, x])).values()]
@@ -211,12 +209,11 @@ export async function listAll<T>(client: ODataClient, set: string, query: Record
 }
 
 /**
- * Прочитать всё для клиентов. Обязательно всё, кроме сегментов: не прочиталось — прогон падает.
- * Иначе пустой набор соглашений, адресов или зон затёр бы договоры, адреса и регионы у всех
- * клиентов в ЛК разом (ревью PR #63). Сегменты запрета — мягко: без них запрета просто нет.
+ * Прочитать всё для клиентов. Обязательно всё: не прочиталось — прогон падает. Иначе пустой набор
+ * соглашений, адресов, зон или сегментов затёр бы договоры, адреса, регионы и запрет отгрузки у
+ * всех клиентов в ЛК разом (ревью PR #63).
  */
 export async function readClientSources(client: ODataClient): Promise<ClientSources> {
-  const missing: string[] = []
   const partners = await listAll<PartnerRow>(client, 'Catalog_Партнеры', {
     $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key',
     $filter: 'Клиент eq true',
@@ -233,20 +230,14 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
   const currencies = await client.currencies()
   if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
+  const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
+  const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
   let blocked = new Set<string>()
-  try {
-    const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
-    const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
-    if (stop.size) {
-      const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
-      blocked = new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
-    }
+  if (stop.size) {
+    const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
+    blocked = new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
   }
-  catch (e) {
-    if (!(e instanceof OnecError) || (e.kind !== 'http' && e.kind !== 'contract')) throw e
-    missing.push('Catalog_СегментыПартнеров')
-  }
-  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked, missing }
+  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
 }
 
 /** Проверка схемой контракта: «прошло здесь» значит «ЛК прочитает». */
