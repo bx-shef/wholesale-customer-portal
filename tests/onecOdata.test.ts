@@ -110,9 +110,31 @@ describe('цены и остатки', () => {
     const c = new ODataClient({ baseUrl: 'https://x/odata', auth: { kind: 'bearer', token: 't' }, fetch: fake, now: () => new Date(AT) })
     const p = await c.prices({ priceTypes: [G(30)] })
     expect(p).toMatchObject({ via: 'records', missing: [], items: [{ price: 1, currency: 'BYN', vatRate: 20 }], stats: { read: 2, variant: 1 } })
-    expect(p.tried).toHaveLength(2)
+    expect(p.tried).toHaveLength(1)
     expect(urls.find(u => u.includes('SliceLast'))).toContain(`ВидЦены_Key eq guid'${G(30)}'`)
     expect(await c.stock()).toEqual([{ itemGuid: G(20), warehouseGuid: G(40), warehouseName: 'Склад', available: 2, changedAt: AT }])
     expect(urls.some(u => u.includes("/Balance(Dimensions='Номенклатура,Склад')?"))).toBe(true)
+  })
+})
+
+describe('prices: второй регистр', () => {
+  it('ЦеныНоменклатуры25 пуст — срез прежнего ЦеныНоменклатуры, текст ошибки 1С в tried', async () => {
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('ЦеныНоменклатуры25/SliceLast')) return Response.json({ 'odata.error': { code: '-1', message: { lang: 'ru', value: 'Неверный запрос' } } }, { status: 400 })
+      if (url.includes('ЦеныНоменклатуры25?')) return Response.json({ value: [] })
+      if (url.includes('ЦеныНоменклатуры/SliceLast')) return Response.json({ value: [
+        { Period: '2026-02-01T00:00:00', Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 7, Валюта_Key: G(90) },
+        { Period: '2026-02-01T00:00:00', Номенклатура_Key: G(21), ВидЦены_Key: G(30), Цена: 8, Валюта_Key: G(90), Характеристика_Key: G(3) },
+      ] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(90), Description: 'BYN' }] })
+      if (url.includes('Catalog_СтавкиНДС') || url.includes('Catalog_Номенклатура')) return Response.json({ value: [] })
+      return new Response('', { status: 404 })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x/odata', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    const p = await c.prices()
+    expect(p).toMatchObject({ register: 'InformationRegister_ЦеныНоменклатуры', via: 'slice', items: [{ itemGuid: G(20), price: 7 }], stats: { variant: 1 } })
+    expect(p.tried[0]).toContain('HTTP 400 — Неверный запрос')
+    expect(p.tried[1]).toContain('пусто')
   })
 })

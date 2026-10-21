@@ -13,7 +13,8 @@ export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
   { name: 'Catalog_Номенклатура', why: 'каталог' },
   { name: 'Catalog_ВидыНоменклатуры', why: 'группы каталога' },
   { name: 'Catalog_НоменклатураПрисоединенныеФайлы', why: 'картинки товаров' },
-  { name: 'InformationRegister_ЦеныНоменклатуры25', why: 'цены' },
+  { name: 'InformationRegister_ЦеныНоменклатуры25', why: 'цены (новое ценообразование)' },
+  { name: 'InformationRegister_ЦеныНоменклатуры', why: 'цены (прежний регистр)' },
   { name: 'Catalog_ВидыЦен', why: 'виды цен' },
   { name: 'AccumulationRegister_ТоварыНаСкладах', why: 'остатки' },
   { name: 'Catalog_Склады', why: 'склады' },
@@ -35,6 +36,7 @@ export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
   { name: 'Catalog_Пользователи', why: 'менеджер клиента' },
   { name: 'ChartOfCharacteristicTypes_ДополнительныеРеквизитыИСведения', why: 'имена свойств товара' },
   { name: 'AccumulationRegister_РасчетыСКлиентами', why: 'долг клиента' },
+  { name: 'InformationRegister_АналитикаУчетаПоПартнерам', why: 'долг: аналитика расчётов → партнёр и договор' },
   { name: 'Document_РеализацияТоваровУслуг', why: 'отгрузка заказа (статус «отгружен»)' },
 ]
 
@@ -203,7 +205,7 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
       id: 'prices',
       title: 'Прайс по видам цен',
       status: p.items.length ? 'ok' : 'fail',
-      detail: `строк: ${p.items.length}, видов цен: ${byType.size}, валюты: ${currencies || '—'}, с НДС: ${p.items.filter(i => i.vatRate > 0).length}; чтение: ${p.via === 'slice' ? 'срез последних' : 'наборы записей регистра (медленнее)'}`
+      detail: `строк: ${p.items.length}, видов цен: ${byType.size}, валюты: ${currencies || '—'}, с НДС: ${p.items.filter(i => i.vatRate > 0).length}; чтение: ${p.register.replace('InformationRegister_', '')}, ${p.via === 'slice' ? 'срез последних' : 'наборы записей регистра (медленнее)'}`
         + `; прочитано записей: ${p.stats.read}, отброшено: неактивных ${p.stats.inactive}, характеристик и упаковок ${p.stats.variant}, без ссылок ${p.stats.noRef}, без валюты ${p.stats.noCurrency}, без цены ${p.stats.noPrice}`
         + `${p.missing.length ? `; не читаются: ${p.missing.join(', ')}` : ''}${p.tried.length ? `; не сработало: ${p.tried.join(' | ')}` : ''}`,
       fields: [
