@@ -224,7 +224,10 @@ export class ODataClient {
       const slice = `${encodeURIComponent(set)}/SliceLast()`
       attempts.push(
         { via: 'slice', set, load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter, ...(opts.limit ? { $top: opts.limit } : {}) }) },
-        { via: 'records', set, load: () => this.recordSets(set, 200, opts.limit ? Math.max(1, Math.ceil(opts.limit / 200)) : 2000, !!opts.limit) },
+        // Набор записей — документ целиком, в документе установки цен бывают десятки тысяч строк:
+        // в режиме образца (`limit`) читаем по 2 документа и не больше 3 страниц — иначе процесс
+        // ЛК упирается в память (прогон 2026-10-21 закончился 502).
+        { via: 'records', set, load: () => opts.limit ? this.recordSets(set, 2, 3, true) : this.recordSets(set) },
       )
     }
     const tried: string[] = []
