@@ -18,6 +18,11 @@ export const FLOWS: Record<string, { label: string, staleMs: number }> = {
   trips: { label: 'рейсы', staleMs: 40 * 60_000 },
 }
 
+/** Потоки, которые ждём от текущего транспорта 1С: без тех, которых у него нет (OData — docs/onec-odata.md). */
+export function activeFlows(unsupported: readonly string[] = []): string[] {
+  return Object.keys(FLOWS).filter(f => !unsupported.includes(f))
+}
+
 /** Сбоев подряд, после которых сообщаем: один сбой — обычная случайность, следующий запуск его поправит. */
 export const FAILURES_TO_ALERT = 2
 

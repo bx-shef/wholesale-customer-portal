@@ -132,6 +132,19 @@ export function createCatalogStore(db: DatabaseSync) {
       })
     },
 
+    /**
+     * Остатки снимком (OData, docs/onec-odata.md): чего нет в снимке момента `snapshotAt`, того на
+     * складе нет — строку убираем, иначе в ЛК висел бы вчерашний остаток.
+     */
+    pruneStockBefore(snapshotAt: string): number {
+      // Сравнение моментов, а не строк: `…Z` и `…+03:00` как строки сравнивались бы неверно.
+      return Number(db.prepare('DELETE FROM stock WHERE julianday(changed_at) < julianday(?)').run(snapshotAt).changes)
+    },
+
+    stockRows(): number {
+      return Number((db.prepare('SELECT count(*) AS n FROM stock').get() as { n: number }).n)
+    },
+
     sections(): { guid: string, parentGuid: string | null, name: string }[] {
       return db.prepare('SELECT guid, parent_guid AS parentGuid, name FROM catalog_section ORDER BY name').all() as never
     },

@@ -9,6 +9,7 @@ import { fetchMissingImages } from './imageStore'
 import { createCatalogStore, type CatalogStore } from './catalog'
 import { createPriceStore, type PriceStore } from './prices'
 import { runFlow, sqliteSyncStore, type SyncRun } from './onecSync'
+import { shouldPruneStock } from './odataSnapshot'
 
 let store: CatalogStore | undefined
 export function useCatalog(): CatalogStore {
@@ -99,6 +100,7 @@ export function syncStock(): Promise<SyncRun> {
   return once('stock', async () => {
     const onec = useOnec()
     const catalog = useCatalog()
+    const storedRows = catalog.stockRows()
     const run = await runFlow<StockT>({
       name: 'stock',
       key: s => `${s.itemGuid.toLowerCase()}|${s.warehouseGuid.toLowerCase()}`,
@@ -106,6 +108,24 @@ export function syncStock(): Promise<SyncRun> {
       consume: async rows => catalog.saveStock(rows),
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:stock] ${run.error}`)
+    applyStockSnapshot(run, { snapshot: !!onec.stockIsSnapshot, storedRows, catalog })
     return run
   })
+}
+
+/**
+ * После прогона остатков снимком (OData): строки старше снимка — товар ушёл со склада. Правило —
+ * `shouldPruneStock`; не прошло — старые строки остаются, в логе предупреждение. Возвращает число удалённых.
+ */
+export function applyStockSnapshot(
+  run: Pick<SyncRun, 'status' | 'received' | 'cursorTo'>,
+  o: { snapshot: boolean, storedRows: number, catalog: Pick<CatalogStore, 'pruneStockBefore'> },
+): number {
+  if (shouldPruneStock({ snapshot: o.snapshot, status: run.status, received: run.received, cursorTo: run.cursorTo, storedRows: o.storedRows })) {
+    const gone = o.catalog.pruneStockBefore(run.cursorTo!)
+    if (gone) console.info(`[sync:stock] pruned ${gone} rows not in snapshot`)
+    return gone
+  }
+  if (o.snapshot && run.status === 'done') console.warn(`[sync:stock] snapshot of ${run.received} rows vs ${o.storedRows} stored — old rows kept`)
+  return 0
 }

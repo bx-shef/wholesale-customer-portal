@@ -210,6 +210,13 @@ export class OnecClient {
   }
 }
 
+/**
+ * То, чем ЛК пользуется от 1С: HTTP-сервис (`OnecClient`) или OData (`OdataOnec`, docs/onec-odata.md).
+ * `stockIsSnapshot` — остатки приходят снимком целиком: чего нет в снимке, того на складе нет.
+ * `unsupportedFlows` — потоки, которых у этого транспорта нет: их не запускают и не ждут.
+ */
+export type OnecApi = Pick<OnecClient, 'clients' | 'catalog' | 'prices' | 'stock' | 'createOrder' | 'image' | 'deliverySchedule' | 'trips' | 'orderStatus'> & { readonly stockIsSnapshot?: boolean, readonly unsupportedFlows?: readonly string[] }
+
 /** Все страницы списка подряд — для синхронизации по курсору. */
 export async function collectPages<T>(
   load: (page: number) => Promise<{ items: T[], nextPage: number | null }>,

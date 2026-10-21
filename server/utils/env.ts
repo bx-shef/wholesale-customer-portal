@@ -23,6 +23,10 @@ export interface ServerEnv {
   onecMockClients: string[]
   /** Склады для остатков клиенту по OData, через запятую; пусто — «Основной склад». */
   onecStockWarehouses: string[]
+  /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
+  onecMode: 'http' | 'odata'
+  /** Виды цен по наименованию для OData, через запятую; пусто — все. */
+  onecPriceTypes: string[]
   deepseekApiKey: string
   deepseekModel: string
   sessionSecret: string
@@ -51,6 +55,8 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecLogin: get('ONEC_LOGIN'),
     onecPassword: get('ONEC_PASSWORD'),
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
+    onecMode: parseOnecMode(get('ONEC_MODE')),
+    onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
@@ -64,4 +70,12 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',
   }
+}
+
+/** `ONEC_MODE`: пусто или `http` — HTTP-сервис, `odata` — OData; опечатка — предупреждение, а не тихий http. */
+export function parseOnecMode(raw: string): 'http' | 'odata' {
+  const v = raw.trim().toLowerCase()
+  if (v === 'odata') return 'odata'
+  if (v && v !== 'http') console.warn(`[env] ONEC_MODE=${JSON.stringify(v.slice(0, 20))} is not http/odata — using http`)
+  return 'http'
 }

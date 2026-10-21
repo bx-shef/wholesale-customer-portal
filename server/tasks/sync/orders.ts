@@ -2,6 +2,7 @@
 export default defineTask({
   meta: { name: 'sync:orders', description: 'Заявки ЛК ↔ CRM ↔ 1С' },
   async run() {
+    if (onecUnsupportedFlows().includes('orders')) return { result: 'skipped: not available over OData yet' }
     if (!b24Configured()) return { result: 'skipped: Bitrix24 app is not installed' }
     return { result: await runOrderSync() }
   },

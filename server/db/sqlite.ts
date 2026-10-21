@@ -185,6 +185,15 @@ export const MIGRATIONS: string[] = [
    CREATE INDEX trip_planned ON trip (planned_start);
    -- Регион и запрет отгрузки — у всех клиентов, а не только изменённых: перечитать целиком.
    DELETE FROM sync_cursor WHERE flow = 'clients';`,
+  // 1С по OData (docs/onec-odata.md): у объектов нет даты изменения — момент изменения ЛК ведёт сам
+  // по версии объекта (`DataVersion`): версия та же — прежний момент, новая — момент прогона.
+  `CREATE TABLE odata_version (
+     kind TEXT NOT NULL,
+     key TEXT NOT NULL,
+     version TEXT NOT NULL,
+     changed_at TEXT NOT NULL,
+     PRIMARY KEY (kind, key)
+   );`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

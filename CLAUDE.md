@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-20
+> Last reviewed: 2026-10-21
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -44,9 +44,9 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/mocks/onec/` | мок 1С: сид, чистый обработчик, `fetch` в процессе |
 | `server/routes/mock-1c/` | мок по HTTP, только при `ONEC_MOCK=true`, Bearer `ONEC_TOKEN` |
 | `server/services/onec.ts` | клиент 1С: таймаут, без повторов (повтор — следующий цикл расписания), проверка схемой |
-| `server/utils/onec.ts` | `useOnec()` — мок или `ONEC_URL` по окружению |
+| `server/utils/onec.ts` | `useOnec()` — мок, HTTP-сервис или OData (`ONEC_MODE`) по окружению |
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
-| `server/services/onecOdata.ts` | клиент 1С по OData: каталог, цены и остатки в форме контракта (`docs/onec-odata.md`) |
+| `server/services/onecOdata.ts`, `onecOdataSource.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (`docs/onec-odata.md`) |
 | `server/utils/odataProbe.ts`, `docs/onec-odata.md` | 1С только по OData (решение 2026-10-20): разведка полей на стенде — имена и типы без значений; план перехода |
 | `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, управление моком — `docs/MONITORING.md` |
 | `server/utils/{telegramAlert,alertDelivery}.ts`, `server/tasks/monitor/alerts.ts` | оповещения в Telegram по эпизодам (порт из client-bank-alfa-by), раз в 5 минут |
