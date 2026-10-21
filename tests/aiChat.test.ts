@@ -5,7 +5,7 @@ import { AI_MESSAGE_MAX, chatToolHandlers, sanitizeHistory, topicPrompt } from '
 const item = (guid: string, value = 10): CatalogItemView => ({ guid, sku: 'A', name: `Товар ${guid}`, sectionGuid: 's', brand: 'B', unit: 'шт', packQty: 1, minQty: 1, available: 5, image: null, price: { value, currency: 'BYN', vatRate: 20 } })
 const catalog = () => ({
   search: vi.fn(async () => [item('g1'), item('g2')]),
-  details: async (g: string) => (g === 'g1' ? { item: { ...item('g1'), description: 'd' }, analogs: [item('g3')] } : null),
+  details: async (g: string) => (g === 'g1' ? { item: { ...item('g1'), description: 'd', properties: {} }, analogs: [item('g3')] } : null),
 })
 
 describe('ИИ-помощник: инструменты', () => {
@@ -53,7 +53,7 @@ describe('ИИ-помощник: история из браузера', () => {
 describe('ИИ-помощник: «Обсудить с ИИ»', () => {
   it('карточка товара — в контекст, товар и аналоги можно показать; кривой GUID — без контекста', async () => {
     const guid = '11111111-1111-4111-8111-111111111111'
-    const h = chatToolHandlers({ search: async () => [], details: async g => (g === guid ? { item: { ...item(guid), description: 'шпатлёвка' }, analogs: [item('g3')] } : null) })
+    const h = chatToolHandlers({ search: async () => [], details: async g => (g === guid ? { item: { ...item(guid), description: 'шпатлёвка', properties: {} }, analogs: [item('g3')] } : null) })
     expect(await topicPrompt('x; drop', h)).toBe('')
     expect(await topicPrompt('22222222-2222-4222-8222-222222222222', h)).toBe('')
     const p = await topicPrompt(guid, h)
@@ -89,7 +89,7 @@ describe('ИИ-помощник: журнал и оценка', () => {
 })
 
 describe('ИИ-помощник: аналоги и сравнение', () => {
-  const v = (g: string, available: number, properties?: Record<string, string>) => ({ guid: g, sku: g, name: `Товар ${g}`, sectionGuid: 's', brand: '', unit: 'шт', packQty: 1, minQty: 1, available, image: null, price: null, description: '', properties })
+  const v = (g: string, available: number, properties?: Record<string, string>) => ({ guid: g, sku: g, name: `Товар ${g}`, sectionGuid: 's', brand: '', unit: 'шт', packQty: 1, minQty: 1, available, image: null, price: null, description: '', properties: properties ?? {} })
   const analogs = Array.from({ length: 15 }, (_, i) => v(`a${i}`, i % 2))
   const catalog = {
     search: async () => [],
@@ -129,5 +129,47 @@ describe('ИИ-помощник: аналоги и сравнение', () => {
     ])
     expect((await h.show({ guids: ['g2'] })).items).toHaveLength(1)
     expect(await h.compare({ guids: ['g1', 'g1'] })).toMatchObject({ error: expect.any(String) })
+  })
+})
+
+describe('ИИ-помощник: пределы и проводка инструментов', () => {
+  const big = (g: string, props: Record<string, string>) => ({ guid: g, sku: g, name: g, sectionGuid: 's', brand: '', unit: 'шт', packQty: 1, minQty: 1, available: 1, image: null, price: null, description: '', properties: props })
+
+  it('compare: свойств не больше AI_COMPARE_PROPS, имена и значения обрезаны, missing — ненайденные', async () => {
+    const m = await import('../server/utils/aiChat')
+    const props = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`${'к'.repeat(100)}${i}`, 'з'.repeat(500)]))
+    const h = chatToolHandlers({ search: async () => [], details: async g => (g === 'nope' ? null : { item: big(g, props), analogs: [] }) })
+    const r = await h.compare({ guids: ['a', 'b', 'nope'] })
+    if (!('properties' in r)) throw new Error('нет сравнения')
+    expect(r.properties).toHaveLength(m.AI_COMPARE_PROPS)
+    expect(r.truncated).toBe(true)
+    expect(r.missing).toEqual(['nope'])
+    expect(r.properties[0]!.name.length).toBe(m.AI_PROP_NAME_MAX)
+    expect(r.properties[0]!.values[0]!.length).toBe(m.AI_PROP_VALUE_MAX)
+  })
+
+  it('find_analogs: total — все аналоги до фильтра наличия', async () => {
+    const h = chatToolHandlers({ search: async () => [], details: async () => ({ item: big('x', {}), analogs: [{ ...big('a', {}), available: 0 }] }) })
+    expect(await h.analogs({ guid: 'x', in_stock: true })).toMatchObject({ total: 1, found: 0 })
+  })
+
+  it('get_product: показать можно только отданные ему аналоги', async () => {
+    const { AI_PRODUCT_ANALOGS } = await import('../server/utils/aiChat')
+    const analogs = Array.from({ length: 10 }, (_, i) => big(`a${i}`, {}))
+    const h = chatToolHandlers({ search: async () => [], details: async () => ({ item: big('x', {}), analogs }) })
+    await h.product({ guid: 'x' })
+    expect((await h.show({ guids: [`a${AI_PRODUCT_ANALOGS}`] })).items).toEqual([])
+  })
+
+  it('chatTools: все пять инструментов привязаны к своим исполнителям; промпт их называет', async () => {
+    const { chatTools, SYSTEM_PROMPT, compareInput } = await import('../server/utils/aiChat')
+    const h = chatToolHandlers({ search: async () => [], details: async () => null })
+    const t = chatTools(h)
+    expect(Object.keys(t)).toEqual(['search_products', 'get_product', 'find_analogs', 'compare_products', 'show_products'])
+    expect(t.find_analogs.execute).toBe(h.analogs)
+    expect(t.compare_products.execute).toBe(h.compare)
+    for (const name of ['search_products', 'get_product', 'find_analogs', 'compare_products', 'show_products']) expect(SYSTEM_PROMPT).toContain(name)
+    expect(compareInput.safeParse({ guids: ['a'] }).success).toBe(false)
+    expect(compareInput.safeParse({ guids: ['a', 'b', 'c', 'd', 'e'] }).success).toBe(false)
   })
 })
