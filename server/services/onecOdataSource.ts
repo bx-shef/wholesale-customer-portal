@@ -177,6 +177,8 @@ export class OdataOnec {
       // Рейс заказа — из рейсов (в документе заказа его нет): позднейший по плановому началу.
       if (this.options.tripsEnabled) {
         const tripOf = new Map<string, { guid: string, at: string }>()
+        // Рейсы не прочитались — прогон статусов падает целиком: с `tripGuid: null` ЛК стёр бы у
+        // заказов уже известные рейсы (applyOnecStatuses ставит рейс из строки как есть).
         for (const t of (await this.tripsSnapshot()).rows) {
           for (const o of t.orders) {
             const prev = tripOf.get(o.orderGuid)
@@ -185,16 +187,20 @@ export class OdataOnec {
         }
         for (const r of rows) {
           r.row.tripGuid = tripOf.get(r.row.orderGuid)?.guid ?? null
-          r.version = `${r.version}|${r.row.tripGuid ?? ''}`
+          if (r.version) r.version = `${r.version}|${r.row.tripGuid ?? ''}`
         }
       }
-      const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
-      this.versions.put('order', stamped.updates)
-      return sortSnapshot<OrderStatusRowT>(stamped.rows, o => o.orderGuid)
+      return sortSnapshot<OrderStatusRowT>(this.stampOrders(rows), o => o.orderGuid)
     })
     return pageOfSorted(all, params)
   }
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
+  private stampOrders(rows: Array<{ row: OrderStatusRowT, version: string }>): OrderStatusRowT[] {
+    const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
+    this.versions.put('order', stamped.updates)
+    return stamped.rows
+  }
+
   /** Рейсы (§2.9): задания на перевозку за окно, момент — по версии документа и его заказов. */
   async trips(params: ListParams = {}): Promise<z.infer<typeof TripsPage>> {
     return pageOfSorted(await this.tripsSnapshot(), params)

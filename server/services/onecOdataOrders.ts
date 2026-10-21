@@ -231,6 +231,7 @@ export async function readOrderStatuses(client: ODataClient, now: Date): Promise
   })
   return docs.flatMap((d) => {
     const row = orderStatusRow(d, `2000-01-01T00:00:00${ONEC_TZ}`)
-    return row ? [{ row, version: `${d.DataVersion ?? ''}|${row.status}|${row.shipmentDate ?? ''}` }] : []
+    // Без DataVersion — пустая версия: такой заказ считается изменённым на каждом прогоне.
+    return row ? [{ row, version: d.DataVersion ? `${d.DataVersion}|${row.status}|${row.shipmentDate ?? ''}` : '' }] : []
   })
 }

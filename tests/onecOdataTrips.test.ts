@@ -81,6 +81,19 @@ describe('рейсы по OData: края', () => {
     expect(mapTrip(doc({ ДатаВремяРейсаПланС: undefined }), orders, '')).toBeNull()
   })
 
+  it('кривой GUID распоряжения не попадает в $filter', async () => {
+    const seen: string[] = []
+    const f: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      seen.push(url)
+      return Response.json({ value: url.includes('Document_ЗаданиеНаПеревозку') ? [doc({ Распоряжения: [{ Распоряжение: "x') or (1 eq 1", Распоряжение_Type: ORDER_TYPE }, { Распоряжение: G(70), Распоряжение_Type: ORDER_TYPE }] })] : [] })
+    }
+    await readTrips(client(f), new Date('2026-10-21T09:00:00Z'))
+    const q = seen.find(u => u.includes('Document_ЗаказКлиента'))!
+    expect(q).toContain(G(70))
+    expect(q).not.toContain('1 eq 1')
+  })
+
   it('заказы пачками по 40; сломанный рейс пропущен; пустой DataVersion — версия пустая; нет табличных частей — ошибка', async () => {
     const many = Array.from({ length: 41 }, (_, i) => ({ Распоряжение: G(200 + i), Распоряжение_Type: ORDER_TYPE }))
     const seen: string[] = []
@@ -114,6 +127,13 @@ describe('рейсы по OData: края', () => {
     await expect(new OdataOnec(client(f), sqliteVersionStore(db), {}).trips({})).rejects.toMatchObject({ status: 501 })
     const on = new OdataOnec(client(f), sqliteVersionStore(db), { tripsEnabled: true, ttlMs: 0 })
     expect((await on.orderStatus({})).items[0]).toMatchObject({ orderGuid: G(70), tripGuid: G(1) })
+    // Два рейса с заказом: позднейший; удалённый не назначается.
+    const two: typeof fetch = async (u, i) => decodeURIComponent(String(u)).includes('Document_ЗаданиеНаПеревозку')
+      ? Response.json({ value: [doc(), doc({ Ref_Key: G(2), ДатаВремяРейсаПланС: '2026-10-25T08:00:00' }), doc({ Ref_Key: G(3), DeletionMark: true, ДатаВремяРейсаПланС: '2026-10-27T08:00:00' })] })
+      : f(u, i)
+    const db2 = new DatabaseSync(':memory:')
+    migrate(db2)
+    expect((await new OdataOnec(client(two), sqliteVersionStore(db2), { tripsEnabled: true, ttlMs: 0 }).orderStatus({})).items[0]!.tripGuid).toBe(G(2))
     const off = new OdataOnec(client(f), sqliteVersionStore(db), { ttlMs: 0 })
     expect((await off.orderStatus({})).items[0]!.tripGuid).toBeNull()
   })
