@@ -2,13 +2,13 @@
 import { z } from 'zod'
 import { mockFetch } from '../mocks/onec/fetch'
 import { checkBaseUrl, runOnecProbe } from '../utils/onecProbe'
-import { fieldsText, runODataCatalogProbe, runODataPricesProbe, runODataProbe } from '../utils/odataProbe'
+import { fieldsText, runODataCatalogProbe, runODataClientsProbe, runODataPricesProbe, runODataProbe } from '../utils/odataProbe'
 import { createRateLimiter } from '../utils/rateLimit'
 import { standJobs } from '../utils/onecTestJobs'
 
 const runs = createRateLimiter(30, 60 * 60_000)
 const body = z.object({
-  target: z.enum(['onec', 'odata', 'odata-catalog', 'odata-prices', 'mock']),
+  target: z.enum(['onec', 'odata', 'odata-catalog', 'odata-prices', 'odata-clients', 'mock']),
   baseUrl: z.string().max(500).optional(),
   authKind: z.enum(['bearer', 'basic']).default('bearer'),
   token: z.string().max(500).optional(),
@@ -43,6 +43,10 @@ export default defineEventHandler(async (event) => {
       log(`${(e.ms / 1000).toFixed(1)} с · ${e.label} → ${e.error ?? `${e.rows} строк`}`)
     if (d.target === 'odata-prices') {
       const checks = await runODataPricesProbe({ baseUrl, auth, fetch, onRequest, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
+      return { target: baseUrl, ms: Date.now() - started, checks }
+    }
+    if (d.target === 'odata-clients') {
+      const checks = await runODataClientsProbe({ baseUrl, auth, fetch, onRequest })
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata-catalog') {

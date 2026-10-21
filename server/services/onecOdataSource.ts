@@ -7,14 +7,15 @@
  * (снимок держится `SNAPSHOT_TTL_MS`), а страницы «изменённого с момента» отдаёт
  * `snapshotPage`. Момент изменения товара ЛК ведёт сам по версии объекта 1С (`odata_version`).
  *
- * Клиенты, заказы, рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
+ * Заказы, рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
  * подставляют мок — чужие данные в CRM хуже, чем отказ потока.
  */
 import type { z } from 'zod'
-import type { CatalogPage, ImageFileT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
+import type { CatalogPage, ClientsPage, ClientT, ImageFileT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
 import { pageOfSorted, sortSnapshot, stampByVersion, type SortedSnapshot, type VersionMark } from '../utils/odataSnapshot'
 import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
+import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
  * Сколько живёт прочитанный снимок после того, как дочитан: прогон синхронизации листает его
@@ -26,7 +27,7 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
  * Потоки, которых по OData ещё нет (docs/onec-odata.md): в режиме `odata` расписание их не
  * запускает, а «Состояние системы» и оповещения не ждут от них прогонов.
  */
-export const ODATA_UNSUPPORTED_FLOWS = ['clients', 'orders', 'schedule', 'trips'] as const
+export const ODATA_UNSUPPORTED_FLOWS = ['orders', 'schedule', 'trips'] as const
 
 export interface VersionStore {
   get(kind: string): Map<string, VersionMark>
@@ -132,7 +133,20 @@ export class OdataOnec {
     return guids
   }
 
-  async clients(_params?: ListParams): Promise<never> { return notYet('clients') }
+  /** Клиенты (§2.1): партнёры с соглашениями, моменты — по версии клиента целиком (onecOdataClients). */
+  async clients(params: ListParams = {}): Promise<z.infer<typeof ClientsPage>> {
+    const all = await this.snapshot('clients', async () => {
+      const src = await readClientSources(this.client)
+      const stats: ClientStats = emptyClientStats()
+      const rows = checkedClients(mapClients(src, minskDay(this.options.now?.() ?? new Date()), stats))
+      const stamped = stampByVersion(rows.map(r => ({ key: r.client.guid, version: r.version, row: r.client })), this.versions.get('client'), this.nowIso())
+      this.versions.put('client', stamped.updates)
+      this.options.log?.(`[onec:odata] clients: ${stats.clients}, ${stamped.updates.length} changed, no agreement ${stats.noAgreement}, several ${stats.manyAgreements}${src.missing.length ? `; missing: ${src.missing.join(', ')}` : ''}`)
+      return sortSnapshot<ClientT>(stamped.rows, c => c.guid)
+    })
+    return pageOfSorted(all, params)
+  }
+
   async createOrder(_input?: unknown): Promise<never> { return notYet('createOrder') }
   async orderStatus(_params?: ListParams): Promise<never> { return notYet('orderStatus') }
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
@@ -142,4 +156,9 @@ export class OdataOnec {
 function notYet(method: string): never {
   // 501 не повторяется (OnecError.retryable): поток падает сразу и виден в «Состоянии системы».
   throw new OnecError('http', `1C OData: ${method} is not implemented yet (docs/onec-odata.md)`, 501)
+}
+
+/** Сегодня по Минску (ГГГГ-ММ-ДД): соглашения действуют по датам 1С, а 1С живёт по Минску. */
+export function minskDay(d: Date): string {
+  return new Date(d.getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
 }
