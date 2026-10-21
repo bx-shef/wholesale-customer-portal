@@ -60,7 +60,12 @@ export default defineNuxtConfig({
       '4-59/10 * * * *': ['sync:trips'],
       '17 3 * * *': ['maintenance:prune'],
     },
-    routeRules: { '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } } },
+    routeRules: {
+      '/**': { headers: { 'X-Robots-Tag': 'noindex, nofollow' } },
+      // Воркер и манифест — без кэша браузера: иначе исправленный sw.js доходит до клиентов с опозданием.
+      '/sw.js': { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex, nofollow' } },
+      '/manifest.webmanifest': { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex, nofollow' } },
+    },
   },
 
   eslint: {

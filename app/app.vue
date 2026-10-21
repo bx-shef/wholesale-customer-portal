@@ -18,7 +18,7 @@ onMounted(registerServiceWorker)
       <B24Alert
         v-if="!online"
         color="air-primary-warning"
-        title="Нет сети: каталог — из сохранённого, цены и остатки могли измениться. Заявку отправите, когда сеть вернётся."
+        title="Нет сети: открыто сохранённое ранее, цены и остатки могли измениться. Заявку отправьте, когда сеть вернётся."
         class="rounded-none"
       />
       <NuxtPage />

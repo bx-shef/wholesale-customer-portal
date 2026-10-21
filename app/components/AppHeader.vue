@@ -19,10 +19,16 @@ function openAi() {
   ai.toggle()
 }
 onMounted(() => {
-  if (me.value) cart.load(me.value.company.id)
+  if (me.value) {
+    cart.load(me.value.company.id)
+    setCacheCompany(me.value.company.id)
+  }
 })
 watch(me, (v) => {
-  if (v) cart.load(v.company.id)
+  if (v) {
+    cart.load(v.company.id)
+    setCacheCompany(v.company.id)
+  }
 })
 
 // Длинное название товара не должно наезжать на меню шапки.
@@ -32,10 +38,15 @@ const shortTitle = computed(() => {
 })
 
 async function logout() {
-  await $fetch('/api/auth/logout', { method: 'POST' })
-  cart.forget()
-  await clearCatalogCache()
-  await navigateTo('/login')
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' })
+  }
+  finally {
+    // Даже если сеть пропала: корзина и сохранённый каталог с устройства уходят.
+    cart.forget()
+    await clearCatalogCache()
+    await navigateTo('/login')
+  }
 }
 </script>
 
