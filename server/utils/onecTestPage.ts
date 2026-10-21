@@ -101,6 +101,12 @@ export const ONEC_TEST_PAGE = `<!doctype html>
   }))
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
   document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
+  // Длительность по-человечески: «850 мс», «12 с», «2 мин 45 с».
+  const dur = (ms) => {
+    if (ms < 1000) return ms + ' мс'
+    const sec = Math.round(ms / 1000)
+    return sec < 60 ? sec + ' с' : Math.floor(sec / 60) + ' мин' + (sec % 60 ? ' ' + (sec % 60) + ' с' : '')
+  }
   const LABEL = { ok: 'ОК', fail: 'Ошибка', skip: 'Пропуск' }
 
   /*
@@ -208,7 +214,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
           await new Promise((r) => setTimeout(r, 2000))
           const sec = Math.round((Date.now() - t0) / 1000)
           if (sec > 300) throw new Error('Прогон идёт дольше 5 минут — 1С отвечает слишком медленно')
-          report.innerHTML = '<p class="muted">Проверяем… ' + sec + ' с</p>'
+          report.innerHTML = '<p class="muted">Проверяем… ' + dur(sec * 1000) + '</p>'
           const r = await fetch('/api/onec-test/result?id=' + encodeURIComponent(data.job), { headers: { 'x-lk-stand': '1' } })
           const j = await r.json().catch(() => ({}))
           if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status))
@@ -218,8 +224,8 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       const ok = data.checks.filter((c) => c.status === 'ok').length
       const fail = data.checks.filter((c) => c.status === 'fail').length
       report.innerHTML = '<div class="summary ' + (fail ? 'fail' : 'ok') + '">' + esc(data.target) + ': пройдено ' + ok + ' из ' + data.checks.length
-        + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + (data.ms / 1000).toFixed(1) + ' с</div><table>'
-        + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span>' + fieldsHtml(c.fields) + '</td><td class="ms">' + (c.status === 'skip' ? '' : c.ms + ' мс') + '</td></tr>').join('')
+        + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + dur(data.ms) + '</div><table>'
+        + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span>' + fieldsHtml(c.fields) + '</td><td class="ms">' + (c.status === 'skip' ? '' : dur(c.ms)) + '</td></tr>').join('')
         + '</table>' + (data.fieldsText ? '<button id="copy" type="button" class="secondary">Скопировать поля для разработчика</button>' : '')
       if (data.fieldsText) $('copy').addEventListener('click', () => navigator.clipboard.writeText(data.fieldsText).then(() => { $('copy').textContent = 'Скопировано' }))
     }
