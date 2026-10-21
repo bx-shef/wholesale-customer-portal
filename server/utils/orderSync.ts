@@ -28,6 +28,11 @@ export interface OrderSyncDeps {
   b24: Pick<B24Orders, 'createDeal' | 'stages' | 'dealStage' | 'moveDeal' | 'comment'>
   createOnecOrder: (order: OrderRequestT) => Promise<{ orderGuid: string, number: string, status: OrderStatusT, items: OrderLineFactT[] }>
   schedules: () => Promise<TripSchedule[]>
+  /**
+   * Заказы в 1С включены. `false` (OData без `ONEC_ODATA_ORDERS`): подтверждённые заявки ждут, а
+   * досылка в CRM и отчёт в сделки работают — это не запись в 1С.
+   */
+  onecOrders?: boolean
   now?: () => Date
 }
 
@@ -91,7 +96,7 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
   const getStages = async () => (stages ??= await deps.b24.stages())
 
   // 2. Подтверждение менеджером → заказ в 1С.
-  const waiting = deps.orders.awaitingConfirmation()
+  const waiting = deps.onecOrders === false ? [] : deps.orders.awaitingConfirmation()
   if (waiting.length) {
     const all = await getStages()
     const initial = all.find(s => s.semantics === 'process')

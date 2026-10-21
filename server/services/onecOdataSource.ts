@@ -7,14 +7,15 @@
  * (снимок держится `SNAPSHOT_TTL_MS`), а страницы «изменённого с момента» отдаёт
  * `snapshotPage`. Момент изменения товара ЛК ведёт сам по версии объекта 1С (`odata_version`).
  *
- * Заказы, рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
+ * Рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
  * подставляют мок — чужие данные в CRM хуже, чем отказ потока.
  */
 import type { z } from 'zod'
-import type { CatalogPage, ClientsPage, ClientT, ImageFileT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
+import type { CatalogPage, ClientsPage, ClientT, ImageFileT, OrderCreated, OrderRequest, OrderStatusPage, OrderStatusRowT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
 import { pageOfSorted, sortSnapshot, stampByVersion, type SortedSnapshot, type VersionMark } from '../utils/odataSnapshot'
 import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
+import { createOdataOrder, readOrderStatuses } from './onecOdataOrders'
 import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
@@ -27,15 +28,16 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
  * Потоки, которых по OData ещё нет (docs/onec-odata.md): в режиме `odata` расписание их не
  * запускает, а «Состояние системы» и оповещения не ждут от них прогонов.
  */
-export const ODATA_UNSUPPORTED_FLOWS = ['orders', 'schedule', 'trips'] as const
+export const ODATA_UNSUPPORTED_FLOWS = ['schedule', 'trips'] as const
 
 /**
- * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных, а клиентов — пока
- * `ONEC_ODATA_CLIENTS` не включён (клиенты уходят в компании Б24, тестовую 1С в боевую CRM не пишем).
+ * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; клиентов — пока
+ * не включён `ONEC_ODATA_CLIENTS` (клиенты уходят в компании Б24), заказов — пока не включён
+ * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С).
  */
-export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean }): readonly string[] {
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean }): readonly string[] {
   if (env.onecMock || env.onecMode !== 'odata') return []
-  return env.onecOdataClients ? ODATA_UNSUPPORTED_FLOWS : ['clients', ...ODATA_UNSUPPORTED_FLOWS]
+  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...ODATA_UNSUPPORTED_FLOWS]
 }
 
 export interface VersionStore {
@@ -46,6 +48,10 @@ export interface VersionStore {
 export interface OdataOnecOptions {
   /** Виды цен по наименованию (`ONEC_PRICE_TYPES`); пусто — все. */
   priceTypeNames?: string[]
+  /** Склад заказа, если соглашение его не задаёт (`ONEC_STOCK_WAREHOUSES`, первый найденный). */
+  warehouseNames?: string[]
+  /** Запись заказов в 1С включена (`ONEC_ODATA_ORDERS`); тестовые заказы стенда — всегда. */
+  ordersEnabled?: boolean
   now?: () => Date
   ttlMs?: number
   log?: (line: string) => void
@@ -155,8 +161,21 @@ export class OdataOnec {
     return pageOfSorted(all, params)
   }
 
-  async createOrder(_input?: unknown): Promise<never> { return notYet('createOrder') }
-  async orderStatus(_params?: ListParams): Promise<never> { return notYet('orderStatus') }
+  /** Заказ по заявке ЛК (§2.6): `Document_ЗаказКлиента`, повтор без дубля (onecOdataOrders). */
+  createOrder(input: z.input<typeof OrderRequest>): Promise<z.infer<typeof OrderCreated>> {
+    return createOdataOrder(this.client, input, { warehouseNames: this.options.warehouseNames ?? [], enabled: this.options.ordersEnabled === true, now: this.options.now?.() })
+  }
+
+  /** Статусы заказов ЛК (§2.7): момент — по версии документа. */
+  async orderStatus(params: ListParams = {}): Promise<z.infer<typeof OrderStatusPage>> {
+    const all = await this.snapshot('orders', async () => {
+      const rows = await readOrderStatuses(this.client, this.options.now?.() ?? new Date())
+      const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
+      this.versions.put('order', stamped.updates)
+      return sortSnapshot<OrderStatusRowT>(stamped.rows, o => o.orderGuid)
+    })
+    return pageOfSorted(all, params)
+  }
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
   async trips(_params?: ListParams): Promise<never> { return notYet('trips') }
 }

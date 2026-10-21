@@ -113,11 +113,12 @@ describe('mapClients', () => {
 
   it('unsupportedFlowsFor: клиенты по OData — только с ONEC_ODATA_CLIENTS', async () => {
     const { unsupportedFlowsFor } = await import('../server/services/onecOdataSource')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false })).toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true })).not.toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true })).toContain('orders')
-    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false })).toEqual([])
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false })).toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false })).not.toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false })).toContain('orders')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: true })).toEqual(['clients', 'schedule', 'trips'])
+    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false, onecOdataOrders: false })).toEqual([])
   })
 
   it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {
@@ -233,7 +234,9 @@ describe('стенд: runODataClientsProbe', async () => {
       const set = /standard\.odata\/([^?]+)\?/.exec(decodeURIComponent(String(u)))![1]!
       return Response.json({ value: data[set] ?? [] })
     }
-    const [c] = await runODataClientsProbe({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    const [c, order] = await runODataClientsProbe({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    // Адресов в данных нет — тестовый заказ пропущен, а не упал.
+    expect(order).toMatchObject({ id: 'order', status: 'skip' })
     expect(c).toMatchObject({ status: 'ok' })
     expect(c!.detail).toContain('клиентов: 1, с соглашением: 1')
     const fields = Object.fromEntries(c!.fields!.map(f => [f.name, f.properties.map(p => p.name)]))

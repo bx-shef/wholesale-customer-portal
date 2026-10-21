@@ -9,6 +9,7 @@ import { onecAuthHeader, type OnecAuth } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
 import { agreementActive, emptyClientStats, mapClients, readClientSources } from '../services/onecOdataClients'
 import { minskDay } from '../services/onecOdataSource'
+import { createOdataOrder } from '../services/onecOdataOrders'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
 export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
@@ -281,7 +282,8 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
     const perClient = new Map<string, number>()
     for (const a of src.agreements) if (agreementActive(a, today) && a.Партнер_Key) perClient.set(a.Партнер_Key.toLowerCase(), (perClient.get(a.Партнер_Key.toLowerCase()) ?? 0) + 1)
     const addresses = src.contacts.filter(c => c.Тип === 'Адрес')
-    return [{
+    const checks: ODataCheck[] = []
+    checks.push({
       id: 'clients',
       title: 'Клиенты по контракту',
       status: rows.length ? 'ok' : 'fail',
@@ -296,7 +298,9 @@ export async function runODataClientsProbe(input: ODataProbeInput, now: () => nu
         { name: 'Образец', properties: rows.slice(0, 10).map(({ client: c }) => ({ name: `${sampleName(c.name)} · УНП ${c.unp ? 'есть' : 'нет'} · ${c.region?.name ?? 'без зоны'} · ${c.contract ? `соглашение ${c.contract.number || c.contract.guid} · ${priceTypes.get(c.contract.priceTypeGuid) || 'вид цен ?'} · ${c.contract.currency}` : 'без соглашения'} · адресов ${c.deliveryAddresses.length}${c.shipmentBlocked ? ' · запрет отгрузки' : ''}`, type: '' })) },
       ],
       ms: now() - started,
-    }]
+    })
+    checks.push(await testOrderCheck(client, rows.map(r => r.client), input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES, now))
+    return checks
   }
   catch (e) {
     return [{ id: 'clients', title: 'Клиенты по контракту', status: 'fail', detail: reason(e), ms: now() - started }]
@@ -310,4 +314,32 @@ const ORG_FORM = /^(?:(?:ООО|ОАО|ЗАО|АО|ПАО|ОДО|ЧУП|ЧТУП
 export function sampleName(name: string): string {
   const n = name.trim()
   return ORG_FORM.test(n) ? n : `${n.slice(0, 2)}… (${n.length} симв.)`
+}
+
+/**
+ * Тестовый заказ (`test: true`) для первого клиента с соглашением и адресом: заказ ЛК проверяет все
+ * ссылки (соглашение, контрагент, склад, адрес, товар) и документ в 1С не создаёт.
+ */
+async function testOrderCheck(client: ODataClient, clients: Array<{ guid: string, contract: { guid: string } | null, deliveryAddresses: Array<{ guid: string }> }>, warehouses: string[], now: () => number): Promise<ODataCheck> {
+  const started = now()
+  const title = 'Тестовый заказ без записи (§1.7)'
+  const c = clients.find(x => x.contract && x.deliveryAddresses.length)
+  if (!c) return { id: 'order', title, status: 'skip', detail: 'нет клиента с соглашением и адресом', ms: 0 }
+  try {
+    const [item] = await client.list<{ Ref_Key: string }>('Catalog_Номенклатура', { $select: 'Ref_Key', $filter: 'IsFolder eq false and DeletionMark eq false', $top: 1 })
+    if (!item) return { id: 'order', title, status: 'skip', detail: 'нет товаров', ms: now() - started }
+    const r = await createOdataOrder(client, {
+      externalId: `stand-${now()}`,
+      clientGuid: c.guid,
+      contractGuid: c.contract!.guid,
+      deliveryAddressGuid: c.deliveryAddresses[0]!.guid,
+      deliveryDate: minskDay(new Date(now() + 3 * 86_400_000)),
+      test: true,
+      items: [{ itemGuid: item.Ref_Key, qty: 1, price: 1 }],
+    }, { warehouseNames: warehouses, enabled: false })
+    return { id: 'order', title, status: 'ok', detail: `ссылки найдены: соглашение, контрагент, склад, адрес, товар; ответ ${r.number}`, ms: now() - started }
+  }
+  catch (e) {
+    return { id: 'order', title, status: 'fail', detail: reason(e), ms: now() - started }
+  }
 }

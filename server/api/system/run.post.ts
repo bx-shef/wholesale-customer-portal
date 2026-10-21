@@ -12,7 +12,8 @@ export default defineEventHandler(async (event) => {
   if (!parsed.success) throw createError({ statusCode: 400, message: 'Неизвестный поток' })
   const flow = parsed.data.flow
   // В режиме OData часть потоков ещё не сделана: ручной запуск записал бы сбой, которого никто не увидит.
-  if (onecUnsupportedFlows().includes(flow)) throw createError({ statusCode: 409, message: 'Этот обмен по OData ещё не сделан' })
+  // Заявки — исключение: без заказов в 1С досылка в CRM и отчёт в сделки всё равно нужны.
+  if (flow !== 'orders' && onecUnsupportedFlows().includes(flow)) throw createError({ statusCode: 409, message: 'Этот обмен по OData ещё не сделан' })
   const now = Date.now()
   const verdict = manualRunVerdict(flow, running, lastStartedAt.get(flow), now)
   if (!verdict.ok) {

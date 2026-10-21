@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata-clients') {
-      const checks = await runODataClientsProbe({ baseUrl, auth, fetch, onRequest })
+      const checks = await runODataClientsProbe({ baseUrl, auth, fetch, onRequest, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata-catalog') {
