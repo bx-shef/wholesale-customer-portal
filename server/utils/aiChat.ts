@@ -56,7 +56,7 @@ export const SYSTEM_PROMPT = `Ты — помощник оптового пок�
 
 /** Товар для модели: только то, что нужно для ответа. */
 function brief(i: CatalogItemView) {
-  return { guid: i.guid, name: i.name, sku: i.sku, brand: i.brand, unit: i.unit, packQty: i.packQty, available: i.available, price: i.price ? `${i.price.value} ${i.price.currency}` : 'нет цены' }
+  return { guid: i.guid, name: i.name.slice(0, 200), sku: i.sku.slice(0, 64), brand: i.brand.slice(0, 64), unit: i.unit, packQty: i.packQty, available: i.available, price: i.price ? `${i.price.value} ${i.price.currency}` : 'нет цены' }
 }
 
 export const searchInput = z.object({ query: z.string().min(1).max(100), in_stock: z.boolean().optional() })

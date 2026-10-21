@@ -96,8 +96,16 @@ function toolText(p: Part) {
     const q = String(toolInput(p).query ?? '')
     return done ? `Нашёл по «${q}»: ${toolOutput<{ found: number }>(p)?.found ?? 0}` : `Ищу «${q}»`
   }
-  if (p.type === 'tool-find_analogs') return done ? `Аналогов: ${toolOutput<{ found?: number }>(p)?.found ?? 0}` : 'Ищу аналоги'
-  if (p.type === 'tool-compare_products') return done ? `Сравнил товаров: ${toolOutput<{ items?: unknown[] }>(p)?.items?.length ?? 0}` : 'Сравниваю товары'
+  if (p.type === 'tool-find_analogs') {
+    const o = toolOutput<{ found?: number, total?: number, error?: string }>(p)
+    if (!done) return 'Ищу аналоги'
+    return o?.error ? 'Товар не найден' : `Аналогов: ${o?.found ?? 0}${o?.total && o.total !== o.found ? ` из ${o.total}` : ''}`
+  }
+  if (p.type === 'tool-compare_products') {
+    const o = toolOutput<{ items?: unknown[], error?: string }>(p)
+    if (!done) return 'Сравниваю товары'
+    return o?.error ? 'Сравнить не удалось' : `Сравнил товаров: ${o?.items?.length ?? 0}`
+  }
   return done ? 'Посмотрел карточку товара' : 'Смотрю карточку товара'
 }
 const STEP_TOOLS = new Set(['tool-search_products', 'tool-get_product', 'tool-find_analogs', 'tool-compare_products'])
