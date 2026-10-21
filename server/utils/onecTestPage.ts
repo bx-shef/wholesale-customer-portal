@@ -43,7 +43,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
     <p class="muted">Стенд по очереди вызывает методы контракта <b>с сервера ЛК</b> и сверяет ответы с описанием:
     <a href="https://github.com/bx-shef/wholesale-customer-portal/blob/main/docs/onec-contract.md" target="_blank" rel="noopener">спецификация</a>.
     Все запросы идут с заголовком <code>X-LK-Test: 1</code>. Сервер ЛК токен и пароль не сохраняет и в журнал не пишет.</p>
-    <form id="f">
+    <form id="f" autocomplete="off">
       <div class="row">
         <label><input type="radio" name="target" value="onec" checked> Сервис 1С</label>
         <label><input type="radio" name="target" value="odata"> OData 1С — разведка полей</label>
@@ -53,7 +53,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       </div>
       <div id="onec-fields">
         <label for="baseUrl">Базовый адрес сервиса</label>
-        <input id="baseUrl" type="text" placeholder="https://1c.algena.by/base/hs/lk" autocomplete="off">
+        <input id="baseUrl" name="onec-base-url" type="url" inputmode="url" spellcheck="false" placeholder="https://1c.algena.by/base/hs/lk" autocomplete="off">
         <div class="row">
           <label><input type="radio" name="authKind" value="bearer" checked> Токен (Bearer)</label>
           <label><input type="radio" name="authKind" value="basic"> Логин и пароль 1С (Basic)</label>
@@ -64,7 +64,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         </div>
         <div id="basic-fields" hidden>
           <label for="login">Логин пользователя 1С</label>
-          <input id="login" type="text" autocomplete="off">
+          <input id="login" name="onec-login" type="text" autocomplete="off">
           <label for="password">Пароль</label>
           <input id="password" type="password" autocomplete="off">
         </div>
@@ -100,7 +100,12 @@ export const ONEC_TEST_PAGE = `<!doctype html>
     try { localStorage.setItem(TARGET_KEY, target()) } catch {}
   }))
   const authKind = () => document.querySelector('input[name=authKind]:checked').value
-  document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }))
+  // Видимость полей — по отмеченному способу всегда, в том числе после того, как браузер сам
+  // восстановил отметки при возврате на страницу (событие change при этом не приходит).
+  const applyAuth = () => { $('basic-fields').hidden = authKind() !== 'basic'; $('bearer-fields').hidden = authKind() === 'basic' }
+  applyAuth()
+  window.addEventListener('pageshow', () => { applyAuth(); applyTarget() })
+  document.querySelectorAll('input[name=authKind]').forEach((r) => r.addEventListener('change', applyAuth))
   // Длительность по-человечески: «850 мс», «12 с», «2 мин 45 с».
   const dur = (ms) => {
     if (ms < 1000) return ms + ' мс'
