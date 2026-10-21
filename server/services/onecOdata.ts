@@ -306,7 +306,8 @@ export class ODataClient {
 
   /**
    * Прайс по видам цен (§2.4) — действующие цены: срез последних
-   * `InformationRegister_ЦеныНоменклатуры_RecordType/SliceLast()` страницами; запасной путь — `…/SliceLast()` у самого регистра.
+   * `InformationRegister_ЦеныНоменклатуры_RecordType/SliceLast()` страницами; запасной путь —
+   * `InformationRegister_ЦеныНоменклатуры/SliceLast()`; оба отказали — пустой результат, причины в `tried`.
    * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
    */
   async prices(opts: { priceTypes?: string[], limit?: number, items?: string[] } = {}): Promise<PricesResult> {
