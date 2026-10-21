@@ -312,7 +312,7 @@ export class ODataClient {
   async prices(opts: { priceTypes?: string[], limit?: number, items?: string[] } = {}): Promise<PricesResult> {
     const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${assertGuid(g)}'`).join(' or ') } : {}
     // Цены продажи — в `ЦеныНоменклатуры` (ответ программиста 1С 2026-10-21; `ЦеныНоменклатуры25`
-    // пуст). Срез последних 1С отдаёт; читаем его страницами: в регистре сотни тысяч записей,
+    // пуст). Срез последних 1С отдаёт; читаем его страницами: в регистре более 4 млн записей (история цен),
     // один большой ответ кладёт процесс ЛК по памяти (502 того же дня).
     const register = PRICE_REGISTERS[0]
     const pageSize = Math.min(opts.limit ?? ODATA_PAGE, ODATA_PAGE)

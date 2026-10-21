@@ -36,7 +36,7 @@ BitrixVM (`docs/DEPLOY.md`, таргет 2).
    воронка сделок «Заявки ЛК» (`shared/b24Setup.ts`). Вкладка `CRM_COMPANY_DETAIL_TAB` и
    `event.bind` — не вебхуком: им нужен контекст приложения (`docs/REST_METHODS.md`), это этап 2.
 7. График доставки и рейсы в Б24 не заполняются: они приходят из 1С — на стенде из мока
-   (`docs/onec-contract.md` §2.8–2.9); по OData — только рейсы, при `ONEC_ODATA_TRIPS=true`,
+   (`docs/onec-contract.md` §2.8–2.9); из доставки по OData — только рейсы, при `ONEC_ODATA_TRIPS=true`,
    графика в 1С нет (#45).
 8. ЛК рядом со стендом: `cp .env.example .env`, вписать `B24_WEBHOOK_URL`, `make build-local`,
    `curl -s 127.0.0.1:3000/api/health` — `config.b24Webhook: true`.
