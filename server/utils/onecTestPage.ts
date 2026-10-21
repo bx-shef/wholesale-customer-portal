@@ -199,8 +199,22 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         headers: { 'content-type': 'application/json', 'x-lk-stand': '1' },
         body: JSON.stringify({ target: target(), baseUrl: $('baseUrl').value, authKind: authKind(), token: $('token').value, login: $('login').value, password: $('password').value, allowOrder: $('allowOrder').checked }),
       })
-      const data = await res.json().catch(() => ({}))
+      let data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.message || ('HTTP ' + res.status))
+      // Долгий прогон идёт в фоне: опрашиваем каждые 2 с, не дольше 5 минут, и показываем, сколько прошло.
+      if (data.job) {
+        const t0 = Date.now()
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 2000))
+          const sec = Math.round((Date.now() - t0) / 1000)
+          if (sec > 300) throw new Error('Прогон идёт дольше 5 минут — 1С отвечает слишком медленно')
+          report.innerHTML = '<p class="muted">Проверяем… ' + sec + ' с</p>'
+          const r = await fetch('/api/onec-test/result?id=' + encodeURIComponent(data.job), { headers: { 'x-lk-stand': '1' } })
+          const j = await r.json().catch(() => ({}))
+          if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status))
+          if (j.status === 'done') { data = j.result; break }
+        }
+      }
       const ok = data.checks.filter((c) => c.status === 'ok').length
       const fail = data.checks.filter((c) => c.status === 'fail').length
       report.innerHTML = '<div class="summary ' + (fail ? 'fail' : 'ok') + '">' + esc(data.target) + ': пройдено ' + ok + ' из ' + data.checks.length
