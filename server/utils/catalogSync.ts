@@ -108,12 +108,24 @@ export function syncStock(): Promise<SyncRun> {
       consume: async rows => catalog.saveStock(rows),
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:stock] ${run.error}`)
-    // Снимок целиком (OData): строки старше снимка — товар ушёл со склада (правило — shouldPruneStock).
-    if (shouldPruneStock({ snapshot: !!onec.stockIsSnapshot, status: run.status, received: run.received, cursorTo: run.cursorTo, storedRows })) {
-      const gone = catalog.pruneStockBefore(run.cursorTo!)
-      if (gone) console.info(`[sync:stock] pruned ${gone} rows not in snapshot`)
-    }
-    else if (onec.stockIsSnapshot && run.status === 'done') console.warn(`[sync:stock] snapshot of ${run.received} rows vs ${storedRows} stored — old rows kept`)
+    applyStockSnapshot(run, { snapshot: !!onec.stockIsSnapshot, storedRows, catalog })
     return run
   })
+}
+
+/**
+ * После прогона остатков снимком (OData): строки старше снимка — товар ушёл со склада. Правило —
+ * `shouldPruneStock`; не прошло — старые строки остаются, в логе предупреждение. Возвращает число удалённых.
+ */
+export function applyStockSnapshot(
+  run: Pick<SyncRun, 'status' | 'received' | 'cursorTo'>,
+  o: { snapshot: boolean, storedRows: number, catalog: Pick<CatalogStore, 'pruneStockBefore'> },
+): number {
+  if (shouldPruneStock({ snapshot: o.snapshot, status: run.status, received: run.received, cursorTo: run.cursorTo, storedRows: o.storedRows })) {
+    const gone = o.catalog.pruneStockBefore(run.cursorTo!)
+    if (gone) console.info(`[sync:stock] pruned ${gone} rows not in snapshot`)
+    return gone
+  }
+  if (o.snapshot && run.status === 'done') console.warn(`[sync:stock] snapshot of ${run.received} rows vs ${o.storedRows} stored — old rows kept`)
+  return 0
 }

@@ -99,3 +99,53 @@ describe('потоки и режим', () => {
     warn.mockRestore()
   })
 })
+
+describe('ODataClient: пределы ответа и запрос каталога', async () => {
+  const { ODataClient, ODATA_MAX_PAGES, ODATA_PAGE, readBodyLimited } = await import('../server/services/onecOdata')
+  const mk = (fake: typeof fetch) => new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+
+  it('readBodyLimited считает байты и обрывает поток', async () => {
+    const stream = (parts: string[]) => new Response(new ReadableStream({ start(c) { for (const p of parts) c.enqueue(new TextEncoder().encode(p)); c.close() } }))
+    expect(await readBodyLimited(stream(['ab', 'вг']), 6)).toBe('abвг')
+    // «вг» — 4 байта, а не 2 символа: предел в байтах.
+    expect(await readBodyLimited(stream(['ab', 'вг']), 5)).toBeNull()
+  })
+
+  it('content-length больше предела — ошибка contract до чтения тела', async () => {
+    await expect(mk(async () => new Response('{"value":[]}', { headers: { 'content-length': String(100 * 1048576) } })).catalogSnapshot()).rejects.toMatchObject({ kind: 'contract' })
+  })
+
+  it('каталог: только товары (IsFolder eq false), порядок по Ref_Key, предел страниц', async () => {
+    const urls: string[] = []
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('Catalog_Номенклатура?')) return Response.json({ value: Array.from({ length: ODATA_PAGE }, (_, i) => ({ Ref_Key: G(i), Description: 'т' })) })
+      return Response.json({ value: [] })
+    }
+    await expect(mk(fake).catalogSnapshot()).rejects.toMatchObject({ kind: 'contract' })
+    const goods = urls.filter(u => u.includes('Catalog_Номенклатура?'))
+    expect(goods).toHaveLength(ODATA_MAX_PAGES)
+    expect(goods[0]).toContain('$filter=IsFolder eq false')
+    expect(goods[0]).toContain('$orderby=Ref_Key')
+    expect(goods[1]).toContain(`$skip=${ODATA_PAGE}`)
+  })
+})
+
+describe('applyStockSnapshot', async () => {
+  const { applyStockSnapshot } = await import('../server/utils/catalogSync')
+  const run = { status: 'done', received: 3, cursorTo: '2026-10-21T10:00:00.000Z' } as const
+  it('снимок прошёл правило — удаляем старше снимка; нет — оставляем', () => {
+    const asked: string[] = []
+    const catalog = { pruneStockBefore: (at: string) => { asked.push(at); return 1 } }
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(applyStockSnapshot(run, { snapshot: true, storedRows: 4, catalog })).toBe(1)
+    expect(asked).toEqual([run.cursorTo])
+    expect(applyStockSnapshot({ ...run, received: 1 }, { snapshot: true, storedRows: 4, catalog })).toBe(0)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(applyStockSnapshot(run, { snapshot: false, storedRows: 4, catalog })).toBe(0)
+    expect(asked).toHaveLength(1)
+    vi.restoreAllMocks()
+  })
+})

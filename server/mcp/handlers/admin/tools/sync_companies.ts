@@ -3,5 +3,5 @@ export default defineMcpTool({
   name: 'sync_companies',
   description: 'Синхронизировать клиентов 1С в компании Битрикс24 сейчас',
   inputSchema: {},
-  handler: async () => mcpJson(() => syncCompanies()),
+  handler: async () => mcpJson(async () => onecUnsupportedFlows().includes('clients') ? { skipped: 'not available over OData yet' } : syncCompanies()),
 })

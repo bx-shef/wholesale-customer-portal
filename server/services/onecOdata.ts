@@ -153,8 +153,8 @@ export class ODataClient {
     // Предел ответа — до разбора: огромный ответ кладёт процесс ЛК по памяти (502, 2026-10-21).
     const tooBig = () => new OnecError('contract', `1C OData ${set}: response is larger than ${Math.round(maxBytes / 1048576)} MB`, res.status)
     if (Number(res.headers.get('content-length') ?? 0) > maxBytes) throw tooBig()
-    const text = await res.text().catch(() => '')
-    if (text.length > maxBytes) throw tooBig()
+    const text = await readBodyLimited(res, maxBytes)
+    if (text === null) throw tooBig()
     let body: { value?: unknown } | null
     try {
       body = JSON.parse(text) as { value?: unknown }
@@ -516,4 +516,31 @@ function checked<T>(schema: z.ZodType<T>, rows: T[], what: string): T[] {
     if (!parsed.success) throw new OnecError('contract', `1C OData ${what}: row ${i} breaks contract at ${parsed.error.issues.slice(0, 3).map(x => x.path.join('.')).join(', ')}`)
   }
   return rows
+}
+
+/**
+ * Тело ответа не больше `maxBytes` байт, иначе `null`. Читается потоком и обрывается на пределе:
+ * ответ без `content-length` (chunked через прокси) иначе лёг бы в память целиком (ревью PR #62).
+ */
+export async function readBodyLimited(res: Response, maxBytes: number): Promise<string | null> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => {})
+        return null
+      }
+      chunks.push(value)
+    }
+  }
+  catch {
+    return ''
+  }
+  return Buffer.concat(chunks).toString('utf8')
 }
