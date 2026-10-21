@@ -168,6 +168,43 @@ export class ODataClient {
     return body.value as T[]
   }
 
+  /**
+   * Запись в 1С: `POST`/`PATCH` по готовому пути (`Document_X`, `Document_X(guid'…')/Post()`).
+   * Ответ — объект 1С (или пусто у действий); ошибка 1С — текстом до 200 знаков, как у чтения.
+   */
+  async send<T = Record<string, unknown>>(method: 'POST' | 'PATCH', path: string, label: string, body?: unknown): Promise<T | null> {
+    const started = Date.now()
+    const url = `${this.base}/${path}${path.includes('?') ? '&' : '?'}$format=json`
+    let res: Response
+    try {
+      res = await this.fetchImpl(url, {
+        method,
+        headers: { 'authorization': onecAuthHeader(this.options.auth), 'accept': 'application/json', 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(this.options.timeoutMs ?? 60_000),
+      })
+    }
+    catch (e) {
+      const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
+      this.options.onRequest?.({ label: `${method} ${label}`, ms: Date.now() - started, error: timeout ? 'timeout' : 'network' })
+      throw new OnecError(timeout ? 'timeout' : 'network', `1C OData ${method} ${label}: ${timeout ? 'timeout' : (e as Error).message}`)
+    }
+    const text = await readBodyLimited(res, ODATA_MAX_RESPONSE)
+    if (!res.ok) {
+      const why = odataErrorText(text)
+      this.options.onRequest?.({ label: `${method} ${label}`, ms: Date.now() - started, error: `HTTP ${res.status}` })
+      throw new OnecError('http', `1C OData ${method} ${label}: HTTP ${res.status}${why ? ` — ${why}` : ''}`, res.status)
+    }
+    this.options.onRequest?.({ label: `${method} ${label}`, ms: Date.now() - started, rows: 1 })
+    if (!text) return null
+    try {
+      return JSON.parse(text) as T
+    }
+    catch {
+      throw new OnecError('contract', `1C OData ${method} ${label}: response is not JSON`, res.status)
+    }
+  }
+
   /** Справочник «ссылка → наименование»; не опубликован или не читается — пустой, с причиной. */
   async names(set: string): Promise<{ map: Map<string, string>, error?: string }> {
     try {
@@ -545,4 +582,14 @@ export async function readBodyLimited(res: Response, maxBytes: number): Promise<
     return ''
   }
   return Buffer.concat(chunks).toString('utf8')
+}
+
+/** Текст ошибки 1С из ответа OData, до 200 знаков; не разобрался — пусто. */
+export function odataErrorText(text: string | null): string {
+  try {
+    return (JSON.parse(text ?? '') as { 'odata.error'?: { message?: { value?: string } } })['odata.error']?.message?.value?.replace(/\s+/g, ' ').slice(0, 200) ?? ''
+  }
+  catch {
+    return ''
+  }
 }

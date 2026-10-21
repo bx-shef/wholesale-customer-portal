@@ -25,6 +25,8 @@ export interface ServerEnv {
   onecStockWarehouses: string[]
   /** OData: клиенты 1С → компании Б24 (`ONEC_ODATA_CLIENTS=true`); иначе поток клиентов пропускается. */
   onecOdataClients: boolean
+  /** OData: заказы ЛК → документы 1С и их статусы (`ONEC_ODATA_ORDERS=true`); иначе поток заказов пропускается. */
+  onecOdataOrders: boolean
   /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
   onecMode: 'http' | 'odata'
   /** Виды цен по наименованию для OData, через запятую; пусто — все. */
@@ -60,6 +62,8 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecMode: parseOnecMode(get('ONEC_MODE')),
     // Клиенты 1С по OData уходят в компании Б24: включаются отдельно, после проверки стендом (PR #63).
     onecOdataClients: get('ONEC_ODATA_CLIENTS').trim().toLowerCase() === 'true',
+    // Заказы ЛК пишутся в 1С: включаются отдельно, после проверки стендом на тестовой базе.
+    onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),

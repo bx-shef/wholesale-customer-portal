@@ -79,7 +79,7 @@ export function useOnec(): OnecApi {
         timeoutMs: 120_000,
         stockWarehouses: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES,
       })
-      odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, log: line => console.info(line) }) }
+      odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, warehouseNames: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES, log: line => console.info(line) }) }
     }
     return odata.api
   }
