@@ -50,6 +50,8 @@ export interface OdataOnecOptions {
   priceTypeNames?: string[]
   /** Склад заказа, если соглашение его не задаёт (`ONEC_STOCK_WAREHOUSES`, первый найденный). */
   warehouseNames?: string[]
+  /** Запись заказов в 1С включена (`ONEC_ODATA_ORDERS`); тестовые заказы стенда — всегда. */
+  ordersEnabled?: boolean
   now?: () => Date
   ttlMs?: number
   log?: (line: string) => void
@@ -161,7 +163,7 @@ export class OdataOnec {
 
   /** Заказ по заявке ЛК (§2.6): `Document_ЗаказКлиента`, повтор без дубля (onecOdataOrders). */
   createOrder(input: z.input<typeof OrderRequest>): Promise<z.infer<typeof OrderCreated>> {
-    return createOdataOrder(this.client, input, { warehouseNames: this.options.warehouseNames ?? [], now: this.options.now?.(), log: this.options.log })
+    return createOdataOrder(this.client, input, { warehouseNames: this.options.warehouseNames ?? [], enabled: this.options.ordersEnabled === true, now: this.options.now?.() })
   }
 
   /** Статусы заказов ЛК (§2.7): момент — по версии документа. */

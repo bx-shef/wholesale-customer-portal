@@ -336,7 +336,7 @@ async function testOrderCheck(client: ODataClient, clients: Array<{ guid: string
       deliveryDate: minskDay(new Date(now() + 3 * 86_400_000)),
       test: true,
       items: [{ itemGuid: item.Ref_Key, qty: 1, price: 1 }],
-    }, { warehouseNames: warehouses })
+    }, { warehouseNames: warehouses, enabled: false })
     return { id: 'order', title, status: 'ok', detail: `ссылки найдены: соглашение, контрагент, склад, адрес, товар; ответ ${r.number}`, ms: now() - started }
   }
   catch (e) {

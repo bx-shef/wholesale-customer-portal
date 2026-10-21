@@ -9,18 +9,17 @@ const PARTNER = G(1)
 const ADDR = addressGuid(PARTNER, G(60), 'Минск|ул. Ленина, 1')
 const req = (over: object = {}) => OrderRequest.parse({ externalId: '123', clientGuid: PARTNER, contractGuid: G(3), deliveryAddressGuid: ADDR, deliveryDate: '2026-10-25', comment: 'к обеду', items: [{ itemGuid: G(10), qty: 3, price: 12.5 }], ...over })
 
-function onec(over: { existing?: object[], agreementPartner?: string, post?: 'ok' | 'fail', items?: string[] } = {}) {
-  const calls: Array<{ method: string, url: string, body?: unknown }> = []
+function onec(over: { existing?: object[], agreementPartner?: string, agreementStatus?: string, items?: string[] } = {}) {
+  const calls: Array<{ method: string, url: string, body?: unknown, headers?: Record<string, string> }> = []
   const fetch: typeof globalThis.fetch = async (u, init) => {
     const url = decodeURIComponent(String(u))
     const method = init?.method ?? 'GET'
-    calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+    calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined, headers: init?.headers as Record<string, string> })
     const set = /standard\.odata\/([^?(]+)/.exec(url)![1]!
-    if (method === 'POST' && url.includes('/Post')) return over.post === 'fail' ? new Response('{"odata.error":{"message":{"value":"нет остатка"}}}', { status: 500 }) : new Response('', { status: 200 })
     if (method === 'POST') return Response.json({ Ref_Key: G(77), Number: 'ЗК-0001' }, { status: 201 })
     const data: Record<string, unknown[]> = {
       Document_ЗаказКлиента: over.existing ?? [],
-      Catalog_СоглашенияСКлиентами: [{ Ref_Key: G(3), Партнер_Key: over.agreementPartner ?? PARTNER, Валюта_Key: G(40), Договор_Key: G(4), Организация_Key: G(5), ВидЦен_Key: G(30) }],
+      Catalog_СоглашенияСКлиентами: [{ Ref_Key: G(3), Статус: over.agreementStatus ?? 'Действует', Партнер_Key: over.agreementPartner ?? PARTNER, Валюта_Key: G(40), Договор_Key: G(4), Организация_Key: G(5), ВидЦен_Key: G(30) }],
       Catalog_Контрагенты: [{ Ref_Key: G(2), DeletionMark: true }, { Ref_Key: G(6) }],
       Catalog_Склады: [{ Ref_Key: G(50), Description: 'Основной склад' }],
       Catalog_Партнеры: [{ Ref_Key: PARTNER, ЗонаДоставки_Key: G(51) }],
@@ -31,7 +30,7 @@ function onec(over: { existing?: object[], agreementPartner?: string, post?: 'ok
   }
   return { calls, client: new ODataClient({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch }) }
 }
-const opts = { warehouseNames: ['Основной склад'], now: new Date('2026-10-21T09:00:00Z') }
+const opts = { warehouseNames: ['Основной склад'], enabled: true, now: new Date('2026-10-21T09:00:00Z') }
 
 describe('заказ по OData: тело документа', () => {
   it('маркер заявки, ссылки, строки, дата по Минску; пустые ссылки не уходят', () => {
@@ -44,29 +43,48 @@ describe('заказ по OData: тело документа', () => {
 
   it('маркер — только безопасные символы: кавычка в фильтр не попадёт', () => {
     expect(orderMarker('deal-15')).toBe('ЛК-deal-15')
+    expect(() => orderMarker('1'.repeat(41))).toThrow(expect.objectContaining({ kind: 'contract' }))
     expect(() => orderMarker("1' or 1 eq 1")).toThrow(expect.objectContaining({ kind: 'contract' }))
   })
 })
 
 describe('заказ по OData: запись', () => {
-  it('создаёт документ, проводит, отдаёт факт по строкам', async () => {
+  it('пишет документ непроведённым: не проводит, резерв — количество (резервирует 1С при проведении)', async () => {
     const t = onec()
     const r = await createOdataOrder(t.client, req(), opts)
-    expect(r).toEqual({ orderGuid: G(77), number: 'ЗК-0001', status: 'new', items: [{ itemGuid: G(10), price: 12.5, reserved: 0 }] })
-    const post = t.calls.find(c => c.method === 'POST' && !c.url.includes('/Post'))!
+    expect(r).toEqual({ orderGuid: G(77), number: 'ЗК-0001', status: 'new', items: [{ itemGuid: G(10), price: 12.5, reserved: 3 }] })
+    const post = t.calls.find(c => c.method === 'POST')!
     expect(post.body).toMatchObject({ Контрагент_Key: G(6), ЗонаДоставки_Key: G(51), Склад_Key: G(50) })
-    expect(t.calls.some(c => c.url.includes(`Document_ЗаказКлиента(guid'${G(77)}')/Post`))).toBe(true)
+    expect(post.url).toBe('https://x/b/odata/standard.odata/Document_ЗаказКлиента?$format=json')
+    expect(post.headers).toMatchObject({ 'content-type': 'application/json', 'authorization': 'Bearer t' })
+    expect(t.calls.filter(c => c.method === 'POST')).toHaveLength(1)
   })
 
-  it('не провёлся — документ остаётся, статус new; повтор находит его, а не пишет второй', async () => {
-    const t = onec({ post: 'fail' })
-    const lines: string[] = []
-    expect((await createOdataOrder(t.client, req(), { ...opts, log: l => lines.push(l) })).status).toBe('new')
-    expect(lines[0]).toContain('нет остатка')
-    const again = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-0001', Posted: true, Статус: 'КОбеспечению', Партнер_Key: PARTNER }] })
+  it('повтор находит документ (самый ранний по номеру), а не пишет второй; GUID в любом регистре', async () => {
+    const again = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-0001', Posted: true, Статус: 'КОбеспечению', Партнер_Key: PARTNER.toUpperCase() }] })
     expect(await createOdataOrder(again.client, req(), opts)).toMatchObject({ orderGuid: G(77), status: 'confirmed' })
     expect(again.calls.some(c => c.method === 'POST')).toBe(false)
     expect(again.calls[0]!.url).toContain("НомерПоДаннымКлиента eq 'ЛК-123'")
+    expect(again.calls[0]!.url).toContain('$orderby=Number')
+  })
+
+  it('запись выключена — отказ 501 без записи; тестовый заказ при этом работает', async () => {
+    const t = onec()
+    await expect(createOdataOrder(t.client, req(), { ...opts, enabled: false })).rejects.toMatchObject({ status: 501 })
+    expect(t.calls).toHaveLength(0)
+    expect(await createOdataOrder(onec().client, req({ test: true }), { ...opts, enabled: false })).toMatchObject({ number: 'ТЕСТ-123' })
+  })
+
+  it('соглашение не действует или чьё-то в верхнем регистре своё', async () => {
+    await expect(createOdataOrder(onec({ agreementStatus: 'Закрыто' }).client, req(), opts)).rejects.toMatchObject({ kind: 'contract' })
+    expect((await createOdataOrder(onec({ agreementPartner: PARTNER.toUpperCase() }).client, req(), opts)).orderGuid).toBe(G(77))
+  })
+
+  it('НДС — пачками по 40 товаров', async () => {
+    const items = Array.from({ length: 41 }, (_, i) => G(100 + i))
+    const t = onec({ items })
+    await createOdataOrder(t.client, req({ items: items.map(g => ({ itemGuid: g, qty: 1, price: 1 })) }), opts)
+    expect(t.calls.filter(c => c.url.includes('Catalog_Номенклатура'))).toHaveLength(2)
   })
 
   it('чужой заказ с тем же номером заявки, чужое соглашение, нет адреса или товара — отказ без записи', async () => {
@@ -78,11 +96,12 @@ describe('заказ по OData: запись', () => {
     }
   })
 
-  it('тестовый заказ стенда: всё проверяет, документ не создаёт', async () => {
-    const t = onec()
+  it('тестовый заказ стенда: всё проверяет, документ не создаёт и существующий не ищет', async () => {
+    const t = onec({ existing: [{ Ref_Key: G(77), Партнер_Key: PARTNER }] })
     const r = await createOdataOrder(t.client, req({ test: true }), opts)
     expect(r).toMatchObject({ orderGuid: testOrderGuid('123'), number: 'ТЕСТ-123' })
     expect(t.calls.some(c => c.method === 'POST')).toBe(false)
+    expect(t.calls.filter(c => c.url.includes('Document_ЗаказКлиента'))).toHaveLength(0)
     await expect(createOdataOrder(onec({ agreementPartner: G(9) }).client, req({ test: true }), opts)).rejects.toMatchObject({ kind: 'contract' })
   })
 })
@@ -90,6 +109,7 @@ describe('заказ по OData: запись', () => {
 describe('заказ по OData: статусы', () => {
   it('статус по документу', () => {
     expect(orderStatusOf({ Ref_Key: 'x', DeletionMark: true, Posted: true, Статус: 'Закрыт' })).toBe('cancelled')
+    expect(orderStatusOf({ Ref_Key: 'x', DeletionMark: true, Posted: false })).toBe('cancelled')
     expect(orderStatusOf({ Ref_Key: 'x', Posted: false, Статус: 'КОтгрузке' })).toBe('new')
     expect(orderStatusOf({ Ref_Key: 'x', Posted: true, Статус: 'НеСогласован' })).toBe('new')
     expect(orderStatusOf({ Ref_Key: 'x', Posted: true, Статус: 'КОбеспечению' })).toBe('confirmed')
@@ -121,11 +141,25 @@ describe('OdataOnec: заказы', async () => {
     const db = new DatabaseSync(':memory:')
     migrate(db)
     const t = onec({ existing: [] })
-    const api = new OdataOnec(t.client, sqliteVersionStore(db), { warehouseNames: ['Основной склад'], ttlMs: 0, now: () => new Date('2026-10-21T09:00:00Z') })
+    const api = new OdataOnec(t.client, sqliteVersionStore(db), { warehouseNames: ['Основной склад'], ordersEnabled: true, ttlMs: 0, now: () => new Date('2026-10-21T09:00:00Z') })
     expect((await api.createOrder(req())).orderGuid).toBe(G(77))
+    const off = new OdataOnec(onec().client, sqliteVersionStore(db), { warehouseNames: ['Основной склад'] })
+    await expect(off.createOrder(req())).rejects.toMatchObject({ status: 501 })
     const s = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'Закрыт' }] })
     const api2 = new OdataOnec(s.client, sqliteVersionStore(db), { ttlMs: 0, now: () => new Date('2026-10-21T09:00:00Z') })
     const page = await api2.orderStatus({})
     expect(page.items).toEqual([expect.objectContaining({ orderGuid: G(77), status: 'shipped', changedAt: '2026-10-21T09:00:00.000Z' })])
+  })
+})
+
+describe('ODataClient.send', () => {
+  const mk = (res: Response, seen: { url?: string, init?: RequestInit } = {}) => new ODataClient({ baseUrl: 'https://x/b/odata/standard.odata/', auth: { kind: 'basic', login: 'u', password: 'p' }, fetch: async (u, i) => { seen.url = String(u); seen.init = i; return res } })
+  it('адрес с параметрами, тело JSON, пустой ответ — null, не JSON — contract, ошибка — текст 1С', async () => {
+    const seen: { url?: string, init?: RequestInit } = {}
+    expect(await mk(new Response('', { status: 200 }), seen).send('POST', 'D(guid\'1\')/Post?A=1', 'D', { x: 1 })).toBeNull()
+    expect(seen.url).toBe("https://x/b/odata/standard.odata/D(guid'1')/Post?A=1&$format=json")
+    expect(seen.init?.body).toBe('{"x":1}')
+    await expect(mk(new Response('oops', { status: 200 })).send('POST', 'D', 'D')).rejects.toMatchObject({ kind: 'contract' })
+    await expect(mk(new Response('{"odata.error":{"message":{"value":"нет  прав"}}}', { status: 403 })).send('POST', 'D', 'D')).rejects.toThrow('HTTP 403 — нет прав')
   })
 })

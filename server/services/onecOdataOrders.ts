@@ -1,6 +1,8 @@
 /**
  * Заказы 1С по OData (docs/onec-odata.md, «Заказ из ЛК»): запись `Document_ЗаказКлиента` по заявке
- * ЛК и статусы заказов в форме контракта. Чистые части — `orderBody`, `orderStatusOf`,
+ * ЛК и статусы заказов в форме контракта. Документ пишется **непроведённым**: OData минует формы
+ * и согласование 1С, а проведение сразу резервирует товар — согласует и проводит менеджер в 1С
+ * (ревью PR #65). Чистые части — `orderBody`, `orderStatusOf`,
  * `orderMarker`; чтение и запись — `createOdataOrder`, `readOrderStatuses`.
  *
  * Повтор без дубля: номер заявки ЛК пишется в `НомерПоДаннымКлиента` (`ЛК-<externalId>`), перед
@@ -15,7 +17,7 @@ import { OrderCreated, OrderRequest, type OrderStatusRowT, type OrderStatusT } f
 import type { z } from 'zod'
 import { OnecError } from './onec'
 import { assertGuid, EMPTY_REF, ONEC_TZ, type ODataClient } from './onecOdata'
-import { addressGuid, listAll, type ContactRow } from './onecOdataClients'
+import { addressGuid, agreementActive, listAll, type ContactRow } from './onecOdataClients'
 
 export const ORDER_SET = 'Document_ЗаказКлиента'
 /** Префикс номера заявки ЛК в `НомерПоДаннымКлиента`: по нему ЛК находит свои заказы. */
@@ -39,6 +41,9 @@ export interface AgreementForOrder {
   ХозяйственнаяОперация?: string
   ЦенаВключаетНДС?: boolean
   DeletionMark?: boolean
+  Статус?: string
+  ДатаНачалаДействия?: string
+  ДатаОкончанияДействия?: string
 }
 
 export interface OrderRefs {
@@ -50,9 +55,13 @@ export interface OrderRefs {
   vat: Map<string, string>
 }
 
-/** Маркер заявки ЛК в 1С. `externalId` — ID сделки Б24: только безопасные символы, кавычки в фильтр не попадут. */
+/**
+ * Маркер заявки ЛК в 1С. `externalId` — ID сделки Б24: только безопасные символы (кавычки в фильтр
+ * не попадут) и не длиннее 40 — маркер должен влезть в `НомерПоДаннымКлиента` без обрезки, иначе
+ * повтор документ не найдёт и запишет второй.
+ */
 export function orderMarker(externalId: string): string {
-  if (!/^[\w-]{1,64}$/.test(externalId)) throw new OnecError('contract', '1C OData order: externalId has unsafe characters')
+  if (!/^[\w-]{1,40}$/.test(externalId)) throw new OnecError('contract', '1C OData order: externalId has unsafe characters')
   return `${ORDER_MARK}${externalId}`
 }
 
@@ -108,11 +117,13 @@ export interface OrderDocRow {
   Статус?: string
   НомерПоДаннымКлиента?: string
   ДатаОтгрузки?: string
+  Партнер_Key?: string
 }
 
 /**
  * Статус заказа ЛК по документу 1С. «Отгружен» и «доставлен» 1С знает по реализации и рейсу —
- * они ещё не опубликованы; пока «Закрыт» — это `shipped`, дальше статус ведёт рейс.
+ * они ещё не опубликованы; пока «Закрыт» — это `shipped`, дальше статус ведёт рейс. Закрытый без
+ * отгрузки (отказ) так не отличить — проверить на тестовой базе, как 1С закрывает отказы.
  */
 export function orderStatusOf(d: OrderDocRow): OrderStatusT {
   if (d.DeletionMark) return 'cancelled'
@@ -141,23 +152,24 @@ export function orderStatusRow(d: OrderDocRow, changedAt: string): OrderStatusRo
   }
 }
 
-const one = async <T>(client: ODataClient, set: string, filter: string, select: string): Promise<T | undefined> =>
-  (await client.list<T>(set, { $select: select, $filter: filter, $top: 1 }))[0]
+const one = async <T>(client: ODataClient, set: string, filter: string, select: string, orderby?: string): Promise<T | undefined> =>
+  (await client.list<T>(set, { $select: select, $filter: filter, $top: 1, ...(orderby ? { $orderby: orderby } : {}) }))[0]
 
 /** Ссылки для документа: соглашение клиента, контрагент, склад, зона, текст адреса, ставки НДС. */
-export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof OrderRequest>, warehouseNames: string[]): Promise<OrderRefs> {
+export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof OrderRequest>, opts: { warehouseNames: string[], today: string }): Promise<OrderRefs> {
   const partner = assertGuid(o.clientGuid).toLowerCase()
   const agreement = await one<AgreementForOrder>(client, 'Catalog_СоглашенияСКлиентами', `Ref_Key eq guid'${assertGuid(o.contractGuid)}'`,
-    'Ref_Key,Партнер_Key,Валюта_Key,Договор_Key,Организация_Key,Склад_Key,ВидЦен_Key,ХозяйственнаяОперация,ЦенаВключаетНДС,DeletionMark')
+    'Ref_Key,Партнер_Key,Валюта_Key,Договор_Key,Организация_Key,Склад_Key,ВидЦен_Key,ХозяйственнаяОперация,ЦенаВключаетНДС,DeletionMark,Статус,ДатаНачалаДействия,ДатаОкончанияДействия')
   // Соглашение чужого клиента — отказ: заказ ушёл бы по чужим условиям.
-  if (!agreement || agreement.DeletionMark || ref(agreement.Партнер_Key) !== partner) throw new OnecError('contract', '1C OData order: agreement does not belong to the client')
+  if (!agreement || ref(agreement.Партнер_Key) !== partner) throw new OnecError('contract', '1C OData order: agreement does not belong to the client')
+  if (!agreementActive(agreement, opts.today)) throw new OnecError('contract', '1C OData order: agreement is not active')
   const cps = await client.list<{ Ref_Key: string, DeletionMark?: boolean }>('Catalog_Контрагенты', { $select: 'Ref_Key,DeletionMark', $filter: `Партнер_Key eq guid'${partner}'` })
   const counterparty = cps.find(c => !c.DeletionMark)?.Ref_Key
   if (!counterparty) throw new OnecError('contract', '1C OData order: client has no counterparty')
   let warehouse = ref(agreement.Склад_Key)
   if (!warehouse) {
     const { map } = await client.names('Catalog_Склады')
-    const want = warehouseNames.map(n => n.trim().toLowerCase())
+    const want = opts.warehouseNames.map(n => n.trim().toLowerCase())
     warehouse = [...map].find(([, n]) => want.includes(n.trim().toLowerCase()))?.[0] ?? null
   }
   if (!warehouse) throw new OnecError('contract', '1C OData order: warehouse not found')
@@ -181,35 +193,33 @@ export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof Or
 }
 
 /**
- * Создать заказ по заявке ЛК (§2.6). Уже есть документ с этим номером заявки — вернуть его, не
- * создавая второй. Документ проводится; не провёлся — остаётся записанным, статус `new`, 1С его
- * доведёт (повтор заявки найдёт этот же документ).
+ * Создать заказ по заявке ЛК (§2.6). Тестовый заказ (`test: true`) проверяет все ссылки и ничего не
+ * пишет — даже когда запись заказов выключена. Настоящий: уже есть документ с этим номером заявки —
+ * вернуть его, не создавая второй (несколько — самый ранний по номеру); нет — записать непроведённым.
+ * `enabled: false` — запись выключена (`ONEC_ODATA_ORDERS`): отказ для любого вызывающего, включая MCP.
  */
-export async function createOdataOrder(client: ODataClient, input: z.input<typeof OrderRequest>, opts: { warehouseNames: string[], now?: Date, log?: (line: string) => void }): Promise<z.infer<typeof OrderCreated>> {
+export async function createOdataOrder(client: ODataClient, input: z.input<typeof OrderRequest>, opts: { warehouseNames: string[], enabled: boolean, now?: Date }): Promise<z.infer<typeof OrderCreated>> {
   const o = OrderRequest.parse(input)
   const mark = orderMarker(o.externalId)
-  const facts = o.items.map(i => ({ itemGuid: i.itemGuid, price: i.price, reserved: 0 }))
-  const existing = await one<OrderDocRow>(client, ORDER_SET, `НомерПоДаннымКлиента eq '${mark}'`, 'Ref_Key,Number,DeletionMark,Posted,Статус,НомерПоДаннымКлиента,Партнер_Key')
+  const now = opts.now ?? new Date()
+  const today = new Date(now.getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
+  // Резерв ставит 1С при проведении менеджером; по OData его не узнать — расхождением не считаем.
+  const facts = o.items.map(i => ({ itemGuid: i.itemGuid, price: i.price, reserved: i.qty }))
+  if (o.test) {
+    await resolveOrderRefs(client, o, { warehouseNames: opts.warehouseNames, today })
+    return OrderCreated.parse({ orderGuid: testOrderGuid(o.externalId), number: `ТЕСТ-${o.externalId}`, status: 'new', items: facts })
+  }
+  if (!opts.enabled) throw new OnecError('http', '1C OData order: writing orders is off (ONEC_ODATA_ORDERS)', 501)
+  const existing = await one<OrderDocRow>(client, ORDER_SET, `НомерПоДаннымКлиента eq '${mark}'`, 'Ref_Key,Number,DeletionMark,Posted,Статус,НомерПоДаннымКлиента,Партнер_Key', 'Number')
   if (existing) {
     // Чужой заказ с тем же номером заявки — не отдаём: показали бы его другому клиенту.
-    if (ref((existing as OrderDocRow & { Партнер_Key?: string }).Партнер_Key) !== o.clientGuid.toLowerCase()) throw new OnecError('http', '1C OData order: externalId already used by another client', 409)
+    if (ref(existing.Партнер_Key) !== o.clientGuid.toLowerCase()) throw new OnecError('http', '1C OData order: externalId already used by another client', 409)
     return OrderCreated.parse({ orderGuid: existing.Ref_Key.toLowerCase(), number: (existing.Number ?? '').trim() || mark, status: orderStatusOf(existing), items: facts })
   }
-  const refs = await resolveOrderRefs(client, o, opts.warehouseNames)
-  const body = orderBody(o, refs, opts.now ?? new Date())
-  if (o.test) return OrderCreated.parse({ orderGuid: testOrderGuid(o.externalId), number: `ТЕСТ-${o.externalId}`, status: 'new', items: facts })
-  const created = await client.send<OrderDocRow>('POST', encodeURIComponent(ORDER_SET), ORDER_SET, body)
+  const refs = await resolveOrderRefs(client, o, { warehouseNames: opts.warehouseNames, today })
+  const created = await client.send<OrderDocRow>('POST', encodeURIComponent(ORDER_SET), ORDER_SET, orderBody(o, refs, now))
   if (!created?.Ref_Key) throw new OnecError('contract', '1C OData order: no Ref_Key in response')
-  const guid = assertGuid(created.Ref_Key).toLowerCase()
-  let posted = false
-  try {
-    await client.send('POST', `${encodeURIComponent(ORDER_SET)}(guid'${guid}')/Post?PostingModeOperational=false`, `${ORDER_SET}/Post`)
-    posted = true
-  }
-  catch (e) {
-    opts.log?.(`[onec:odata] order ${mark} written, not posted: ${(e as Error).message.slice(0, 200)}`)
-  }
-  return OrderCreated.parse({ orderGuid: guid, number: (created.Number ?? '').trim() || mark, status: posted ? orderStatusOf({ ...created, Posted: true }) : 'new', items: facts })
+  return OrderCreated.parse({ orderGuid: assertGuid(created.Ref_Key).toLowerCase(), number: (created.Number ?? '').trim() || mark, status: 'new', items: facts })
 }
 
 /** Заказы ЛК за `ORDER_STATUS_DAYS` дней с версией документа — для статусов (§2.7). */
