@@ -2,16 +2,16 @@
  * Клиент 1С по стандартному OData (docs/onec-odata.md): собирает из объектов 1С те же формы, что
  * контракт `shared/onec/schemas.ts`, поэтому синхронизации и страницы ЛК от транспорта не зависят.
  *
- * Сейчас — каталог (`Catalog_Номенклатура`). Сопоставление полей и открытые вопросы — в документе.
+ * Каталог, картинки, цены и остатки. Сопоставление полей и открытые вопросы — в документе.
  * Ответ проверяется схемой контракта: «прошло здесь» значит «ЛК прочитает».
  */
 import type { z } from 'zod'
-import { CatalogPage, PAGE_SIZE_MAX, Price, Stock, type ItemT, type PriceT, type SectionT, type StockT } from '../../shared/onec/schemas'
+import { CatalogPage, ImageFile, PAGE_SIZE_MAX, Price, Stock, type ImageFileT, type ItemT, type PriceT, type SectionT, type StockT } from '../../shared/onec/schemas'
 import { OnecError, onecAuthHeader, type OnecAuth } from './onec'
 
 /** Пустая ссылка 1С: поле `_Key` без значения. */
 export const EMPTY_REF = '00000000-0000-0000-0000-000000000000'
-/** Раздел для товаров вне групп: в контракте у каждого товара есть раздел. */
+/** Раздел для товаров без вида номенклатуры: в контракте у каждого товара есть раздел. */
 export const ROOT_SECTION: SectionT = { guid: EMPTY_REF, parentGuid: null, name: 'Без группы' }
 
 export interface ODataOptions {
@@ -37,7 +37,7 @@ export const DEFAULT_STOCK_WAREHOUSES = ['Основной склад']
 /** Поля номенклатуры, которые читаем: `$select` бережёт 1С — у объекта больше сотни полей. */
 export const NOMENCLATURE_FIELDS = [
   'Ref_Key', 'DataVersion', 'Description', 'Parent_Key', 'IsFolder', 'DeletionMark',
-  'Артикул', 'art_НаименованиеДляСайта', 'Описание', 'ЕдиницаИзмерения_Key', 'Марка_Key', 'ФайлКартинки_Key',
+  'Артикул', 'art_НаименованиеДляСайта', 'Описание', 'ЕдиницаИзмерения_Key', 'Марка_Key', 'ФайлКартинки_Key', 'ВидНоменклатуры_Key',
 ] as const
 
 export interface NomenclatureRow {
@@ -53,6 +53,7 @@ export interface NomenclatureRow {
   ЕдиницаИзмерения_Key?: string
   Марка_Key?: string
   ФайлКартинки_Key?: string
+  ВидНоменклатуры_Key?: string
 }
 
 /** Справочники, которые могут быть ещё не опубликованы: без них поле заполняется запасным значением. */
@@ -63,7 +64,8 @@ export interface CatalogLookups {
 
 const ref = (v: string | undefined) => (v && v !== EMPTY_REF ? v.toLowerCase() : null)
 
-export function mapSection(row: NomenclatureRow): SectionT {
+/** Раздел ЛК — вид номенклатуры 1С (решение владельца, onec-contract.md §2.2). */
+export function mapSection(row: { Ref_Key: string, Description?: string, Parent_Key?: string }): SectionT {
   return { guid: row.Ref_Key, parentGuid: ref(row.Parent_Key), name: (row.Description ?? '').trim() }
 }
 
@@ -79,7 +81,7 @@ export function mapItem(row: NomenclatureRow, lookups: CatalogLookups, changedAt
     guid: row.Ref_Key,
     sku: (row.Артикул ?? '').trim(),
     name: (row.art_НаименованиеДляСайта || row.Description || '').trim(),
-    sectionGuid: ref(row.Parent_Key) ?? ROOT_SECTION.guid,
+    sectionGuid: ref(row.ВидНоменклатуры_Key) ?? ROOT_SECTION.guid,
     brand: (brandKey && lookups.brands.get(brandKey)) || '',
     unit: (unitKey && lookups.units.get(unitKey)) || 'шт',
     packQty: 1,
@@ -174,9 +176,7 @@ export class ODataClient {
     const changedAt = (this.options.now?.() ?? new Date()).toISOString()
     const look = lookups ?? await this.catalogLookups()
     const select = NOMENCLATURE_FIELDS.join(',')
-    const sections = page === 1
-      ? [ROOT_SECTION, ...(await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq true' })).map(mapSection)]
-      : []
+    const sections = page === 1 ? await this.sections() : []
     // Одной строкой больше страницы — чтобы понять, есть ли следующая, без отдельного $count.
     const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', {
       $select: select,
@@ -195,6 +195,50 @@ export class ODataClient {
       const where = parsed.error.issues.slice(0, 3).map(i => i.path.join('.')).join(', ')
       throw new OnecError('contract', `1C OData catalog: breaks contract at ${where}`)
     }
+    return parsed.data
+  }
+
+  /** Разделы — виды номенклатуры, кроме помеченных на удаление, и «Без группы». */
+  async sections(): Promise<SectionT[]> {
+    const rows = await this.list<{ Ref_Key: string, Description?: string, Parent_Key?: string, DeletionMark?: boolean }>('Catalog_ВидыНоменклатуры', { $select: 'Ref_Key,Description,Parent_Key,DeletionMark' })
+    return [ROOT_SECTION, ...rows.filter(r => !r.DeletionMark).map(mapSection)]
+  }
+
+  /**
+   * Каталог целиком — для синхронизации: разделы и все товары с версией объекта (`DataVersion`),
+   * страницами по `PRICE_PAGE` строк. Момент изменения проставляет вызывающий по версии.
+   */
+  async catalogSnapshot(): Promise<{ sections: SectionT[], items: Array<{ item: ItemT, version: string }> }> {
+    const look = await this.catalogLookups()
+    const sections = await this.sections()
+    const select = NOMENCLATURE_FIELDS.join(',')
+    const items: Array<{ item: ItemT, version: string }> = []
+    for (let page = 0; ; page++) {
+      if (page >= PRICE_MAX_PAGES) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${PRICE_MAX_PAGES} pages`)
+      const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: PRICE_PAGE, $skip: page * PRICE_PAGE })
+      for (const r of rows) items.push({ item: mapItem(r, look, ''), version: r.DataVersion ?? '' })
+      if (rows.length < PRICE_PAGE) break
+    }
+    return { sections, items }
+  }
+
+  /**
+   * Картинка товара (§2.3) из `Catalog_НоменклатураПрисоединенныеФайлы`: хранится в базе 1С
+   * (ответ программиста 2026-10-20). Тип — по расширению; не картинка — ошибка контракта.
+   */
+  async image(id: string): Promise<ImageFileT> {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) throw new OnecError('contract', '1C OData image: id is not a GUID')
+    const set = 'Catalog_НоменклатураПрисоединенныеФайлы'
+    const rows = await this.list<{ Ref_Key: string, Расширение?: string, ФайлХранилище_Base64Data?: string }>(set, {
+      $select: 'Ref_Key,Расширение,ФайлХранилище_Base64Data',
+      $filter: `Ref_Key eq guid'${id}'`,
+    })
+    const row = rows[0]
+    if (!row) throw new OnecError('http', `1C OData ${set}: not found`, 404)
+    const contentType = IMAGE_EXT[(row.Расширение ?? '').toLowerCase().replace(/^\./, '')]
+    if (!contentType) throw new OnecError('contract', `1C OData ${set}: not an image (${(row.Расширение ?? '').slice(0, 10)})`)
+    const parsed = ImageFile.safeParse({ id, hash: id.replaceAll('-', ''), contentType, data: (row.ФайлХранилище_Base64Data ?? '').replace(/\s+/g, '') })
+    if (!parsed.success) throw new OnecError('contract', `1C OData ${set}: image breaks contract at ${parsed.error.issues[0]?.path.join('.')}`)
     return parsed.data
   }
 
@@ -326,6 +370,7 @@ export class ODataClient {
 export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры'] as const
 /** Строк среза цен за один запрос и предел страниц (500 × 5000 = 2,5 млн строк). */
 export const PRICE_PAGE = 5000
+const IMAGE_EXT: Record<string, 'image/jpeg' | 'image/png' | 'image/webp'> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
 export const PRICE_MAX_PAGES = 500
 
 export interface PriceStats {
@@ -336,8 +381,10 @@ export interface PriceStats {
   noRef: number
   noCurrency: number
   noPrice: number
+  /** Цена 0 — уходит как удалённая: в ЛК «нет цены». */
+  zero: number
 }
-export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, variant: 0, noRef: 0, noCurrency: 0, noPrice: 0 })
+export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, variant: 0, noRef: 0, noCurrency: 0, noPrice: 0, zero: 0 })
 
 export interface PricesResult {
   items: PriceT[]
@@ -415,6 +462,8 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
     const currency = ref(r.Валюта_Key) && look.currencies.get(ref(r.Валюта_Key)!)
     if (!currency) { stats.noCurrency++; continue }
     if (typeof r.Цена !== 'number' || r.Цена < 0) { stats.noPrice++; continue }
+    // Цена 0 — «цены нет»: клиенту её не показываем и прежнюю ненулевую из ЛК убираем.
+    if (money(r.Цена) === 0) stats.zero++
     const item = ref(r.Номенклатура_Key)!
     out.push({
       priceTypeGuid: ref(r.ВидЦены_Key)!,
@@ -423,7 +472,7 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
       currency,
       vatRate: look.vat.get(item) ?? 0,
       changedAt: `${(r.Period ?? '2000-01-01T00:00:00').slice(0, 19)}${ONEC_TZ}`,
-      deleted: false,
+      deleted: money(r.Цена) === 0,
     })
   }
   return out

@@ -62,6 +62,17 @@ describe('индекс каталога', () => {
     expect(store.search({ inStock: true }).total).toBe(0)
   })
 
+  it('остатки снимком: строки старше снимка уходят (OData)', () => {
+    store.saveCatalog([], [item(1), item(2)])
+    const old = '2026-10-01T00:00:00.000Z'
+    const snap = '2026-10-01T00:05:00.000Z'
+    store.saveStock([{ itemGuid: g(1), warehouseGuid: g(500), warehouseName: 'Основной склад', available: 3, changedAt: old }, { itemGuid: g(2), warehouseGuid: g(500), warehouseName: 'Основной склад', available: 7, changedAt: old }])
+    store.saveStock([{ itemGuid: g(2), warehouseGuid: g(500), warehouseName: 'Основной склад', available: 6, changedAt: snap }])
+    expect(store.pruneStockBefore(snap)).toBe(1)
+    expect(store.item(g(1))!.available).toBe(0)
+    expect(store.item(g(2))!.available).toBe(6)
+  })
+
   it('limit 0 и отрицательный — не «без лимита»', () => {
     store.saveCatalog([], Array.from({ length: 70 }, (_, i) => item(i + 1)))
     expect(store.search({ limit: 0 }).items.length).toBe(1)

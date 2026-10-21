@@ -106,6 +106,11 @@ export function syncStock(): Promise<SyncRun> {
       consume: async rows => catalog.saveStock(rows),
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:stock] ${run.error}`)
+    // Снимок целиком (OData): строки старше снимка — товар ушёл со склада.
+    else if (onec.stockIsSnapshot && run.received > 0 && run.cursorTo) {
+      const gone = catalog.pruneStockBefore(run.cursorTo)
+      if (gone) console.info(`[sync:stock] pruned ${gone} rows not in snapshot`)
+    }
     return run
   })
 }

@@ -7,7 +7,10 @@
 import { randomUUID } from 'node:crypto'
 import { createMockState, type MockState } from '../mocks/onec/mock'
 import { mockFetch } from '../mocks/onec/fetch'
-import { OnecClient } from '../services/onec'
+import { OnecClient, type OnecApi } from '../services/onec'
+import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
+import { OdataOnec } from '../services/onecOdataSource'
+import { sqliteVersionStore } from './odataVersions'
 import { createOnecGuard } from './onecGuard'
 
 /** Один на процесс: очередь «по одному» и пауза после сбоев общие для всех потоков ЛК (§1.8). */
@@ -32,7 +35,9 @@ export function getMockState(): MockState {
   return mockState
 }
 
-export function useOnec(): OnecClient {
+let odata: { key: string, api: OdataOnec } | undefined
+
+export function useOnec(): OnecApi {
   const env = readServerEnv()
   const log = (e: { method: string, path: string, status: number | null, ms: number, attempt: number, error?: string }) => {
     if (e.error) console.warn(`[onec] ${e.method} ${e.path} → ${e.status ?? e.error} за ${e.ms} мс, попытка ${e.attempt}`)
@@ -47,5 +52,20 @@ export function useOnec(): OnecClient {
     ? { kind: 'basic' as const, login: env.onecLogin, password: env.onecPassword }
     : env.onecToken ? { kind: 'bearer' as const, token: env.onecToken } : null
   if (!env.onecUrl || !auth) throw createError({ statusCode: 503, message: '1C is not configured: ONEC_URL and ONEC_TOKEN or ONEC_LOGIN/ONEC_PASSWORD' })
+  if (env.onecMode === 'odata') {
+    // Один на процесс: снимок прогона и версии объектов живут между страницами синхронизации.
+    const key = `${env.onecUrl}|${auth.kind}|${env.onecPriceTypes.join(',')}|${env.onecStockWarehouses.join(',')}`
+    if (odata?.key !== key) {
+      const client = new ODataClient({
+        baseUrl: env.onecUrl,
+        auth,
+        fetch: guard.wrap(fetch),
+        timeoutMs: 120_000,
+        stockWarehouses: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES,
+      })
+      odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, log: line => console.info(line) }) }
+    }
+    return odata.api
+  }
   return new OnecClient({ baseUrl: env.onecUrl, auth, log, fetch: guard.wrap(fetch) })
 }

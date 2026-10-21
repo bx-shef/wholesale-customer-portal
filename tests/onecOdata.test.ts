@@ -10,7 +10,7 @@ describe('mapItem', () => {
   it('переносит поля номенклатуры в товар контракта', () => {
     const row: NomenclatureRow = {
       Ref_Key: G(10), Description: ' Клей  ', art_НаименованиеДляСайта: 'Клей плиточный 25 кг', Артикул: ' K-25 ',
-      Parent_Key: G(1).toUpperCase(), Описание: 'описание', ЕдиницаИзмерения_Key: G(5), Марка_Key: G(6), ФайлКартинки_Key: G(7), DeletionMark: true,
+      ВидНоменклатуры_Key: G(1).toUpperCase(), Parent_Key: G(2), Описание: 'описание', ЕдиницаИзмерения_Key: G(5), Марка_Key: G(6), ФайлКартинки_Key: G(7), DeletionMark: true,
     }
     const item = mapItem(row, { units: new Map([[G(5), 'мешок']]), brands: new Map([[G(6), 'Ceresit']]) }, AT)
     expect(item).toMatchObject({ sku: 'K-25', name: 'Клей плиточный 25 кг', sectionGuid: G(1), unit: 'мешок', brand: 'Ceresit', description: 'описание', deleted: true, changedAt: AT })
@@ -25,14 +25,14 @@ describe('mapItem', () => {
 
 describe('ODataClient.catalog', () => {
   const folders = [{ Ref_Key: G(1), Description: 'Смеси', Parent_Key: EMPTY_REF, IsFolder: true }]
-  const goods = Array.from({ length: 3 }, (_, i) => ({ Ref_Key: G(20 + i), Description: `Товар ${i}`, Parent_Key: G(1), IsFolder: false }))
+  const goods = Array.from({ length: 3 }, (_, i) => ({ Ref_Key: G(20 + i), Description: `Товар ${i}`, ВидНоменклатуры_Key: G(1), IsFolder: false }))
   const urls: string[] = []
   const fake: typeof fetch = async (u) => {
     const url = decodeURIComponent(String(u))
     urls.push(url)
     if (url.includes('Марки')) return new Response('', { status: 404 })
     if (url.includes('УпаковкиЕдиницыИзмерения')) return Response.json({ value: [] })
-    if (url.includes('IsFolder eq true')) return Response.json({ value: folders })
+    if (url.includes('Catalog_ВидыНоменклатуры')) return Response.json({ value: [...folders, { Ref_Key: G(3), Description: 'Удалённый', DeletionMark: true }] })
     const skip = Number(/\$skip=(\d+)/.exec(url)![1])
     const top = Number(/\$top=(\d+)/.exec(url)![1])
     return Response.json({ value: goods.slice(skip, skip + top) })
@@ -174,5 +174,48 @@ describe('журнал запросов и предел для стенда', ()
     expect(urls[0]).toContain('$top=10')
     expect(urls.find(u => u.includes('Catalog_Номенклатура'))).toContain(`Ref_Key eq guid'${G(20)}'`)
     expect(log[0]).toBe('InformationRegister_ЦеныНоменклатуры_RecordType/SliceLast [$top=10]:1')
+  })
+})
+
+describe('картинки, снимок каталога, нулевая цена', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64')
+  it('image: base64 из присоединённого файла, тип — по расширению; не картинка — ошибка', async () => {
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes(G(7))) return Response.json({ value: [{ Ref_Key: G(7), Расширение: 'PNG', ФайлХранилище_Base64Data: PNG }] })
+      if (url.includes(G(8))) return Response.json({ value: [{ Ref_Key: G(8), Расширение: 'pdf', ФайлХранилище_Base64Data: PNG }] })
+      return Response.json({ value: [] })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    expect(await c.image(G(7))).toEqual({ id: G(7), hash: G(7).replaceAll('-', ''), contentType: 'image/png', data: PNG })
+    await expect(c.image(G(8))).rejects.toMatchObject({ kind: 'contract' })
+    await expect(c.image(G(9))).rejects.toMatchObject({ status: 404 })
+    await expect(c.image('../x')).rejects.toMatchObject({ kind: 'contract' })
+  })
+
+  it('catalogSnapshot: все страницы, версия объекта рядом с товаром', async () => {
+    const { PRICE_PAGE } = await import('../server/services/onecOdata')
+    const all = Array.from({ length: PRICE_PAGE + 2 }, (_, i) => ({ Ref_Key: G(1000 + i), Description: `Т${i}`, DataVersion: `v${i}` }))
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      if (url.includes('Catalog_ВидыНоменклатуры')) return Response.json({ value: [] })
+      if (url.includes('Catalog_Номенклатура')) {
+        const skip = Number(/\$skip=(\d+)/.exec(url)![1])
+        return Response.json({ value: all.slice(skip, skip + PRICE_PAGE) })
+      }
+      return Response.json({ value: [] })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    const snap = await c.catalogSnapshot()
+    expect(snap.items).toHaveLength(PRICE_PAGE + 2)
+    expect(snap.items.at(-1)).toMatchObject({ version: `v${PRICE_PAGE + 1}`, item: { name: `Т${PRICE_PAGE + 1}` } })
+  })
+
+  it('mapPrices: цена 0 уходит удалённой (в ЛК «нет цены»)', async () => {
+    const { mapPrices, emptyPriceStats } = await import('../server/services/onecOdata')
+    const stats = emptyPriceStats()
+    const out = mapPrices([{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 0, Валюта_Key: G(90) }], { currencies: new Map([[G(90), 'BYN']]), vat: new Map() }, stats)
+    expect(out).toMatchObject([{ price: 0, deleted: true }])
+    expect(stats.zero).toBe(1)
   })
 })
