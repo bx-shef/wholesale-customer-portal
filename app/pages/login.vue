@@ -12,6 +12,8 @@ async function submit() {
   pending.value = true
   try {
     await $fetch('/api/auth/login', { method: 'POST', body: { login: login.value, key: key.value } })
+    // Кэш каталога — цены прежнего вошедшего: новому их не показываем.
+    await clearCatalogCache()
     await navigateTo('/')
   }
   catch (e) {

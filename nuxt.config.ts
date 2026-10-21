@@ -19,7 +19,12 @@ export default defineNuxtConfig({
         // Кабинет закрытый: в поиск не нужен ни сейчас, ни после запуска.
         { name: 'robots', content: 'noindex, nofollow' },
       ],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        // PWA: установка на телефон и каталог без сети (public/sw.js, app/composables/usePwa.ts).
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+        { rel: 'apple-touch-icon', href: '/icon-192.png' },
+      ],
     },
   },
 

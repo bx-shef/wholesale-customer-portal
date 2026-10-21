@@ -34,6 +34,7 @@ const shortTitle = computed(() => {
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
   cart.forget()
+  await clearCatalogCache()
   await navigateTo('/login')
 }
 </script>
