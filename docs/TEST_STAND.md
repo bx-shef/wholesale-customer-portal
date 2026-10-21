@@ -1,6 +1,6 @@
 # Тестовая коробка Битрикс24
 
-> Last reviewed: 2026-10-19
+> Last reviewed: 2026-10-21
 
 Стенд для разработки ЛК — официальное Docker-окружение Битрикс
 [bitrix-tools/env-docker](https://github.com/bitrix-tools/env-docker) (поддерживает команда
@@ -35,8 +35,9 @@ BitrixVM (`docs/DEPLOY.md`, таргет 2).
    Создаётся: поле компании `UF_CRM_1C_GUID`, смарт-процесс «Доступ в ЛК» с полями,
    воронка сделок «Заявки ЛК» (`shared/b24Setup.ts`). Вкладка `CRM_COMPANY_DETAIL_TAB` и
    `event.bind` — не вебхуком: им нужен контекст приложения (`docs/REST_METHODS.md`), это этап 2.
-7. График доставки и рейсы в Б24 не заполняются: они приходят из 1С (на стенде — из мока,
-   `docs/onec-contract.md` §2.8–2.9).
+7. График доставки и рейсы в Б24 не заполняются: они приходят из 1С — на стенде из мока
+   (`docs/onec-contract.md` §2.8–2.9); по OData — только рейсы, при `ONEC_ODATA_TRIPS=true`,
+   графика в 1С нет (#45).
 8. ЛК рядом со стендом: `cp .env.example .env`, вписать `B24_WEBHOOK_URL`, `make build-local`,
    `curl -s 127.0.0.1:3000/api/health` — `config.b24Webhook: true`.
 
