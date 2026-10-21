@@ -27,6 +27,8 @@ export interface ServerEnv {
   onecOdataClients: boolean
   /** OData: заказы ЛК → документы 1С и их статусы (`ONEC_ODATA_ORDERS=true`); иначе поток заказов пропускается. */
   onecOdataOrders: boolean
+  /** OData: рейсы из «Заданий на перевозку» (`ONEC_ODATA_TRIPS=true`); иначе поток рейсов пропускается. */
+  onecOdataTrips: boolean
   /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
   onecMode: 'http' | 'odata'
   /** Виды цен по наименованию для OData, через запятую; пусто — все. */
@@ -64,6 +66,8 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecOdataClients: get('ONEC_ODATA_CLIENTS').trim().toLowerCase() === 'true',
     // Заказы ЛК пишутся в 1С: включаются отдельно, после проверки стендом на тестовой базе.
     onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
+    // Рейсы: документ «Задание на перевозку» выпал из публикации OData — включать, когда вернут.
+    onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),

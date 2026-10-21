@@ -7,15 +7,16 @@
  * (снимок держится `SNAPSHOT_TTL_MS`), а страницы «изменённого с момента» отдаёт
  * `snapshotPage`. Момент изменения товара ЛК ведёт сам по версии объекта 1С (`odata_version`).
  *
- * Рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
+ * График доставки по OData не читается — его нет в 1С (#45): такие вызовы отвечают ошибкой, а не
  * подставляют мок — чужие данные в CRM хуже, чем отказ потока.
  */
 import type { z } from 'zod'
-import type { CatalogPage, ClientsPage, ClientT, ImageFileT, OrderCreated, OrderRequest, OrderStatusPage, OrderStatusRowT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
+import type { CatalogPage, ClientsPage, ClientT, ImageFileT, OrderCreated, OrderRequest, OrderStatusPage, OrderStatusRowT, TripsPage, TripT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
 import { pageOfSorted, sortSnapshot, stampByVersion, type SortedSnapshot, type VersionMark } from '../utils/odataSnapshot'
 import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
 import { createOdataOrder, readOrderStatuses } from './onecOdataOrders'
+import { readTrips, type TripStats } from './onecOdataTrips'
 import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
@@ -28,16 +29,17 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
  * Потоки, которых по OData ещё нет (docs/onec-odata.md): в режиме `odata` расписание их не
  * запускает, а «Состояние системы» и оповещения не ждут от них прогонов.
  */
-export const ODATA_UNSUPPORTED_FLOWS = ['schedule', 'trips'] as const
+export const ODATA_UNSUPPORTED_FLOWS = ['schedule'] as const
 
 /**
  * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; клиентов — пока
  * не включён `ONEC_ODATA_CLIENTS` (клиенты уходят в компании Б24), заказов — пока не включён
- * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С).
+ * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — пока не включён `ONEC_ODATA_TRIPS` (документ
+ * выпал из публикации OData). График доставки в 1С не ведётся (Excel, #45).
  */
-export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean }): readonly string[] {
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean, onecOdataTrips: boolean }): readonly string[] {
   if (env.onecMock || env.onecMode !== 'odata') return []
-  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...ODATA_UNSUPPORTED_FLOWS]
+  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...ODATA_UNSUPPORTED_FLOWS]
 }
 
 export interface VersionStore {
@@ -52,6 +54,8 @@ export interface OdataOnecOptions {
   warehouseNames?: string[]
   /** Запись заказов в 1С включена (`ONEC_ODATA_ORDERS`); тестовые заказы стенда — всегда. */
   ordersEnabled?: boolean
+  /** Рейсы читаются (`ONEC_ODATA_TRIPS`): иначе `trips()` — отказ, а у заказов нет рейса. */
+  tripsEnabled?: boolean
   now?: () => Date
   ttlMs?: number
   log?: (line: string) => void
@@ -170,14 +174,49 @@ export class OdataOnec {
   async orderStatus(params: ListParams = {}): Promise<z.infer<typeof OrderStatusPage>> {
     const all = await this.snapshot('orders', async () => {
       const rows = await readOrderStatuses(this.client, this.options.now?.() ?? new Date())
-      const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
-      this.versions.put('order', stamped.updates)
-      return sortSnapshot<OrderStatusRowT>(stamped.rows, o => o.orderGuid)
+      // Рейс заказа — из рейсов (в документе заказа его нет): позднейший по плановому началу.
+      if (this.options.tripsEnabled) {
+        const tripOf = new Map<string, { guid: string, at: string }>()
+        // Рейсы не прочитались — прогон статусов падает целиком: с `tripGuid: null` ЛК стёр бы у
+        // заказов уже известные рейсы (applyOnecStatuses ставит рейс из строки как есть).
+        for (const t of (await this.tripsSnapshot()).rows) {
+          for (const o of t.orders) {
+            const prev = tripOf.get(o.orderGuid)
+            if (!t.deleted && (!prev || t.plannedStart > prev.at)) tripOf.set(o.orderGuid, { guid: t.guid, at: t.plannedStart })
+          }
+        }
+        for (const r of rows) {
+          r.row.tripGuid = tripOf.get(r.row.orderGuid)?.guid ?? null
+          if (r.version) r.version = `${r.version}|${r.row.tripGuid ?? ''}`
+        }
+      }
+      return sortSnapshot<OrderStatusRowT>(this.stampOrders(rows), o => o.orderGuid)
     })
     return pageOfSorted(all, params)
   }
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
-  async trips(_params?: ListParams): Promise<never> { return notYet('trips') }
+  private stampOrders(rows: Array<{ row: OrderStatusRowT, version: string }>): OrderStatusRowT[] {
+    const stamped = stampByVersion(rows.map(r => ({ key: r.row.orderGuid, version: r.version, row: r.row })), this.versions.get('order'), this.nowIso())
+    this.versions.put('order', stamped.updates)
+    return stamped.rows
+  }
+
+  /** Рейсы (§2.9): задания на перевозку за окно, момент — по версии документа и его заказов. */
+  async trips(params: ListParams = {}): Promise<z.infer<typeof TripsPage>> {
+    return pageOfSorted(await this.tripsSnapshot(), params)
+  }
+
+  private tripsSnapshot() {
+    if (!this.options.tripsEnabled) return Promise.reject(new OnecError('http', '1C OData trips: off (ONEC_ODATA_TRIPS) — document is not published yet', 501))
+    return this.snapshot('trips', async () => {
+      const stats: TripStats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }
+      const rows = await readTrips(this.client, this.options.now?.() ?? new Date(), stats)
+      const stamped = stampByVersion(rows.map(r => ({ key: r.trip.guid, version: r.version, row: r.trip })), this.versions.get('trip'), this.nowIso())
+      this.versions.put('trip', stamped.updates)
+      this.options.log?.(`[onec:odata] trips: ${stats.read} read, ${rows.length} ok, no plan ${stats.noPlan}, broken ${stats.broken}, orders not found ${stats.ordersMissing}`)
+      return sortSnapshot<TripT>(stamped.rows, t => t.guid)
+    })
+  }
 }
 
 function notYet(method: string): never {
