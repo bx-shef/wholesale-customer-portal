@@ -113,12 +113,13 @@ describe('mapClients', () => {
 
   it('unsupportedFlowsFor: клиенты по OData — только с ONEC_ODATA_CLIENTS', async () => {
     const { unsupportedFlowsFor } = await import('../server/services/onecOdataSource')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false })).toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false })).not.toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false })).toContain('orders')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: true })).toEqual(['clients', 'schedule', 'trips'])
-    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false })).toEqual([])
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false, onecOdataOrders: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false, onecOdataTrips: false })).not.toContain('clients')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false, onecOdataTrips: false })).toContain('orders')
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: true, onecOdataTrips: false })).toEqual(['clients', 'trips', 'schedule'])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: true, onecOdataTrips: true })).toEqual(['schedule'])
+    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toEqual([])
   })
 
   it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {

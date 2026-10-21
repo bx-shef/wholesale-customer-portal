@@ -84,9 +84,9 @@ describe('OdataOnec: цены и остальное', () => {
     await expect(bad.prices({})).rejects.toMatchObject({ kind: 'contract' })
   })
 
-  it('рейсы — честный отказ 501, не мок', async () => {
+  it('график доставки — честный отказ 501, не мок (его нет в 1С)', async () => {
     const t = setup()
-    await expect(t.api.trips({})).rejects.toMatchObject({ status: 501 })
+    await expect(t.api.deliverySchedule()).rejects.toMatchObject({ status: 501 })
     expect(t.api.stockIsSnapshot).toBe(true)
   })
 })

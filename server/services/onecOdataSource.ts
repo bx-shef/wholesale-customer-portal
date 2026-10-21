@@ -7,15 +7,16 @@
  * (снимок держится `SNAPSHOT_TTL_MS`), а страницы «изменённого с момента» отдаёт
  * `snapshotPage`. Момент изменения товара ЛК ведёт сам по версии объекта 1С (`odata_version`).
  *
- * Рейсы и график по OData ещё не сделаны: такие вызовы отвечают ошибкой, а не
+ * График доставки по OData не читается — его нет в 1С (#45): такие вызовы отвечают ошибкой, а не
  * подставляют мок — чужие данные в CRM хуже, чем отказ потока.
  */
 import type { z } from 'zod'
-import type { CatalogPage, ClientsPage, ClientT, ImageFileT, OrderCreated, OrderRequest, OrderStatusPage, OrderStatusRowT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
+import type { CatalogPage, ClientsPage, ClientT, ImageFileT, OrderCreated, OrderRequest, OrderStatusPage, OrderStatusRowT, TripsPage, TripT, ItemT, PriceT, PricesPage, SectionT, StockPage, StockT } from '../../shared/onec/schemas'
 import { pageOfSorted, sortSnapshot, stampByVersion, type SortedSnapshot, type VersionMark } from '../utils/odataSnapshot'
 import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
 import { createOdataOrder, readOrderStatuses } from './onecOdataOrders'
+import { readTrips } from './onecOdataTrips'
 import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
@@ -28,16 +29,17 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
  * Потоки, которых по OData ещё нет (docs/onec-odata.md): в режиме `odata` расписание их не
  * запускает, а «Состояние системы» и оповещения не ждут от них прогонов.
  */
-export const ODATA_UNSUPPORTED_FLOWS = ['schedule', 'trips'] as const
+export const ODATA_UNSUPPORTED_FLOWS = ['schedule'] as const
 
 /**
  * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; клиентов — пока
  * не включён `ONEC_ODATA_CLIENTS` (клиенты уходят в компании Б24), заказов — пока не включён
- * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С).
+ * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — пока не включён `ONEC_ODATA_TRIPS` (документ
+ * выпал из публикации OData). График доставки в 1С не ведётся (Excel, #45).
  */
-export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean }): readonly string[] {
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean, onecOdataTrips: boolean }): readonly string[] {
   if (env.onecMock || env.onecMode !== 'odata') return []
-  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...ODATA_UNSUPPORTED_FLOWS]
+  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...ODATA_UNSUPPORTED_FLOWS]
 }
 
 export interface VersionStore {
@@ -177,7 +179,16 @@ export class OdataOnec {
     return pageOfSorted(all, params)
   }
   async deliverySchedule(): Promise<never> { return notYet('deliverySchedule') }
-  async trips(_params?: ListParams): Promise<never> { return notYet('trips') }
+  /** Рейсы (§2.9): задания на перевозку за окно, момент — по версии документа и его заказов. */
+  async trips(params: ListParams = {}): Promise<z.infer<typeof TripsPage>> {
+    const all = await this.snapshot('trips', async () => {
+      const rows = await readTrips(this.client, this.options.now?.() ?? new Date())
+      const stamped = stampByVersion(rows.map(r => ({ key: r.trip.guid, version: r.version, row: r.trip })), this.versions.get('trip'), this.nowIso())
+      this.versions.put('trip', stamped.updates)
+      return sortSnapshot<TripT>(stamped.rows, t => t.guid)
+    })
+    return pageOfSorted(all, params)
+  }
 }
 
 function notYet(method: string): never {

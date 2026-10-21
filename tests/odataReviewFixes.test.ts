@@ -86,8 +86,8 @@ describe('OdataOnec: снимок, цены, остатки', () => {
 describe('потоки и режим', () => {
   it('activeFlows убирает только неподдержанные', () => {
     expect(activeFlows()).toEqual(Object.keys(FLOWS))
-    expect([...activeFlows(ODATA_UNSUPPORTED_FLOWS)].sort()).toEqual(['catalog', 'clients', 'orders', 'prices', 'stock'])
-    expect(activeFlows(ODATA_UNSUPPORTED_FLOWS)).not.toContain('trips')
+    expect([...activeFlows(ODATA_UNSUPPORTED_FLOWS)].sort()).toEqual(['catalog', 'clients', 'orders', 'prices', 'stock', 'trips'])
+    expect(activeFlows(ODATA_UNSUPPORTED_FLOWS)).not.toContain('schedule')
   })
   it('parseOnecMode: odata, по умолчанию http, неизвестное — предупреждение', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
