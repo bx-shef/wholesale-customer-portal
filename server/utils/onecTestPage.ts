@@ -210,15 +210,18 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       // Долгий прогон идёт в фоне: опрашиваем каждые 2 с, не дольше 5 минут, и показываем, сколько прошло.
       if (data.job) {
         const t0 = Date.now()
+        var lastLog = []
         for (;;) {
           await new Promise((r) => setTimeout(r, 2000))
           const sec = Math.round((Date.now() - t0) / 1000)
-          if (sec > 300) throw new Error('Прогон идёт дольше 5 минут — 1С отвечает слишком медленно')
-          report.innerHTML = '<p class="muted">Проверяем… ' + dur(sec * 1000) + '</p>'
+          if (sec > 300) throw new Error('Прогон идёт дольше 5 минут — 1С отвечает слишком медленно. Последние запросы:\n' + lastLog.slice(-15).join('\n'))
+          const logHtml = (lines) => (lines && lines.length) ? '<pre class="muted">' + esc(lines.slice(-15).join('\n')) + '</pre>' : ''
+          report.innerHTML = '<p class="muted">Проверяем… ' + dur(sec * 1000) + '</p>' + logHtml(lastLog)
           const r = await fetch('/api/onec-test/result?id=' + encodeURIComponent(data.job), { headers: { 'x-lk-stand': '1' } })
           const j = await r.json().catch(() => ({}))
-          if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status))
-          if (j.status === 'done') { data = j.result; break }
+          if (!r.ok) throw new Error((j.message || ('HTTP ' + r.status)) + ((j.data && j.data.log && j.data.log.length) ? '\nЗапросы к 1С:\n' + j.data.log.slice(-15).join('\n') : ''))
+          lastLog = j.log || lastLog
+          if (j.status === 'done') { data = j.result; data.log = j.log; break }
         }
       }
       const ok = data.checks.filter((c) => c.status === 'ok').length
@@ -226,11 +229,11 @@ export const ONEC_TEST_PAGE = `<!doctype html>
       report.innerHTML = '<div class="summary ' + (fail ? 'fail' : 'ok') + '">' + esc(data.target) + ': пройдено ' + ok + ' из ' + data.checks.length
         + (fail ? ', ошибок ' + fail : ' — сервис отвечает по контракту') + ' · ' + dur(data.ms) + '</div><table>'
         + data.checks.map((c) => '<tr><td class="st ' + c.status + '">' + LABEL[c.status] + '</td><td><b>' + esc(c.title) + '</b><br><span class="muted">' + esc(c.detail) + '</span>' + fieldsHtml(c.fields) + '</td><td class="ms">' + (c.status === 'skip' ? '' : dur(c.ms)) + '</td></tr>').join('')
-        + '</table>' + (data.fieldsText ? '<button id="copy" type="button" class="secondary">Скопировать поля для разработчика</button>' : '')
+        + '</table>' + ((data.log && data.log.length) ? '<details><summary>Журнал запросов к 1С (' + data.log.length + ')</summary><pre>' + esc(data.log.join('\n')) + '</pre></details>' : '') + (data.fieldsText ? '<button id="copy" type="button" class="secondary">Скопировать поля для разработчика</button>' : '')
       if (data.fieldsText) $('copy').addEventListener('click', () => navigator.clipboard.writeText(data.fieldsText).then(() => { $('copy').textContent = 'Скопировано' }))
     }
     catch (err) {
-      report.innerHTML = '<p class="err">' + esc(err.message) + '</p>'
+      report.innerHTML = '<p class="err" style="white-space: pre-wrap">' + esc(err.message) + '</p>'
     }
     finally {
       $('go').disabled = false

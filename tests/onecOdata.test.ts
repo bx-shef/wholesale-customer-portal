@@ -154,3 +154,24 @@ describe('stock: склады', () => {
     expect((await c.stock()).map(s => s.warehouseName)).toEqual(['Основной склад'])
   })
 })
+
+describe('журнал запросов и предел для стенда', () => {
+  it('onRequest пишет каждый запрос; prices({ limit }) просит $top и НДС только своих товаров', async () => {
+    const urls: string[] = []
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('ЦеныНоменклатуры25/SliceLast')) return Response.json({ value: [{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 1, Валюта_Key: G(90) }] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(90), Description: 'BYN' }] })
+      if (url.includes('Catalog_СтавкиНДС')) return Response.json({ value: [] })
+      if (url.includes('Catalog_Номенклатура')) return Response.json({ value: [] })
+      return new Response('', { status: 404 })
+    }
+    const log: string[] = []
+    const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake, onRequest: e => log.push(`${e.label}:${e.rows ?? e.error}`) })
+    await c.prices({ limit: 10 })
+    expect(urls[0]).toContain('$top=10')
+    expect(urls.find(u => u.includes('Catalog_Номенклатура'))).toContain(`Ref_Key eq guid'${G(20)}'`)
+    expect(log[0]).toBe('InformationRegister_ЦеныНоменклатуры25/SliceLast [$top=10]:1')
+  })
+})

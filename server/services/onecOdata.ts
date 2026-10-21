@@ -27,6 +27,8 @@ export interface ODataOptions {
    * Пусто — все склады. Решение владельца 2026-10-21: только «Основной склад».
    */
   stockWarehouses?: string[]
+  /** Журнал запросов (стенд): что спросили, сколько шло, сколько строк или какая ошибка. Без данных. */
+  onRequest?: (e: { label: string, ms: number, rows?: number, error?: string }) => void
 }
 
 /** Склады по умолчанию для остатков клиенту (решение владельца 2026-10-21). */
@@ -111,6 +113,20 @@ export class ODataClient {
    * `path` уже закодирован, `label` — для текста ошибки.
    */
   async listPath<T>(path: string, label: string, query: Record<string, string | number>): Promise<T[]> {
+    const started = Date.now()
+    const what = `${label}${query.$top !== undefined ? ` [$top=${query.$top}${query.$skip ? `, $skip=${query.$skip}` : ''}]` : ''}`
+    try {
+      const rows = await this.listPathRaw<T>(path, label, query)
+      this.options.onRequest?.({ label: what, ms: Date.now() - started, rows: rows.length })
+      return rows
+    }
+    catch (e) {
+      this.options.onRequest?.({ label: what, ms: Date.now() - started, error: (e as Error).message })
+      throw e
+    }
+  }
+
+  private async listPathRaw<T>(path: string, label: string, query: Record<string, string | number>): Promise<T[]> {
     const set = label
     const qs = Object.entries({ ...query, $format: 'json' })
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&')
@@ -198,7 +214,7 @@ export class ODataClient {
    * Если 1С срез не отдаёт — все записи регистра и последняя по дате (`via: 'records'`).
    * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
    */
-  async prices(opts: { priceTypes?: string[] } = {}): Promise<PricesResult> {
+  async prices(opts: { priceTypes?: string[], limit?: number, items?: string[] } = {}): Promise<PricesResult> {
     const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
     // В 1С:КА два регистра цен: `ЦеныНоменклатуры25` (новое ценообразование) и прежний
     // `ЦеныНоменклатуры`. Тестовая база (2026-10-21): в первом записей нет — пробуем оба.
@@ -207,8 +223,8 @@ export class ODataClient {
     for (const set of PRICE_REGISTERS) {
       const slice = `${encodeURIComponent(set)}/SliceLast()`
       attempts.push(
-        { via: 'slice', set, load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter }) },
-        { via: 'records', set, load: () => this.recordSets(set) },
+        { via: 'slice', set, load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter, ...(opts.limit ? { $top: opts.limit } : {}) }) },
+        { via: 'records', set, load: () => this.recordSets(set, 200, opts.limit ? Math.max(1, Math.ceil(opts.limit / 200)) : 2000, !!opts.limit) },
       )
     }
     const tried: string[] = []
@@ -229,7 +245,7 @@ export class ODataClient {
       }
     }
     const currencies = await this.currencies()
-    const vat = await this.vatByItem()
+    const vat = await this.vatByItem(opts.items ?? (opts.limit ? [...new Set((rows ?? []).map(r => r.Номенклатура_Key))].slice(0, 20) : undefined))
     const stats = emptyPriceStats()
     const items = mapPrices(rows ?? [], { currencies: currencies.map, vat: vat.map }, stats)
     return {
@@ -246,13 +262,14 @@ export class ODataClient {
    * Записи регистра, подчинённого регистратору: набор `InformationRegister_X` — это наборы записей
    * документов (`Recorder` + `RecordSet`). Читаем страницами и разворачиваем строки.
    */
-  async recordSets(set: string, pageSize = 200, maxPages = 2000): Promise<PriceRow[]> {
+  async recordSets(set: string, pageSize = 200, maxPages = 2000, partial = false): Promise<PriceRow[]> {
     const out: PriceRow[] = []
     for (let page = 0; page < maxPages; page++) {
       const sets = await this.list<{ RecordSet?: PriceRow[] }>(set, { $top: pageSize, $skip: page * pageSize })
       for (const rs of sets) out.push(...(rs.RecordSet ?? []))
       if (sets.length < pageSize) return out
     }
+    if (partial) return out
     throw new OnecError('contract', `1C OData ${set}: more than ${maxPages} pages`)
   }
 
@@ -286,12 +303,15 @@ export class ODataClient {
   }
 
   /** Ставка НДС товара в процентах: номенклатура → `Catalog_СтавкиНДС`. */
-  async vatByItem(): Promise<{ map: Map<string, number>, error?: string }> {
+  /** `items` — только эти товары (стенд): весь справочник ради образца не читаем. */
+  async vatByItem(items?: string[]): Promise<{ map: Map<string, number>, error?: string }> {
     try {
       const rates = await this.list<{ Ref_Key: string, Description?: string, Ставка?: number }>('Catalog_СтавкиНДС', {})
       const rate = new Map(rates.map(r => [r.Ref_Key.toLowerCase(), vatPercent(r.Ставка, r.Description)]))
-      const items = await this.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,СтавкаНДС_Key', $filter: 'IsFolder eq false' })
-      return { map: new Map(items.flatMap((i) => {
+      if (items && !items.length) return { map: new Map() }
+      const filter = items ? items.map(g => `Ref_Key eq guid'${g}'`).join(' or ') : 'IsFolder eq false'
+      const rows = await this.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,СтавкаНДС_Key', $filter: filter })
+      return { map: new Map(rows.flatMap((i) => {
         const v = ref(i.СтавкаНДС_Key) && rate.get(ref(i.СтавкаНДС_Key)!)
         return typeof v === 'number' ? [[i.Ref_Key.toLowerCase(), v] as const] : []
       })) }
