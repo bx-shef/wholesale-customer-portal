@@ -118,7 +118,12 @@ export class ODataClient {
       const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
       throw new OnecError(timeout ? 'timeout' : 'network', `1C OData ${set}: ${timeout ? 'timeout' : (e as Error).message}`)
     }
-    if (!res.ok) throw new OnecError('http', `1C OData ${set}: HTTP ${res.status}`, res.status)
+    if (!res.ok) {
+      // Текст ошибки 1С — про запрос, а не про данные; режем до 200 знаков, чтобы стенд показал причину.
+      const body = await res.json().catch(() => null) as { 'odata.error'?: { message?: { value?: string } } } | null
+      const why = body?.['odata.error']?.message?.value?.replace(/\s+/g, ' ').slice(0, 200)
+      throw new OnecError('http', `1C OData ${set}: HTTP ${res.status}${why ? ` — ${why}` : ''}`, res.status)
+    }
     const body = await res.json().catch(() => null) as { value?: unknown } | null
     if (!body || !Array.isArray(body.value)) throw new OnecError('contract', `1C OData ${set}: no "value" array`, res.status)
     return body.value as T[]
@@ -186,29 +191,33 @@ export class ODataClient {
    * Курсора нет: каждый прогон полный. `priceTypes` — только эти виды цен (меньше читать).
    */
   async prices(opts: { priceTypes?: string[] } = {}): Promise<PricesResult> {
-    const set = 'InformationRegister_ЦеныНоменклатуры25'
-    const fields = 'Period,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key'
     const filter: Record<string, string> = opts.priceTypes?.length ? { $filter: opts.priceTypes.map(g => `ВидЦены_Key eq guid'${g}'`).join(' or ') } : {}
-    const slice = `${encodeURIComponent(set)}/SliceLast()`
-    // Пути по очереди: как 1С отдаёт срез, на этой базе не замерено — пробуем и пишем, что вышло.
-    const attempts: Array<{ via: PricesResult['via'], load: () => Promise<PriceRow[]> }> = [
-      { via: 'slice', load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { $select: fields, ...filter }) },
-      { via: 'slice', load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter }) },
-      { via: 'records', load: () => this.recordSets(set) },
-    ]
+    // В 1С:КА два регистра цен: `ЦеныНоменклатуры25` (новое ценообразование) и прежний
+    // `ЦеныНоменклатуры`. Тестовая база (2026-10-21): в первом записей нет — пробуем оба.
+    // Пути по очереди: срез последних, затем наборы записей; что не сработало — в `tried`.
+    const attempts: Array<{ via: PricesResult['via'], set: string, load: () => Promise<PriceRow[]> }> = []
+    for (const set of PRICE_REGISTERS) {
+      const slice = `${encodeURIComponent(set)}/SliceLast()`
+      attempts.push(
+        { via: 'slice', set, load: () => this.listPath<PriceRow>(slice, `${set}/SliceLast`, { ...filter }) },
+        { via: 'records', set, load: () => this.recordSets(set) },
+      )
+    }
     const tried: string[] = []
     let rows: PriceRow[] | null = null
     let via: PricesResult['via'] = 'slice'
+    let register: string = PRICE_REGISTERS[0]
     for (const a of attempts) {
       try {
         rows = await a.load()
         via = a.via
+        register = a.set
         if (rows.length) break
-        tried.push(`${a.via}: пусто`)
+        tried.push(`${a.set} ${a.via}: пусто`)
       }
       catch (e) {
         if (!(e instanceof OnecError) || (e.kind !== 'http' && e.kind !== 'contract')) throw e
-        tried.push(`${a.via}: ${e.message}`)
+        tried.push(`${a.set} ${a.via}: ${e.message}`)
       }
     }
     const currencies = await this.currencies()
@@ -218,6 +227,7 @@ export class ODataClient {
     return {
       items: checked(Price, items, 'prices'),
       via,
+      register,
       tried,
       stats,
       missing: [currencies.error && 'Catalog_Валюты', vat.error && 'Catalog_СтавкиНДС'].filter((x): x is string => !!x),
@@ -282,6 +292,9 @@ export class ODataClient {
   }
 }
 
+/** Регистры цен по порядку попыток (docs/onec-odata.md). */
+export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры25', 'InformationRegister_ЦеныНоменклатуры'] as const
+
 export interface PriceStats {
   read: number
   inactive: number
@@ -296,6 +309,8 @@ export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, varian
 export interface PricesResult {
   items: PriceT[]
   via: 'slice' | 'records'
+  /** Регистр, из которого прочитаны цены. */
+  register: string
   /** Что не сработало до удачного пути — для стенда. */
   tried: string[]
   stats: PriceStats
@@ -311,6 +326,9 @@ export interface PriceRow {
   Валюта_Key?: string
   ХарактеристикаЦО_Key?: string
   УпаковкаЦО_Key?: string
+  /** Прежний регистр `ЦеныНоменклатуры`: те же измерения без «ЦО». */
+  Характеристика_Key?: string
+  Упаковка_Key?: string
 }
 
 export interface StockRow {
@@ -351,7 +369,7 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
   stats.read += rows.length
   for (const r of rows) {
     if (r.Active === false) { stats.inactive++; continue }
-    if (ref(r.ХарактеристикаЦО_Key) || ref(r.УпаковкаЦО_Key)) { stats.variant++; continue }
+    if (ref(r.ХарактеристикаЦО_Key) || ref(r.УпаковкаЦО_Key) || ref(r.Характеристика_Key)) { stats.variant++; continue }
     const item = ref(r.Номенклатура_Key)
     const type = ref(r.ВидЦены_Key)
     if (!item || !type) { stats.noRef++; continue }
