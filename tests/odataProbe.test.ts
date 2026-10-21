@@ -79,7 +79,7 @@ describe('runODataPricesProbe', () => {
       if (url.includes('Catalog_Склады')) return Response.json({ value: [{ Ref_Key: G(4), Description: 'Минск' }] })
       return new Response('', { status: 404 })
     }
-    const checks = await runODataPricesProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    const checks = await runODataPricesProbe({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake, stockWarehouses: ['Минск'] })
     expect(checks.map(c => c.status)).toEqual(['ok', 'ok'])
     expect(checks[0]!.detail).toContain('чтение: ЦеныНоменклатуры25, срез последних')
     expect(checks[0]!.fields![1]!.properties[0]!.name).toBe('Клей · Опт · 3.5 BYN · НДС 0%')

@@ -22,7 +22,15 @@ export interface ODataOptions {
   timeoutMs?: number
   /** Время ответа: у объектов 1С нет даты изменения, `changedAt` — момент чтения. */
   now?: () => Date
+  /**
+   * Склады, остаток которых видит клиент, — по наименованию (`ONEC_STOCK_WAREHOUSES`).
+   * Пусто — все склады. Решение владельца 2026-10-21: только «Основной склад».
+   */
+  stockWarehouses?: string[]
 }
+
+/** Склады по умолчанию для остатков клиенту (решение владельца 2026-10-21). */
+export const DEFAULT_STOCK_WAREHOUSES = ['Основной склад']
 
 /** Поля номенклатуры, которые читаем: `$select` бережёт 1С — у объекта больше сотни полей. */
 export const NOMENCLATURE_FIELDS = [
@@ -258,7 +266,9 @@ export class ODataClient {
     )
     const warehouses = await this.names('Catalog_Склады')
     const changedAt = (this.options.now?.() ?? new Date()).toISOString()
-    return checked(Stock, mapStock(rows, warehouses.map, changedAt), 'stock')
+    const only = new Set((this.options.stockWarehouses ?? []).map(n => n.trim().toLowerCase()).filter(Boolean))
+    const all = mapStock(rows, warehouses.map, changedAt)
+    return checked(Stock, only.size ? all.filter(s => only.has(s.warehouseName.trim().toLowerCase())) : all, 'stock')
   }
 
   /** Валюта по ссылке: буквенный код из наименования или по числовому коду. */

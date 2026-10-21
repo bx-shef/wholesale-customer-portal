@@ -4,6 +4,7 @@ import { mockFetch } from '../mocks/onec/fetch'
 import { checkBaseUrl, runOnecProbe } from '../utils/onecProbe'
 import { fieldsText, runODataCatalogProbe, runODataPricesProbe, runODataProbe } from '../utils/odataProbe'
 import { createRateLimiter } from '../utils/rateLimit'
+import { standJobs } from '../utils/onecTestJobs'
 
 const runs = createRateLimiter(30, 60 * 60_000)
 const body = z.object({
@@ -36,20 +37,25 @@ export default defineEventHandler(async (event) => {
     ? { kind: 'basic' as const, login: (d.login ?? '').trim(), password: d.password ?? '' }
     : { kind: 'bearer' as const, token: (d.token ?? '').trim() }
   if (auth.kind === 'basic' ? !auth.login || !auth.password : !auth.token) throw createError({ statusCode: 400, message: auth.kind === 'basic' ? 'Укажите логин и пароль' : 'Укажите токен' })
-  if (d.target === 'odata-prices') {
-    const checks = await runODataPricesProbe({ baseUrl, auth, fetch })
+  // Долгие прогоны — в фоне: ответ сразу, результат страница забирает с /api/onec-test/result.
+  const job = standJobs.start(async () => {
+    if (d.target === 'odata-prices') {
+      const checks = await runODataPricesProbe({ baseUrl, auth, fetch, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
+      return { target: baseUrl, ms: Date.now() - started, checks }
+    }
+    if (d.target === 'odata-catalog') {
+      const checks = await runODataCatalogProbe({ baseUrl, auth, fetch })
+      return { target: baseUrl, ms: Date.now() - started, checks }
+    }
+    if (d.target === 'odata') {
+      const checks = await runODataProbe({ baseUrl, auth, fetch })
+      console.info(`[onec-test] odata ${new URL(baseUrl).host}: ${checks.filter(c => c.status === 'ok').length}/${checks.length} ok`)
+      return { target: baseUrl, ms: Date.now() - started, checks, fieldsText: fieldsText(checks) }
+    }
+    const checks = await runOnecProbe({ baseUrl, auth, allowOrder: parsed.data.allowOrder === true, fetch })
+    console.info(`[onec-test] ${new URL(baseUrl).host}: ${checks.filter(c => c.status === 'ok').length}/${checks.length} ok`)
     return { target: baseUrl, ms: Date.now() - started, checks }
-  }
-  if (d.target === 'odata-catalog') {
-    const checks = await runODataCatalogProbe({ baseUrl, auth, fetch })
-    return { target: baseUrl, ms: Date.now() - started, checks }
-  }
-  if (d.target === 'odata') {
-    const checks = await runODataProbe({ baseUrl, auth, fetch })
-    console.info(`[onec-test] odata ${new URL(baseUrl).host}: ${checks.filter(c => c.status === 'ok').length}/${checks.length} ok`)
-    return { target: baseUrl, ms: Date.now() - started, checks, fieldsText: fieldsText(checks) }
-  }
-  const checks = await runOnecProbe({ baseUrl, auth, allowOrder: parsed.data.allowOrder === true, fetch })
-  console.info(`[onec-test] ${new URL(baseUrl).host}: ${checks.filter(c => c.status === 'ok').length}/${checks.length} ok`)
-  return { target: baseUrl, ms: Date.now() - started, checks }
+  })
+  setResponseStatus(event, 202)
+  return { job }
 })

@@ -21,6 +21,8 @@ export interface ServerEnv {
   onecMock: boolean
   /** Мок 1С: GUID настоящих компаний CRM, которым мок выдаёт демо-договор, адрес и цены. */
   onecMockClients: string[]
+  /** Склады для остатков клиенту по OData, через запятую; пусто — «Основной склад». */
+  onecStockWarehouses: string[]
   deepseekApiKey: string
   deepseekModel: string
   sessionSecret: string
@@ -49,6 +51,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecLogin: get('ONEC_LOGIN'),
     onecPassword: get('ONEC_PASSWORD'),
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
+    onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
     deepseekModel: get('DEEPSEEK_MODEL') || 'deepseek-chat',

@@ -6,7 +6,7 @@
  * Чистое ядро: `fetch` внедряется, тесты гоняют его на фикстуре.
  */
 import { onecAuthHeader, type OnecAuth } from '../services/onec'
-import { ODataClient } from '../services/onecOdata'
+import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
 export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
@@ -85,6 +85,8 @@ export interface ODataProbeInput {
   auth: OnecAuth
   fetch: typeof fetch
   timeoutMs?: number
+  /** Склады для остатков (только для цен и остатков). */
+  stockWarehouses?: string[]
 }
 
 export async function runODataProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
@@ -187,17 +189,26 @@ export async function runODataCatalogProbe(input: ODataProbeInput, now: () => nu
  * Цены и остатки — не персональные данные; названия товаров берём из каталога для образца.
  */
 export async function runODataPricesProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
-  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000 })
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, stockWarehouses: input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES })
   const checks: ODataCheck[] = []
-  const names = await client.list<{ Ref_Key: string, Description?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,Description', $filter: 'IsFolder eq false' })
-    .then(rows => new Map(rows.map(r => [r.Ref_Key.toLowerCase(), r.Description ?? ''])))
-    .catch(() => new Map<string, string>())
   const priceTypes = (await client.names('Catalog_ВидыЦен')).map
+  // Названия — только для образца (10 товаров): весь справочник ради них не читаем.
+  const names = new Map<string, string>()
+  const loadNames = async (guids: string[]) => {
+    const need = [...new Set(guids)].filter(g => !names.has(g)).slice(0, 20)
+    if (!need.length) return
+    const rows = await client.list<{ Ref_Key: string, Description?: string }>('Catalog_Номенклатура', {
+      $select: 'Ref_Key,Description',
+      $filter: need.map(g => `Ref_Key eq guid'${g}'`).join(' or '),
+    }).catch(() => [])
+    for (const r of rows) names.set(r.Ref_Key.toLowerCase(), r.Description ?? '')
+  }
   const name = (g: string) => names.get(g) || g
 
   let started = now()
   try {
     const p = await client.prices()
+    await loadNames(p.items.slice(0, 10).map(i => i.itemGuid))
     const byType = new Map<string, number>()
     for (const i of p.items) byType.set(i.priceTypeGuid, (byType.get(i.priceTypeGuid) ?? 0) + 1)
     const currencies = [...new Set(p.items.map(i => i.currency))].join(', ')
@@ -222,11 +233,12 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
   started = now()
   try {
     const s = await client.stock()
+    await loadNames(s.filter(r => r.available > 0).slice(0, 10).map(r => r.itemGuid))
     const wh = new Map<string, number>()
     for (const r of s) wh.set(r.warehouseName || r.warehouseGuid, (wh.get(r.warehouseName || r.warehouseGuid) ?? 0) + 1)
     checks.push({
       id: 'stock',
-      title: 'Остатки по складам',
+      title: `Остатки: ${(input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES).join(', ')}`,
       status: s.length ? 'ok' : 'fail',
       detail: `строк: ${s.length}, складов: ${wh.size}, с остатком больше нуля: ${s.filter(r => r.available > 0).length}`,
       fields: [
