@@ -43,7 +43,8 @@ describe('заказ по OData: тело документа', () => {
 
   it('маркер — только безопасные символы: кавычка в фильтр не попадёт', () => {
     expect(orderMarker('deal-15')).toBe('ЛК-deal-15')
-    expect(() => orderMarker('1'.repeat(41))).toThrow(expect.objectContaining({ kind: 'contract' }))
+    expect(orderMarker('1'.repeat(37))).toHaveLength(40)
+    expect(() => orderMarker('1'.repeat(38))).toThrow(expect.objectContaining({ kind: 'contract' }))
     expect(() => orderMarker("1' or 1 eq 1")).toThrow(expect.objectContaining({ kind: 'contract' }))
   })
 })

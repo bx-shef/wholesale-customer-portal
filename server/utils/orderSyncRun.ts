@@ -7,7 +7,10 @@ let running: Promise<unknown> | undefined
 
 export function runOrderSync() {
   running ??= (async () => {
+    // OData без ONEC_ODATA_ORDERS: в 1С не пишем и статусы не читаем, CRM-часть работает.
+    const onecOrders = !onecUnsupportedFlows().includes('orders')
     const deps = {
+      onecOrders,
       orders: useOrderStore(),
       clients: useClientStore(),
       b24: useB24Orders(),
@@ -15,6 +18,7 @@ export function runOrderSync() {
       schedules: () => cachedSchedules(),
     }
     const summary = await syncOrders(deps)
+    if (!onecOrders) return { ...summary, statuses: 0, statusRun: 'skipped' as const }
     // Статусы 1С → база (курсор зависит только от записи в базу), затем сразу — в сделки.
     let applied = 0
     const onec = useOnec()

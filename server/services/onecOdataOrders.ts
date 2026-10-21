@@ -57,11 +57,11 @@ export interface OrderRefs {
 
 /**
  * Маркер заявки ЛК в 1С. `externalId` — ID сделки Б24: только безопасные символы (кавычки в фильтр
- * не попадут) и не длиннее 40 — маркер должен влезть в `НомерПоДаннымКлиента` без обрезки, иначе
- * повтор документ не найдёт и запишет второй.
+ * не попадут) и не длиннее 37 — маркер (`ЛК-` + номер, до 40 знаков) должен влезть в
+ * `НомерПоДаннымКлиента` без обрезки, иначе повтор документ не найдёт и запишет второй.
  */
 export function orderMarker(externalId: string): string {
-  if (!/^[\w-]{1,40}$/.test(externalId)) throw new OnecError('contract', '1C OData order: externalId has unsafe characters')
+  if (!/^[\w-]{1,37}$/.test(externalId)) throw new OnecError('contract', '1C OData order: externalId has unsafe characters')
   return `${ORDER_MARK}${externalId}`
 }
 

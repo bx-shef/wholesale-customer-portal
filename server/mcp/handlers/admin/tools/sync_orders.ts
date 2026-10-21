@@ -3,5 +3,5 @@ export default defineMcpTool({
   name: 'sync_orders',
   description: 'Синхронизировать заявки ЛК с CRM и 1С сейчас',
   inputSchema: {},
-  handler: async () => mcpJson(async () => onecUnsupportedFlows().includes('orders') ? { skipped: 'not available over OData yet' } : runOrderSync()),
+  handler: async () => mcpJson(() => runOrderSync()),
 })

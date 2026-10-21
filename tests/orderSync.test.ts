@@ -127,6 +127,16 @@ describe('синхронизация заявок', () => {
       expect(deps.orders.byId(id)!.onec_order_guid).toBe(g(900))
     })
 
+    it('заказы в 1С выключены (OData без ONEC_ODATA_ORDERS) — подтверждённая ждёт, потом уходит', async () => {
+      deps.onecOrders = false
+      const id = await confirmed()
+      expect(deps.createOnecOrder).not.toHaveBeenCalled()
+      expect(deps.orders.byId(id)!.onec_order_guid).toBeNull()
+      deps.onecOrders = true
+      await syncOrders(deps)
+      expect(deps.createOnecOrder).toHaveBeenCalledTimes(1)
+    })
+
     it('дата доставки — на момент подтверждения: после отсечки — следующий рейс', async () => {
       // Отправлена до отсечки на вт 13-го, подтверждена в пн 12-го после 16:00 по Минску → пт 16-го.
       const late = new Date('2026-10-12T14:00:00Z')
