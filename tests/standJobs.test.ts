@@ -6,8 +6,8 @@ describe('createStandJobs', () => {
     let t = 0
     const jobs = createStandJobs<number>({ ttlMs: 100, now: () => t })
     let finish!: (v: number) => void
-    const id = jobs.start(() => new Promise<number>((r) => { finish = r }))
-    expect(jobs.get(id)).toMatchObject({ status: 'running' })
+    const id = jobs.start(log => new Promise<number>((r) => { log('шаг'); finish = r }))
+    expect(jobs.get(id)).toMatchObject({ status: 'running', log: ['шаг'] })
     finish(42)
     await Promise.resolve(); await Promise.resolve()
     expect(jobs.get(id)).toMatchObject({ status: 'done', result: 42 })

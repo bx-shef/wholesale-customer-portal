@@ -38,13 +38,15 @@ export default defineEventHandler(async (event) => {
     : { kind: 'bearer' as const, token: (d.token ?? '').trim() }
   if (auth.kind === 'basic' ? !auth.login || !auth.password : !auth.token) throw createError({ statusCode: 400, message: auth.kind === 'basic' ? 'Укажите логин и пароль' : 'Укажите токен' })
   // Долгие прогоны — в фоне: ответ сразу, результат страница забирает с /api/onec-test/result.
-  const job = standJobs.start(async () => {
+  const job = standJobs.start(async (log) => {
+    const onRequest = (e: { label: string, ms: number, rows?: number, error?: string }) =>
+      log(`${(e.ms / 1000).toFixed(1)} с · ${e.label} → ${e.error ?? `${e.rows} строк`}`)
     if (d.target === 'odata-prices') {
-      const checks = await runODataPricesProbe({ baseUrl, auth, fetch, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
+      const checks = await runODataPricesProbe({ baseUrl, auth, fetch, onRequest, stockWarehouses: readServerEnv().onecStockWarehouses.length ? readServerEnv().onecStockWarehouses : undefined })
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata-catalog') {
-      const checks = await runODataCatalogProbe({ baseUrl, auth, fetch })
+      const checks = await runODataCatalogProbe({ baseUrl, auth, fetch, onRequest })
       return { target: baseUrl, ms: Date.now() - started, checks }
     }
     if (d.target === 'odata') {

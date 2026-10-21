@@ -87,6 +87,8 @@ export interface ODataProbeInput {
   timeoutMs?: number
   /** Склады для остатков (только для цен и остатков). */
   stockWarehouses?: string[]
+  /** Журнал запросов к 1С — стенд показывает его, пока идёт прогон. */
+  onRequest?: (e: { label: string, ms: number, rows?: number, error?: string }) => void
 }
 
 export async function runODataProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
@@ -189,7 +191,7 @@ export async function runODataCatalogProbe(input: ODataProbeInput, now: () => nu
  * Цены и остатки — не персональные данные; названия товаров берём из каталога для образца.
  */
 export async function runODataPricesProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
-  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, stockWarehouses: input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES })
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, onRequest: input.onRequest, stockWarehouses: input.stockWarehouses ?? DEFAULT_STOCK_WAREHOUSES })
   const checks: ODataCheck[] = []
   const priceTypes = (await client.names('Catalog_ВидыЦен')).map
   // Названия — только для образца (10 товаров): весь справочник ради них не читаем.
@@ -207,7 +209,8 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
 
   let started = now()
   try {
-    const p = await client.prices()
+    // Стенду хватит образца: не больше 1000 цен, НДС — только для них.
+    const p = await client.prices({ limit: 1000 })
     await loadNames(p.items.slice(0, 10).map(i => i.itemGuid))
     const byType = new Map<string, number>()
     for (const i of p.items) byType.set(i.priceTypeGuid, (byType.get(i.priceTypeGuid) ?? 0) + 1)
