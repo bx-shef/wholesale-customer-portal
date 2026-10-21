@@ -21,8 +21,11 @@ pnpm check          # lint + typecheck + test
 - [docs/spec.md](docs/spec.md) — полное техническое описание: экраны, доступ, обмены, MCP, моки, ИИ, доставка, UX, риски.
 - [docs/plan.md](docs/plan.md) — план работ по этапам с задачами.
 - [docs/START-PROMPT.md](docs/START-PROMPT.md) — стартовый промпт для новой сессии разработки.
-- [docs/onec-contract.md](docs/onec-contract.md) — задание программисту 1С (HTTP-контракт; в прототипе — мок).
+- [docs/onec-odata.md](docs/onec-odata.md) — 1С по OData (решение 2026-10-20): сопоставление полей, что сделано, что включается флагами.
+- [docs/onec-contract.md](docs/onec-contract.md) — форма данных 1С внутри ЛК (её отдают мок и клиент OData); HTTP-сервиса не будет.
 - [docs/project-map.md](docs/project-map.md) — где мы сейчас.
+- [docs/CHROME_CHECK_PROMPT.md](docs/CHROME_CHECK_PROMPT.md) — промпт для Claude в Chrome: пройти кабинет и коробку и вернуть отчёт.
+- [docs/MONITORING.md](docs/MONITORING.md) — «Состояние системы» и оповещения.
 - [docs/TEST_STAND.md](docs/TEST_STAND.md) — тестовая коробка и настройка Б24 скриптом.
 - [docs/REST_METHODS.md](docs/REST_METHODS.md) — какие методы Б24 зовём.
 - [docs/DEPLOY.md](docs/DEPLOY.md) — выкат: стенд (GHCR + Watchtower) и ВМ Битрикс24 клиента.
