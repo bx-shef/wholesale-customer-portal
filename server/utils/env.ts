@@ -23,6 +23,8 @@ export interface ServerEnv {
   onecMockClients: string[]
   /** Склады для остатков клиенту по OData, через запятую; пусто — «Основной склад». */
   onecStockWarehouses: string[]
+  /** OData: клиенты 1С → компании Б24 (`ONEC_ODATA_CLIENTS=true`); иначе поток клиентов пропускается. */
+  onecOdataClients: boolean
   /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
   onecMode: 'http' | 'odata'
   /** Виды цен по наименованию для OData, через запятую; пусто — все. */
@@ -56,6 +58,8 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecPassword: get('ONEC_PASSWORD'),
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
     onecMode: parseOnecMode(get('ONEC_MODE')),
+    // Клиенты 1С по OData уходят в компании Б24: включаются отдельно, после проверки стендом (PR #63).
+    onecOdataClients: get('ONEC_ODATA_CLIENTS').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),

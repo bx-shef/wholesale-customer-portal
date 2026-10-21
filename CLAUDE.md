@@ -46,7 +46,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/services/onec.ts` | клиент 1С: таймаут, без повторов (повтор — следующий цикл расписания), проверка схемой |
 | `server/utils/onec.ts` | `useOnec()` — мок, HTTP-сервис или OData (`ONEC_MODE`) по окружению |
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
-| `server/services/onecOdata.ts`, `onecOdataSource.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (`docs/onec-odata.md`) |
+| `server/services/onecOdata.ts`, `onecOdataSource.ts`, `onecOdataClients.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки, клиенты и соглашения в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (у клиентов — по хешу содержимого; клиенты — только с `ONEC_ODATA_CLIENTS=true`) (`docs/onec-odata.md`) |
 | `server/utils/odataProbe.ts`, `docs/onec-odata.md` | 1С только по OData (решение 2026-10-20): разведка полей на стенде — имена и типы без значений; план перехода |
 | `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, управление моком — `docs/MONITORING.md` |
 | `server/utils/{telegramAlert,alertDelivery}.ts`, `server/tasks/monitor/alerts.ts` | оповещения в Telegram по эпизодам (порт из client-bank-alfa-by), раз в 5 минут |

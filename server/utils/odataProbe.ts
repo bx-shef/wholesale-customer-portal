@@ -7,6 +7,8 @@
  */
 import { onecAuthHeader, type OnecAuth } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
+import { agreementActive, emptyClientStats, mapClients, readClientSources } from '../services/onecOdataClients'
+import { minskDay } from '../services/onecOdataSource'
 
 /** Объекты 1С, из которых ЛК собирает свой контракт, и зачем каждый нужен. */
 export const ODATA_SETS: ReadonlyArray<{ name: string, why: string }> = [
@@ -255,4 +257,57 @@ export async function runODataPricesProbe(input: ODataProbeInput, now: () => num
     checks.push({ id: 'stock', title: 'Остатки по складам', status: 'fail', detail: reason(e), ms: now() - started })
   }
   return checks
+}
+
+/**
+ * Клиенты и соглашения через клиент OData — тем же сопоставлением, что ЛК: счётчики, из чего
+ * состоят соглашения и адреса, образец клиентов. Отчёт копируют в чат: e-mail, телефоны и адреса не
+ * показываем, УНП — только «есть/нет», название — только у организаций (у ИП это ФИО, `sampleName`).
+ */
+export async function runODataClientsProbe(input: ODataProbeInput, now: () => number = Date.now): Promise<ODataCheck[]> {
+  const client = new ODataClient({ baseUrl: input.baseUrl, auth: input.auth, fetch: input.fetch, timeoutMs: input.timeoutMs ?? 120_000, onRequest: input.onRequest })
+  const started = now()
+  try {
+    const src = await readClientSources(client)
+    const stats = emptyClientStats()
+    const today = minskDay(new Date(now()))
+    const rows = mapClients(src, today, stats)
+    const priceTypes = (await client.names('Catalog_ВидыЦен')).map
+    const count = <T>(items: T[], key: (i: T) => string) => {
+      const m = new Map<string, number>()
+      for (const i of items) m.set(key(i), (m.get(key(i)) ?? 0) + 1)
+      return [...m].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name: `${name || '—'}: ${n}`, type: '' }))
+    }
+    const perClient = new Map<string, number>()
+    for (const a of src.agreements) if (agreementActive(a, today) && a.Партнер_Key) perClient.set(a.Партнер_Key.toLowerCase(), (perClient.get(a.Партнер_Key.toLowerCase()) ?? 0) + 1)
+    const addresses = src.contacts.filter(c => c.Тип === 'Адрес')
+    return [{
+      id: 'clients',
+      title: 'Клиенты по контракту',
+      status: rows.length ? 'ok' : 'fail',
+      detail: `клиентов: ${stats.clients}, с соглашением: ${stats.clients - stats.noAgreement}, без соглашения: ${stats.noAgreement}, с несколькими действующими: ${stats.manyAgreements} (взято самое позднее), без вида цен: ${stats.noPriceType}, без валюты: ${stats.noCurrency}`
+        + `; без УНП: ${stats.noUnp}, без зоны доставки: ${stats.noZone}, без адреса: ${stats.noAddress}, с запретом отгрузки: ${stats.blocked}`,
+      fields: [
+        { name: 'Статусы соглашений', properties: count(src.agreements, a => `${a.Статус ?? ''}${a.DeletionMark ? ' (удалено)' : ''}`) },
+        { name: 'Действующих соглашений у клиента', properties: count([...perClient.values()], n => `${n}`) },
+        { name: 'Виды цен в соглашениях', properties: count(rows.flatMap(r => (r.client.contract ? [r.client.contract.priceTypeGuid] : [])), g => priceTypes.get(g) || g) },
+        { name: 'Виды адресов (Вид_Key, строк)', properties: count(addresses, c => (c.Вид_Key ?? '').toLowerCase()) },
+        { name: 'Зоны доставки (клиентов)', properties: count(rows, r => r.client.region?.name ?? 'без зоны') },
+        { name: 'Образец', properties: rows.slice(0, 10).map(({ client: c }) => ({ name: `${sampleName(c.name)} · УНП ${c.unp ? 'есть' : 'нет'} · ${c.region?.name ?? 'без зоны'} · ${c.contract ? `соглашение ${c.contract.number || c.contract.guid} · ${priceTypes.get(c.contract.priceTypeGuid) || 'вид цен ?'} · ${c.contract.currency}` : 'без соглашения'} · адресов ${c.deliveryAddresses.length}${c.shipmentBlocked ? ' · запрет отгрузки' : ''}`, type: '' })) },
+      ],
+      ms: now() - started,
+    }]
+  }
+  catch (e) {
+    return [{ id: 'clients', title: 'Клиенты по контракту', status: 'fail', detail: reason(e), ms: now() - started }]
+  }
+}
+
+/** Организационно-правовые формы организаций: их название показываем, остальное (ИП — ФИО) — нет. */
+const ORG_FORM = /^(?:(?:ООО|ОАО|ЗАО|АО|ПАО|ОДО|ЧУП|ЧТУП|ЧПУП|УП|РУП|КУП|ИООО|СООО)\s*[«"]|(?:Общество с ограниченной ответственностью|Частное (?:торговое )?унитарное предприятие|Унитарное предприятие)\s)/
+
+/** Название клиента для отчёта стенда: организации — как есть, прочее — первые две буквы и длина. */
+export function sampleName(name: string): string {
+  const n = name.trim()
+  return ORG_FORM.test(n) ? n : `${n.slice(0, 2)}… (${n.length} симв.)`
 }

@@ -9,7 +9,7 @@ import { createMockState, type MockState } from '../mocks/onec/mock'
 import { mockFetch } from '../mocks/onec/fetch'
 import { OnecClient, type OnecApi } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
-import { ODATA_UNSUPPORTED_FLOWS, OdataOnec } from '../services/onecOdataSource'
+import { OdataOnec, unsupportedFlowsFor } from '../services/onecOdataSource'
 import { sqliteVersionStore } from './odataVersions'
 import { createOnecGuard } from './onecGuard'
 
@@ -44,7 +44,7 @@ let warnedMockOverOdata = false
  */
 export function onecUnsupportedFlows(): readonly string[] {
   const env = readServerEnv()
-  return !env.onecMock && env.onecMode === 'odata' ? ODATA_UNSUPPORTED_FLOWS : []
+  return unsupportedFlowsFor(env)
 }
 
 export function useOnec(): OnecApi {

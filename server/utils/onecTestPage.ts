@@ -51,6 +51,7 @@ export const ONEC_TEST_PAGE = `<!doctype html>
         <label><input type="radio" name="target" value="odata"> OData 1С — разведка полей</label>
         <label><input type="radio" name="target" value="odata-catalog"> OData 1С — каталог</label>
         <label><input type="radio" name="target" value="odata-prices"> OData 1С — цены и остатки</label>
+        <label><input type="radio" name="target" value="odata-clients"> OData 1С — клиенты и соглашения</label>
         <label><input type="radio" name="target" value="mock"> Мок ЛК (эталон контракта)</label>
       </div>
       <div id="onec-fields">
