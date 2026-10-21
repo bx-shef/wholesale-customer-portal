@@ -101,7 +101,7 @@ describe('потоки и режим', () => {
 })
 
 describe('ODataClient: пределы ответа и запрос каталога', async () => {
-  const { ODataClient, ODATA_MAX_PAGES, ODATA_PAGE, readBodyLimited } = await import('../server/services/onecOdata')
+  const { ODataClient, ODATA_PAGE, readBodyLimited } = await import('../server/services/onecOdata')
   const mk = (fake: typeof fetch) => new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
 
   it('readBodyLimited считает байты и обрывает поток', async () => {
@@ -123,9 +123,10 @@ describe('ODataClient: пределы ответа и запрос катало�
       if (url.includes('Catalog_Номенклатура?')) return Response.json({ value: Array.from({ length: ODATA_PAGE }, (_, i) => ({ Ref_Key: G(i), Description: 'т' })) })
       return Response.json({ value: [] })
     }
-    await expect(mk(fake).catalogSnapshot()).rejects.toMatchObject({ kind: 'contract' })
+    const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake, maxPages: 3 })
+    await expect(c.catalogSnapshot()).rejects.toMatchObject({ kind: 'contract' })
     const goods = urls.filter(u => u.includes('Catalog_Номенклатура?'))
-    expect(goods).toHaveLength(ODATA_MAX_PAGES)
+    expect(goods).toHaveLength(3)
     expect(goods[0]).toContain('$filter=IsFolder eq false')
     expect(goods[0]).toContain('$orderby=Ref_Key')
     expect(goods[1]).toContain(`$skip=${ODATA_PAGE}`)

@@ -20,6 +20,8 @@ export interface ODataOptions {
   auth: OnecAuth
   fetch?: typeof fetch
   timeoutMs?: number
+  /** Предел страниц на объект; по умолчанию `ODATA_MAX_PAGES` (меньше — в тестах). */
+  maxPages?: number
   /** Время ответа: у объектов 1С нет даты изменения, `changedAt` — момент чтения. */
   now?: () => Date
   /**
@@ -225,7 +227,7 @@ export class ODataClient {
     const select = NOMENCLATURE_FIELDS.join(',')
     const items: Array<{ item: ItemT, version: string }> = []
     for (let page = 0; ; page++) {
-      if (page >= ODATA_MAX_PAGES) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${ODATA_MAX_PAGES} pages`)
+      if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
       const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
       for (const r of rows) items.push({ item: mapItem(r, look, ''), version: r.DataVersion ?? '' })
       if (rows.length < ODATA_PAGE) break
@@ -291,7 +293,7 @@ export class ODataClient {
           const chunk = await this.listPath<PriceRow>(slice, `${base}/SliceLast`, { ...filter, $top: pageSize, $skip: page * pageSize })
           rows.push(...chunk)
           if (chunk.length < pageSize || (opts.limit && rows.length >= opts.limit)) break
-          if (page >= ODATA_MAX_PAGES) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${ODATA_MAX_PAGES} pages`)
+          if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
         }
         break
       }
