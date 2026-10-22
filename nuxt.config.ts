@@ -50,7 +50,7 @@ export default defineNuxtConfig({
     // Обмены по расписанию (docs/spec.md §4); задача сама молчит без B24_WEBHOOK_URL.
     experimental: { tasks: true },
     scheduledTasks: {
-      '*/10 * * * *': ['sync:companies', 'sync:clients'],
+      '*/10 * * * *': ['sync:clients'],
       '*/5 * * * *': ['sync:stock'],
       '3-59/15 * * * *': ['sync:prices'],
       '1-59/5 * * * *': ['monitor:alerts'],

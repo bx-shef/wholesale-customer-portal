@@ -28,7 +28,6 @@ export interface SmartProcessSpec {
   fields: SpFieldSpec[]
 }
 
-export const COMPANY_GUID_FIELD = 'UF_CRM_1C_GUID'
 export const DEAL_CATEGORY_NAME = 'Заявки ЛК'
 
 export const SMART_PROCESSES: SmartProcessSpec[] = [
@@ -48,7 +47,6 @@ export const SMART_PROCESSES: SmartProcessSpec[] = [
 
 /** Что прочитано с портала. */
 export interface PortalState {
-  companyFieldNames: string[]
   /** Смарт-процессы по названию: `id` — внутренний id типа (он в `entityId` полей, `CRM_<id>`). */
   smartProcesses: { id: number, entityTypeId: number, title: string, fieldNames: string[] }[]
   dealCategoryNames: string[]
@@ -62,16 +60,6 @@ export function spFieldName(typeId: number, postfix: string): string {
 export function planSetup(state: PortalState): { calls: RestCall[], pending: string[] } {
   const calls: RestCall[] = []
   const pending: string[] = []
-
-  if (!state.companyFieldNames.includes(COMPANY_GUID_FIELD)) {
-    calls.push({
-      method: 'crm.company.userfield.add',
-      params: {
-        // FIELD_NAME — без префикса: портал добавляет UF_CRM_ сам (документация метода).
-        fields: { FIELD_NAME: COMPANY_GUID_FIELD.replace(/^UF_CRM_/, ''), USER_TYPE_ID: 'string', LABEL: 'GUID 1С', XML_ID: COMPANY_GUID_FIELD },
-      },
-    })
-  }
 
   for (const spec of SMART_PROCESSES) {
     const existing = state.smartProcesses.find(sp => sp.title === spec.title)

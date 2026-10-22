@@ -1,6 +1,6 @@
 import { ListQuery } from '../../../../../shared/onec/schemas'
 
-// Контрагенты 1С (GET /clients) — источник компаний для Б24 (docs/spec.md §4).
+// Контрагенты 1С (GET /clients) — для разбора. Компании в Б24 заводит штатный обмен 1С, не ЛК.
 export default defineMcpTool({
   name: 'onec_companies',
   description: 'Контрагенты из 1С постранично, с фильтром по моменту изменения',

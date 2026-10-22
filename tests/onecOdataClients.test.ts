@@ -119,15 +119,10 @@ describe('mapClients', () => {
     expect(() => checkedClients([{ ...ok!, client: { ...ok!.client, region: { guid: 'x', name: 'z' } } }])).toThrow(expect.objectContaining({ kind: 'contract' }))
   })
 
-  it('unsupportedFlowsFor: клиенты по OData — только с ONEC_ODATA_CLIENTS', async () => {
+  it('unsupportedFlowsFor: потока «clients» больше нет — компании заводит обмен 1С', async () => {
     const { unsupportedFlowsFor } = await import('../server/services/onecOdataSource')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false, onecOdataTrips: false })).not.toContain('clients')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: false, onecOdataTrips: false })).toContain('orders')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: true, onecOdataTrips: false })).toEqual(['clients', 'trips', 'schedule'])
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataClients: true, onecOdataOrders: true, onecOdataTrips: true })).toEqual(['schedule'])
-    expect(unsupportedFlowsFor({ onecMock: true, onecMode: 'odata', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toEqual([])
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'http', onecOdataClients: false, onecOdataOrders: false, onecOdataTrips: false })).toEqual([])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: false, onecOdataTrips: false })).toEqual(['orders', 'trips', 'schedule'])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: true, onecOdataTrips: true })).toEqual(['schedule'])
   })
 
   it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {

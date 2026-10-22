@@ -37,7 +37,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/clientIp.ts` | адрес клиента для лимита: правый в `X-Forwarded-For` |
 | `server/tasks/maintenance/prune.ts` | очистка журналов старше 90 дней |
 | `server/utils/b24.ts`, `b24AppAuth.ts` | Битрикс24 токеном локального приложения (вебхука нет): приём установки (проверка продлением токена), хранение в SQLite, продление |
-| `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
+| `shared/onecLink.ts` | GUID 1С компании — из связи штатного обмена (`ORIGINATOR_ID = ONE_C`, `ORIGIN_ID`); компании ЛК не создаёт и не правит |
 | `server/utils/{clientLoader,clientRefresh}.ts`, `server/api/client-data.get.ts`, `server/tasks/sync/clients.ts`, `app/components/ClientDataGate.vue`, `shared/clientData.ts` | данные клиента из 1С по GUID (`GET /client/{guid}`, OData — точечно): при входе, если кэш старше `ONEC_CLIENT_TTL_MIN`, и по расписанию для заходивших за 30 дней; экран загрузки, работа по кэшу с датой при сбое 1С |
 | `app/components/{BuildLoader,build/*}.vue`, `app/composables/useMinLoading.ts`, `shared/minLoading.ts` | экран загрузки: сцены стройки и дачи, держится не меньше 3 секунд (данные клиента, карточка товара) |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
@@ -49,7 +49,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/services/onec.ts` | клиент 1С: таймаут, без повторов (повтор — следующий цикл расписания), проверка схемой |
 | `server/utils/onec.ts` | `useOnec()` — мок, HTTP-сервис или OData (`ONEC_MODE`) по окружению |
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
-| `server/services/onecOdata.ts`, `onecOdataSource.ts`, `onecOdataClients.ts`, `onecOdataOrders.ts`, `onecOdataTrips.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки, клиенты и соглашения, заказы и их статусы, рейсы в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (у клиентов — по хешу содержимого; клиенты — только с `ONEC_ODATA_CLIENTS=true`, заказы — с `ONEC_ODATA_ORDERS=true`, рейсы — с `ONEC_ODATA_TRIPS=true`) (`docs/onec-odata.md`) |
+| `server/services/onecOdata.ts`, `onecOdataSource.ts`, `onecOdataClients.ts`, `onecOdataOrders.ts`, `onecOdataTrips.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки, клиенты и соглашения, заказы и их статусы, рейсы в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (у клиентов — по хешу содержимого; заказы — с `ONEC_ODATA_ORDERS=true`, рейсы — с `ONEC_ODATA_TRIPS=true`) (`docs/onec-odata.md`) |
 | `server/utils/odataProbe.ts`, `docs/onec-odata.md` | 1С только по OData (решение 2026-10-20): разведка полей на стенде — имена и типы без значений; план перехода |
 | `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, управление моком — `docs/MONITORING.md` |
 | `server/utils/{telegramAlert,alertDelivery}.ts`, `server/tasks/monitor/alerts.ts` | оповещения в Telegram по эпизодам (порт из client-bank-alfa-by), раз в 5 минут |

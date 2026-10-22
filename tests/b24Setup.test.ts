@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { COMPANY_GUID_FIELD, DEAL_CATEGORY_NAME, SMART_PROCESSES, planSetup, spFieldName, type PortalState } from '../shared/b24Setup'
+import { DEAL_CATEGORY_NAME, SMART_PROCESSES, planSetup, spFieldName, type PortalState } from '../shared/b24Setup'
 
-const empty: PortalState = { companyFieldNames: [], smartProcesses: [], dealCategoryNames: [] }
+const empty: PortalState = { smartProcesses: [], dealCategoryNames: [] }
 
 function configured(): PortalState {
   return {
-    companyFieldNames: [COMPANY_GUID_FIELD],
     smartProcesses: SMART_PROCESSES.map((sp, i) => ({
       id: 10 + i,
       entityTypeId: 1030 + i * 2,
@@ -17,15 +16,10 @@ function configured(): PortalState {
 }
 
 describe('planSetup', () => {
-  it('на пустом портале создаёт поле компании, смарт-процесс «Доступ в ЛК» и воронку', () => {
+  it('на пустом портале не трогает поля компании, создаёт смарт-процесс «Доступ в ЛК» и воронку', () => {
     const { calls, pending } = planSetup(empty)
-    expect(calls.map(c => c.method)).toEqual(['crm.company.userfield.add', 'crm.type.add', 'crm.category.add'])
+    expect(calls.map(c => c.method)).toEqual(['crm.type.add', 'crm.category.add'])
     expect(pending).toHaveLength(1)
-  })
-
-  it('код поля компании передаётся без префикса UF_CRM_', () => {
-    const call = planSetup(empty).calls[0]!
-    expect((call.params.fields as { FIELD_NAME: string }).FIELD_NAME).toBe('1C_GUID')
   })
 
   it('на настроенном портале план пуст — повторный запуск ничего не пишет', () => {

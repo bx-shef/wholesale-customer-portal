@@ -3,7 +3,6 @@
  * предыдущий, и не чаще своего интервала — тяжёлые каталог и прайс реже, чем остатки и заявки.
  */
 export const MANUAL_MIN_INTERVAL_MS: Record<string, number> = {
-  clients: 5 * 60_000,
   catalog: 15 * 60_000,
   prices: 10 * 60_000,
   stock: 2 * 60_000,
