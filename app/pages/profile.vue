@@ -6,7 +6,7 @@ const { data, error } = await useFetch('/api/profile', { headers: useRequestHead
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
 const money = (v: number, currency: string) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency }).format(v)
-const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU')
+const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })
 
 const calling = ref(false)
 const callbackSent = ref(false)

@@ -59,7 +59,9 @@ async function loadTrips() {
 }
 
 const { data } = await useFetch<{ status: string, commit: string | null, config: { b24App?: boolean, onecMock?: boolean, onec?: boolean } }>('/api/health', { server: false })
-const origin = import.meta.client ? window.location.origin : ''
+// Адрес сайта вычисляется на сервере и передаётся в браузер тем же значением: иначе разметка
+// расходится при гидратации (#76). Host за nginx-proxy — только домен сайта (VIRTUAL_HOST).
+const origin = useState('site-origin', () => useRequestURL().origin)
 
 onMounted(() => {
   // Страница открывается и вне портала (прямая ссылка) — фрейм нужен только для его оформления.

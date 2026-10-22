@@ -24,9 +24,13 @@ const TIPS = [
   'Между слоями штукатурки выдерживают время высыхания, указанное на мешке.',
 ]
 
-const tip = ref(Math.floor(Math.random() * TIPS.length))
+// Первая подсказка одна и та же на сервере и в браузере, случайная — только после монтирования:
+// иначе разметка расходится при гидратации (#76).
+const tip = ref(0)
 let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { timer = setInterval(() => { tip.value = (tip.value + 1) % TIPS.length }, 3500) })
+onMounted(() => {
+  tip.value = Math.floor(Math.random() * TIPS.length)
+  timer = setInterval(() => { tip.value = (tip.value + 1) % TIPS.length }, 3500) })
 onBeforeUnmount(() => clearInterval(timer))
 </script>
 

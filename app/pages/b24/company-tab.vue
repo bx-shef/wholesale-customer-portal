@@ -27,7 +27,9 @@ const error = ref('')
 const issued = ref<{ contact: Contact, key: string } | null>(null)
 const confirmRevoke = ref<number | null>(null)
 const copied = ref(false)
-const origin = import.meta.client ? window.location.origin : ''
+// Адрес сайта вычисляется на сервере и передаётся в браузер тем же значением: иначе разметка
+// расходится при гидратации (#76). Host за nginx-proxy — только домен сайта (VIRTUAL_HOST).
+const origin = useState('site-origin', () => useRequestURL().origin)
 
 async function api<T>(action: 'list' | 'issue' | 'revoke', contactId?: number): Promise<T> {
   const auth = b24?.auth.getAuthData()
