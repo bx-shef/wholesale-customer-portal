@@ -24,3 +24,10 @@ describe('справка доступна до входа', () => {
     expect(readFileSync('app/pages/help.vue', 'utf8')).toMatch(/<AppHeader v-if="me"/)
   })
 })
+
+describe('выход стирает фильтры (справка это обещает)', () => {
+  it('logout удаляет wcp-catalog-filters', () => {
+    expect(readFileSync('app/components/AppHeader.vue', 'utf8')).toContain("localStorage.removeItem('wcp-catalog-filters')")
+    expect(readFileSync('app/pages/index.vue', 'utf8')).toContain("'wcp-catalog-filters'")
+  })
+})

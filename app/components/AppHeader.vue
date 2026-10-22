@@ -43,6 +43,8 @@ async function logout() {
   logoutError.value = ''
   // Сохранённое с устройства уходит в любом случае.
   cart.forget()
+  // Поиск и фильтры прежнего пользователя на общем устройстве не оставляем.
+  try { localStorage.removeItem('wcp-catalog-filters') } catch {}
   await clearCatalogCache()
   // Данные клиента из 1С — следующему вошедшему не показываем.
   clearNuxtState('client-data')
