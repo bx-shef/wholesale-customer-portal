@@ -17,5 +17,8 @@ describe('companyOnecGuid', () => {
   it('не GUID — null', () => {
     expect(companyOnecGuid({ originatorId: 'ONE_C', originId: '123' })).toBeNull()
     expect(companyOnecGuid({})).toBeNull()
+    expect(companyOnecGuid({ originId: G })).toBeNull()
+    expect(companyOnecGuid({ originatorId: 'one_c', originId: G })).toBeNull()
+    expect(companyOnecGuid({ originatorId: 'ONE_C', originId: ` ${G} ` })).toBe(G)
   })
 })
