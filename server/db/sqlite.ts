@@ -194,6 +194,10 @@ export const MIGRATIONS: string[] = [
      changed_at TEXT NOT NULL,
      PRIMARY KEY (kind, key)
    );`,
+  // Данные клиента грузятся из 1С по его GUID при входе и по расписанию (решение владельца
+  // 2026-10-22): когда загружены и когда клиент последний раз заходил.
+  `ALTER TABLE onec_client ADD COLUMN loaded_at TEXT;
+   ALTER TABLE onec_client ADD COLUMN seen_at TEXT;`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

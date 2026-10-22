@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { ODataClient } from '../server/services/onecOdata'
-import { addressGuid, agreementActive, emptyClientStats, mapClients, readClientSources, type ClientSources } from '../server/services/onecOdataClients'
+import { addressGuid, agreementActive, emptyClientStats, mapClients, readClientSources, readClientSourcesFor, type ClientSources } from '../server/services/onecOdataClients'
 import { minskDay, OdataOnec } from '../server/services/onecOdataSource'
 import { sqliteVersionStore } from '../server/utils/odataVersions'
 import { Client } from '../shared/onec/schemas'
@@ -53,7 +53,8 @@ describe('mapClients', () => {
     expect(stats.manyAgreements).toBe(1)
     const none = mapClients(base({ agreements: [] }), TODAY, stats)
     expect(none[0]!.client.contract).toBeNull()
-    expect(none[0]!.client.deleted).toBe(true)
+    // Без соглашения клиент остаётся (вход решает CRM), просто без договора: цен и заказа нет.
+    expect(none[0]!.client.deleted).toBe(false)
     expect(stats.noAgreement).toBe(1)
   })
 
@@ -64,8 +65,8 @@ describe('mapClients', () => {
     expect(s.noPriceType).toBe(1)
     // Соглашение действует, но без вида цен — клиент остаётся (договора нет), а не удалённым.
     expect(mapClients(base({ agreements: [{ ...a0, ВидЦен_Key: undefined }] }), TODAY)[0]!.client.deleted).toBe(false)
-    // Истёкшее соглашение — как его отсутствие.
-    expect(mapClients(base({ agreements: [{ ...a0, ДатаОкончанияДействия: '2026-10-20T00:00:00' }] }), TODAY)[0]!.client.deleted).toBe(true)
+    // Истёкшее соглашение — как его отсутствие: договора нет.
+    expect(mapClients(base({ agreements: [{ ...a0, ДатаОкончанияДействия: '2026-10-20T00:00:00' }] }), TODAY)[0]!.client.contract).toBeNull()
     expect(mapClients(base({ currencies: new Map([[G(40), 'USD']]) }), TODAY, s)[0]!.client.contract?.currency).toBe('USD')
     expect(mapClients(base({ currencies: new Map() }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noCurrency).toBe(1)
@@ -257,5 +258,58 @@ describe('стенд: runODataClientsProbe', async () => {
     const bad = await runODataClientsProbe({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: async () => new Response('', { status: 403 }) })
     expect(bad[0]).toMatchObject({ status: 'fail' })
     expect(bad[0]!.detail).toContain('403')
+  })
+})
+
+describe('readClientSourcesFor — один клиент по GUID', () => {
+  const sets: string[] = []
+  const fake = (partners: unknown[], extra: Record<string, unknown[]> = {}): typeof fetch => async (u) => {
+    const url = decodeURIComponent(String(u))
+    const set = /standard\.odata\/([^?]+)\?/.exec(url)![1]!
+    sets.push(`${set} ${/\$filter=([^&]*)/.exec(url)?.[1] ?? ''}`)
+    const data: Record<string, unknown[]> = {
+      Catalog_Партнеры: partners,
+      Catalog_Контрагенты: base().counterparties,
+      Catalog_СоглашенияСКлиентами: base().agreements,
+      Catalog_ДоговорыКонтрагентов: base().contracts,
+      Catalog_Партнеры_КонтактнаяИнформация: base().contacts,
+      Catalog_ЗоныДоставки: [{ Ref_Key: G(50), Description: 'Минск-Север' }],
+      Catalog_Валюты: [{ Ref_Key: G(40), Code: '933', Description: 'BYN' }],
+      Catalog_СегментыПартнеров_ПартнерыПоСегменту: [],
+      Catalog_СегментыПартнеров: [],
+      ...extra,
+    }
+    return Response.json({ value: data[set] ?? [] })
+  }
+  const client = (f: typeof fetch) => new ODataClient({ baseUrl: 'https://x/b/odata/standard.odata', auth: { kind: 'bearer', token: 't' }, fetch: f })
+
+  it('каждый запрос — с фильтром по этому партнёру; клиент в форме контракта', async () => {
+    sets.length = 0
+    const src = await readClientSourcesFor(client(fake(base().partners)), G(1))
+    expect(src).not.toBeNull()
+    for (const s of sets.filter(s => /Контрагенты|Соглашения|КонтактнаяИнформация|ПартнерыПоСегменту/.test(s))) expect(s, s).toContain(`guid'${G(1)}'`)
+    expect(sets.find(s => s.startsWith('Catalog_Партнеры '))).toContain(`Ref_Key eq guid'${G(1)}'`)
+    expect(sets.find(s => s.startsWith('Catalog_ДоговорыКонтрагентов'))).toContain(`Ref_Key eq guid'${G(4)}'`)
+    expect(mapClients(src!, TODAY)[0]!.client.contract?.guid).toBe(G(3))
+  })
+
+  it('нет партнёра или он не клиент — null; сегмент с запретом — запрет отгрузки', async () => {
+    expect(await readClientSourcesFor(client(fake([])), G(1))).toBeNull()
+    expect(await readClientSourcesFor(client(fake([{ ...base().partners[0]!, Клиент: false }])), G(1))).toBeNull()
+    const src = await readClientSourcesFor(client(fake(base().partners, {
+      Catalog_СегментыПартнеров_ПартнерыПоСегменту: [{ Ref_Key: G(70), Партнер_Key: G(1) }],
+      Catalog_СегментыПартнеров: [{ Ref_Key: G(70), ЗапретОтгрузки: true }],
+    })), G(1))
+    expect([...src!.blocked]).toEqual([G(1)])
+  })
+
+  it('OdataOnec.clientByGuid: клиент с моментом изменения; чужой GUID в фильтр не подставить', async () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const api = new OdataOnec(client(fake(base().partners)), sqliteVersionStore(db), { now: () => new Date('2026-10-21T09:00:00Z') })
+    const c = await api.clientByGuid(G(1))
+    expect(c?.guid).toBe(G(1))
+    expect(c?.changedAt).toBeTruthy()
+    await expect(api.clientByGuid("x' or 1 eq 1")).rejects.toThrow()
   })
 })

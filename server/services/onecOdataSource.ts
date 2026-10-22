@@ -17,7 +17,7 @@ import { OnecError, type ListParams } from './onec'
 import type { ODataClient } from './onecOdata'
 import { createOdataOrder, readOrderStatuses } from './onecOdataOrders'
 import { readTrips, type TripStats } from './onecOdataTrips'
-import { checkedClients, mapClients, readClientSources, type ClientStats, emptyClientStats } from './onecOdataClients'
+import { checkedClients, mapClients, readClientSources, readClientSourcesFor, type ClientStats, emptyClientStats } from './onecOdataClients'
 
 /**
  * Сколько живёт прочитанный снимок после того, как дочитан: прогон синхронизации листает его
@@ -163,6 +163,17 @@ export class OdataOnec {
       return sortSnapshot<ClientT>(stamped.rows, c => c.guid)
     })
     return pageOfSorted(all, params)
+  }
+
+  /** Один клиент по GUID (решение владельца 2026-10-22): точечные запросы, без снимка всех партнёров. */
+  async clientByGuid(guid: string): Promise<ClientT | null> {
+    const src = await readClientSourcesFor(this.client, guid)
+    if (!src) return null
+    const row = checkedClients(mapClients(src, minskDay(this.options.now?.() ?? new Date())))[0]
+    if (!row) return null
+    const stamped = stampByVersion([{ key: row.client.guid, version: row.version, row: row.client }], this.versions.get('client'), this.nowIso())
+    this.versions.put('client', stamped.updates)
+    return stamped.rows[0]!
   }
 
   /** Заказ по заявке ЛК (§2.6): `Document_ЗаказКлиента`, повтор без дубля (onecOdataOrders). */

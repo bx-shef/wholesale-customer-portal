@@ -21,6 +21,8 @@ export interface ServerEnv {
   onecMock: boolean
   /** Мок 1С: GUID настоящих компаний CRM, которым мок выдаёт демо-договор, адрес и цены. */
   onecMockClients: string[]
+  /** Сколько минут данные клиента из 1С считаются свежими при входе (`ONEC_CLIENT_TTL_MIN`, по умолчанию 15). */
+  onecClientTtlMin: number
   /** Склады для остатков клиенту по OData, через запятую; пусто — «Основной склад». */
   onecStockWarehouses: string[]
   /** OData: клиенты 1С → компании Б24 (`ONEC_ODATA_CLIENTS=true`); иначе поток клиентов пропускается. */
@@ -70,6 +72,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
+    onecClientTtlMin: (n => (Number.isInteger(n) && n >= 1 && n <= 1440 ? n : 15))(Number(get('ONEC_CLIENT_TTL_MIN') || 15)),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
     deepseekModel: get('DEEPSEEK_MODEL') || 'deepseek-chat',

@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 import { Client, type ClientT, type ContractT, type DeliveryAddress } from '../../shared/onec/schemas'
 import type { z } from 'zod'
 import { OnecError } from './onec'
-import { EMPTY_REF, ODATA_MAX_PAGES, ODATA_PAGE, type ODataClient } from './onecOdata'
+import { assertGuid, EMPTY_REF, ODATA_MAX_PAGES, ODATA_PAGE, type ODataClient } from './onecOdata'
 
 export interface PartnerRow {
   Ref_Key: string
@@ -151,10 +151,7 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
       // Пока все адреса партнёра: какой вид — «адрес доставки», покажет стенд (ответ 1С 2026-10-20).
       deliveryAddresses: unique,
       changedAt: '',
-      // Без действующего соглашения клиент ЛК ничего не купит: в 1С «клиентом» отмечены почти
-      // 18 тысяч партнёров, соглашение — у 1,9 тысячи (стенд 2026-10-22). Такой уходит удалённым:
-      // компанию в коробке не заводим, заказ и цены закрыты. Вход решает CRM («Доступ в ЛК»), не это поле.
-      deleted: p.DeletionMark === true || !(agreements.get(guid)?.length),
+      deleted: p.DeletionMark === true,
     }
     out.push({ client, version: clientVersion(client) })
   }
@@ -243,6 +240,39 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
   // Пустой набор соглашений при живых партнёрах — сбой чтения, а не «у всех истекло»: иначе все
   // клиенты разом ушли бы удалёнными.
   if (partners.length && !agreements.length) throw new OnecError('contract', '1C OData Catalog_СоглашенияСКлиентами: no rows')
+  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
+}
+
+/**
+ * Всё для ОДНОГО клиента по GUID партнёра — несколько точечных запросов вместо чтения всех
+ * партнёров (решение владельца 2026-10-22: ЛК грузит данные клиента при входе и по расписанию).
+ * Нет партнёра или он не клиент — `null`.
+ */
+export async function readClientSourcesFor(client: ODataClient, partnerGuid: string): Promise<ClientSources | null> {
+  const g = `guid'${assertGuid(partnerGuid)}'`
+  const partners = await client.list<PartnerRow>('Catalog_Партнеры', { $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key', $filter: `Ref_Key eq ${g}` })
+  if (!partners.length || partners[0]!.Клиент === false) return null
+  const byPartner = { $filter: `Партнер_Key eq ${g}` }
+  const counterparties = await client.list<CounterpartyRow>('Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark', ...byPartner })
+  const agreements = await client.list<AgreementRow>('Catalog_СоглашенияСКлиентами', {
+    $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key', ...byPartner,
+  })
+  const contractKeys = [...new Set(agreements.flatMap(a => (ref(a.Договор_Key) ? [ref(a.Договор_Key)!] : [])))].slice(0, 40)
+  const contracts = contractKeys.length
+    ? await client.list<ContractRow>('Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности', $filter: contractKeys.map(k => `Ref_Key eq guid'${assertGuid(k)}'`).join(' or ') })
+    : []
+  const contacts = await client.list<ContactRow>('Catalog_Партнеры_КонтактнаяИнформация', { $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город', $filter: `Ref_Key eq ${g}` })
+  const zones = await client.names('Catalog_ЗоныДоставки')
+  if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
+  const currencies = await client.currencies()
+  if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
+  const members = await client.list<{ Ref_Key: string, Партнер_Key?: string }>('Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key', ...byPartner })
+  let blocked = new Set<string>()
+  if (members.length) {
+    const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
+    const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
+    if (members.some(m => stop.has(m.Ref_Key.toLowerCase()))) blocked = new Set([partnerGuid.toLowerCase()])
+  }
   return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
 }
 
