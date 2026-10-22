@@ -88,5 +88,5 @@ export function useCart() {
   }
 
   const count = computed(() => lines.value.length)
-  return { lines, count, load, qtyOf, setQty, clear, forget }
+  return { lines, count, loaded, load, qtyOf, setQty, clear, forget }
 }

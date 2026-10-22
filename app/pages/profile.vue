@@ -38,6 +38,16 @@ async function requestCallback() {
           <B24Card>
             <template #header>
               <h2 class="font-semibold">
+                Компания
+              </h2>
+            </template>
+            <p class="text-sm break-words">
+              {{ data.company.title }}
+            </p>
+          </B24Card>
+          <B24Card>
+            <template #header>
+              <h2 class="font-semibold">
                 Договор
               </h2>
             </template>
@@ -63,6 +73,9 @@ async function requestCallback() {
                 {{ data.manager.email }}
               </p>
               <B24Button v-if="data.manager.phone" :to="`tel:${data.manager.phone}`" color="air-primary" block label="Позвонить" />
+              <p v-else class="text-sm">
+                Телефон менеджера не указан — закажите звонок, менеджер перезвонит.
+              </p>
               <p class="text-sm text-(--ui-color-design-plain-na-content-secondary)">
                 Не дозвонились или нужен совет? Нажмите — менеджер получит в CRM задачу перезвонить вам на номер из карточки.
               </p>

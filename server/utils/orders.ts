@@ -299,7 +299,20 @@ export interface SubmitDeps {
   b24: Pick<B24Orders, 'createDeal'>
   schedules: () => Promise<TripSchedule[]>
   prices: PriceSource
+  /** Название компании из карточки в CRM — им подписывается сделка (#77); нет — имя клиента из 1С. */
+  companyTitle?: (companyId: number) => Promise<string | null>
   now?: () => Date
+}
+
+/** Подпись сделки: название компании из CRM, а при сбое или пустом — имя клиента из 1С. */
+export async function dealClientName(companyId: number, fallback: string, companyTitle?: (id: number) => Promise<string | null>): Promise<string> {
+  try {
+    const t = (await companyTitle?.(companyId))?.trim()
+    return t || fallback
+  }
+  catch {
+    return fallback
+  }
 }
 
 export type SubmitError = 'bad_request' | 'no_contract' | 'bad_address' | 'cart_invalid' | 'crm_unavailable' | 'in_progress' | 'already_sent'
@@ -373,7 +386,7 @@ export async function submitOrder(
   if (row.deal_id) return done(row.deal_id)
   if (!deps.orders.claim(row.id, now)) return { ok: false, status: 409, error: 'in_progress' }
 
-  const dealId = await sendToCrm(row, client.name, deps, now, slot?.cutoffAt)
+  const dealId = await sendToCrm(row, await dealClientName(session.companyId, client.name, deps.companyTitle), deps, now, slot?.cutoffAt)
   return dealId ? done(dealId) : { ok: false, status: 503, error: 'crm_unavailable' }
 }
 

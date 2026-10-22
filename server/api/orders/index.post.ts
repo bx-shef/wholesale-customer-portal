@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     addressGuid: typeof body?.addressGuid === 'string' ? body.addressGuid : '',
     comment: typeof body?.comment === 'string' ? body.comment : '',
     lines: parseCartLines(body),
-  }, { store: ctx.store, clients: useClientStore(), orders: useOrderStore(), b24: useB24Orders(), schedules: () => cachedSchedules(), prices: ctx.prices })
+  }, { store: ctx.store, clients: useClientStore(), orders: useOrderStore(), b24: useB24Orders(), schedules: () => cachedSchedules(), prices: ctx.prices, companyTitle: async id => (await useAccessDirectory().getCompany(id))?.title ?? null })
   if (!result.ok) setResponseStatus(event, result.status)
   return result
 })
