@@ -151,7 +151,10 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
       // Пока все адреса партнёра: какой вид — «адрес доставки», покажет стенд (ответ 1С 2026-10-20).
       deliveryAddresses: unique,
       changedAt: '',
-      deleted: p.DeletionMark === true,
+      // Без действующего соглашения клиент ЛК ничего не купит: в 1С «клиентом» отмечены почти
+      // 18 тысяч партнёров, соглашение — у 1,9 тысячи (стенд 2026-10-22). Такой уходит удалённым:
+      // компанию в коробке не заводим, вход в ЛК закрыт, пока соглашения нет.
+      deleted: p.DeletionMark === true || !(agreements.get(guid)?.length),
     }
     out.push({ client, version: clientVersion(client) })
   }

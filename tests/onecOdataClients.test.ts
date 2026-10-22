@@ -53,6 +53,7 @@ describe('mapClients', () => {
     expect(stats.manyAgreements).toBe(1)
     const none = mapClients(base({ agreements: [] }), TODAY, stats)
     expect(none[0]!.client.contract).toBeNull()
+    expect(none[0]!.client.deleted).toBe(true)
     expect(stats.noAgreement).toBe(1)
   })
 
