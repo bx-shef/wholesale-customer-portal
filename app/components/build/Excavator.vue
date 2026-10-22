@@ -15,6 +15,8 @@
 </template>
 
 <style scoped>
+/* view-box — точка вращения в единицах рисунка и в старом Safari. */
+.ex-arm, .ex-dirt { transform-box: view-box; }
 .ex-arm { transform-origin: 32px 26px; animation: ex-dig 1.6s ease-in-out infinite; }
 .ex-dirt { transform-origin: 54px 44px; animation: ex-pile 1.6s ease-in-out infinite; }
 @keyframes ex-dig { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(14deg); } }

@@ -11,7 +11,7 @@
 </template>
 
 <style scoped>
-.tr-crown { transform-origin: 32px 32px; animation: tr-sway 2.4s ease-in-out infinite; }
+.tr-crown { transform-box: view-box; transform-origin: 32px 32px; animation: tr-sway 2.4s ease-in-out infinite; }
 @keyframes tr-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 @media (prefers-reduced-motion: reduce) { .tr-crown { animation: none; } }
 </style>

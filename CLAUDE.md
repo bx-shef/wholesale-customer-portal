@@ -39,6 +39,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/b24.ts`, `b24AppAuth.ts` | Битрикс24 токеном локального приложения (вебхука нет): приём установки (проверка продлением токена), хранение в SQLite, продление |
 | `server/services/b24Companies.ts`, `server/utils/companySync.ts`, `server/tasks/sync/companies.ts` | клиенты 1С → компании Б24, по расписанию и `sync_companies` |
 | `server/utils/{clientLoader,clientRefresh}.ts`, `server/api/client-data.get.ts`, `server/tasks/sync/clients.ts`, `app/components/ClientDataGate.vue`, `shared/clientData.ts` | данные клиента из 1С по GUID (`GET /client/{guid}`, OData — точечно): при входе, если кэш старше `ONEC_CLIENT_TTL_MIN`, и по расписанию для заходивших за 30 дней; экран загрузки, работа по кэшу с датой при сбое 1С |
+| `app/components/{BuildLoader,build/*}.vue`, `app/composables/useMinLoading.ts`, `shared/minLoading.ts` | экран загрузки: сцены стройки и дачи, держится не меньше 3 секунд (данные клиента, карточка товара) |
 | `server/utils/profile.ts`, `app/pages/profile.vue` | профиль: договор из 1С, менеджер |
 | `server/mcp/handlers/admin/tools/{issue,revoke}_access_key.ts` | выдача и отзыв ключа |
 | `app/pages/b24/{app,company-tab,install}.vue` (на `app` — вкладка «Ближайшие доставки»), `server/api/b24/company-tab.post.ts`, `server/utils/managerTab.ts` | страница приложения в коробке, установка и вкладка «Личный кабинет» в карточке компании: ответственный за компанию или админ выдаёт и отзывает ключи; права — ответом портала на токен фрейма |
