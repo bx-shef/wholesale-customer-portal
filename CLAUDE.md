@@ -56,7 +56,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
 | `server/utils/imageStore.ts`, `server/routes/images/[name].get.ts` | картинки товаров: из 1С base64 (`GET /image/{id}`), на томе `/data/images`, раздача `/images/<id>.<hash>` |
-| `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, прайс по видам цен в базе (цена клиента — по его договору), каталог глазами клиента, обвязка маршрутов |
+| `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, прайс по видам цен в базе (цена клиента — по его договору; сортировка по цене — на сервере по виду цен соглашения сессии), каталог глазами клиента, обвязка маршрутов |
 | `server/tasks/sync/{catalog,stock,prices}.ts`, `server/plugins/catalogWarmup.ts` | каталог раз в час, остатки раз в 5 минут, прайс раз в 15 минут, первый прогон при старте; к 1С ходит только расписание |
 | `server/utils/onecGuard.ts` | бережём 1С: один запрос за раз, пауза 10 минут после трёх сбоев подряд (`onec-contract.md` §1.8) |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |

@@ -175,7 +175,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     images.set(id, { hash, data })
     return { id, hash }
   }
-    const basePrice = new Map<string, number>()
+  const basePrice = new Map<string, number>()
   for (let i = 0; i < 500; i++) {
     const section = sections[i % sections.length]!
     const brand = pick(BRANDS)

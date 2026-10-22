@@ -286,6 +286,14 @@ describe('сортировка по цене соглашения (#86)', () => 
     expect(store.search({ sort: 'price_desc', priceType: pt.toUpperCase() }).items.map(i => i.name)).toEqual(['А', 'В', 'Б', 'Г'])
   })
 
+  it('вместе с фильтром: параметры JOIN и WHERE не путаются, total — по фильтру', () => {
+    const store = setup()
+    store.saveCatalog([], [item(5, { name: 'Д', brand: 'Other' })])
+    const r = store.search({ sort: 'price', priceType: pt, brand: 'Acme', limit: 2, offset: 1 })
+    expect(r.items.map(i => i.name)).toEqual(['В', 'А'])
+    expect(r.total).toBe(4)
+  })
+
   it('без вида цен — по названию, а не случайно', () => {
     expect(setup().search({ sort: 'price' }).items.map(i => i.name)).toEqual(['А', 'Б', 'В', 'Г'])
   })
