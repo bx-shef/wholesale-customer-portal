@@ -151,7 +151,10 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
       // Пока все адреса партнёра: какой вид — «адрес доставки», покажет стенд (ответ 1С 2026-10-20).
       deliveryAddresses: unique,
       changedAt: '',
-      deleted: p.DeletionMark === true,
+      // Без действующего соглашения клиент ЛК ничего не купит: в 1С «клиентом» отмечены почти
+      // 18 тысяч партнёров, соглашение — у 1,9 тысячи (стенд 2026-10-22). Такой уходит удалённым:
+      // компанию в коробке не заводим, заказ и цены закрыты. Вход решает CRM («Доступ в ЛК»), не это поле.
+      deleted: p.DeletionMark === true || !(agreements.get(guid)?.length),
     }
     out.push({ client, version: clientVersion(client) })
   }
@@ -237,6 +240,9 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
     const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
     blocked = new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
   }
+  // Пустой набор соглашений при живых партнёрах — сбой чтения, а не «у всех истекло»: иначе все
+  // клиенты разом ушли бы удалёнными.
+  if (partners.length && !agreements.length) throw new OnecError('contract', '1C OData Catalog_СоглашенияСКлиентами: no rows')
   return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
 }
 
