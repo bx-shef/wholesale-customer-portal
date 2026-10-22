@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createCatalogStore } from '../server/utils/catalog'
-import { chooseContract, contractsOf, createClientStore } from '../server/utils/clients'
+import { chooseContract, contractsOf, createClientStore, selectContract } from '../server/utils/clients'
 import { createOrderStore, submitOrder, type SubmitDeps } from '../server/utils/orders'
 import { createPriceStore } from '../server/utils/prices'
 import { contractLabel, parseContractCookie } from '../shared/contractChoice'
@@ -52,6 +52,27 @@ describe('хранение и выбор', () => {
     expect(chooseContract(c, g(201))?.guid).toBe(g(201))
     expect(chooseContract(c, g(999))?.guid).toBe(g(200))
     expect(chooseContract(c, null)?.guid).toBe(g(200))
+  })
+
+  it('регистр GUID: основное при откате — в нижнем регистре, как в списке для выбора', () => {
+    const upper = { ...MAIN, guid: MAIN.guid.toUpperCase() }
+    expect(chooseContract({ contract: upper, contracts: [] }, null)?.guid).toBe(g(200))
+  })
+
+  it('POST /api/contract: своё — выбрано; чужое или удалённый клиент — отказ; пустое — сброс к основному', () => {
+    const c = { contract: MAIN, contracts: [MAIN, SECOND], deleted: false }
+    expect(selectContract(c, g(201))).toEqual({ ok: true, selected: g(201), reset: false })
+    expect(selectContract(c, g(999))).toEqual({ ok: false })
+    expect(selectContract({ ...c, deleted: true }, g(201))).toEqual({ ok: false })
+    expect(selectContract(null, g(201))).toEqual({ ok: false })
+    expect(selectContract(c, null)).toEqual({ ok: true, selected: g(200), reset: true })
+  })
+
+  it('старая строка без списка соглашений (до миграции) — только основное', () => {
+    const d = db()
+    createClientStore(d).save([client()])
+    d.prepare('UPDATE onec_client SET contracts = NULL').run()
+    expect(createClientStore(d).get(g(100))!.contracts.map(c => c.guid)).toEqual([g(200)])
   })
 
   it('цены: по виду цен выбранного соглашения; чужое соглашение — основное', async () => {

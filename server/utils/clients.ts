@@ -33,7 +33,19 @@ export function contractsOf(c: Pick<ClientT, 'contract' | 'contracts'>): Contrac
 /** Соглашение для расчёта: выбранное клиентом, если оно из его действующих, иначе основное (#46). */
 export function chooseContract(client: Pick<StoredClient, 'contract' | 'contracts'>, wanted?: string | null): ContractT | null {
   const w = wanted?.toLowerCase()
-  return (w && client.contracts.find(c => c.guid === w)) || client.contract
+  const c = (w && client.contracts.find(x => x.guid.toLowerCase() === w)) || client.contract
+  return c ? { ...c, guid: c.guid.toLowerCase() } : null
+}
+
+/**
+ * Выбор соглашения клиентом (#46) — решение для `POST /api/contract`: пустое значение — сброс к
+ * основному; иначе только соглашение из действующих у этого клиента.
+ */
+export function selectContract(client: Pick<StoredClient, 'contract' | 'contracts' | 'deleted'> | null, wanted: string | null):
+  { ok: true, selected: string | null, reset: boolean } | { ok: false } {
+  if (!wanted) return { ok: true, selected: client?.contract?.guid.toLowerCase() ?? null, reset: true }
+  if (!client || client.deleted || !client.contracts.some(c => c.guid.toLowerCase() === wanted)) return { ok: false }
+  return { ok: true, selected: wanted, reset: false }
 }
 
 export function createClientStore(db: DatabaseSync) {

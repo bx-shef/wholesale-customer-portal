@@ -61,6 +61,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/onecGuard.ts` | бережём 1С: один запрос за раз, пауза 10 минут после трёх сбоев подряд (`onec-contract.md` §1.8) |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса) |
+| `shared/contractChoice.ts`, `server/api/contract.post.ts`, `chooseContract`/`selectContract` в `clients.ts` | выбор соглашения в корзине (#46): cookie `lk_contract` — подсказка, сервер берёт только соглашение из действующих у клиента сессии; цены, заявка и профиль — по выбранному |
 | `shared/delivery.ts` | ближайший рейс в бизнес-регион клиента и окно прибытия по Минску (§8 спецификации) |
 | `server/utils/{delivery,deliverySync,deliveriesTab}.ts`, `server/tasks/sync/{schedule,trips}.ts`, `server/api/b24/deliveries.post.ts` | доставка ведётся только в 1С: график по регионам (раз в час) и задания на перевозку (раз в 10 минут) в базу ЛК; рейс заказа клиенту; вкладка «Ближайшие доставки» на странице приложения в коробке |
 | `server/utils/aiChat.ts`, `server/api/ai/chat.post.ts`, `app/components/AiChatPanel.vue` | ИИ-помощник панелью справа (AI SDK + B24ChatMessages, стрим): DeepSeek + инструменты каталога с ценами договора (`chatTools`: поиск, карточка, аналоги, сравнение, показ); карточки — из выхода `show_products`, не из текста модели |
