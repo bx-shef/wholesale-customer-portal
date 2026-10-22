@@ -59,7 +59,8 @@ async function loadTrips() {
 }
 
 const { data } = await useFetch<{ status: string, commit: string | null, config: { b24App?: boolean, onecMock?: boolean, onec?: boolean } }>('/api/health', { server: false })
-const origin = import.meta.client ? window.location.origin : ''
+// Адрес сайта одинаков на сервере и в браузере — иначе разметка расходится при гидратации (#76).
+const origin = useRequestURL().origin
 
 onMounted(() => {
   // Страница открывается и вне портала (прямая ссылка) — фрейм нужен только для его оформления.
