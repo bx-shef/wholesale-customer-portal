@@ -4,7 +4,7 @@
   экран ошибки с «Повторить». Правила — `shared/clientData.ts`.
 -->
 <script setup lang="ts">
-import { clientDataView, isClientRoute, type ClientDataResponse } from '../../shared/clientData'
+import { clientDataView, isClientRoute, type ClientDataResponse } from '~~/shared/clientData'
 
 const route = useRoute()
 const data = useState<ClientDataResponse | null>('client-data', () => null)
