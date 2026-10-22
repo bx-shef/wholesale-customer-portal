@@ -66,6 +66,12 @@ export function round2(value: number): number {
  * демо-договором и адресом, иначе на стенде у реальной компании нет ни цен, ни корзины.
  * `demoChangedAt` — их changedAt.
  */
+/** Вес демо-товара — из фасовки в названии («мешок 25 кг»), иначе случайный (#86). */
+export function weightOf(name: string | undefined, fallbackKg: number): string {
+  const m = name?.match(/(\d+(?:[.,]\d+)?)\s*кг/i)
+  return `${m ? m[1]!.replace('.', ',') : fallbackKg} кг`
+}
+
 export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt = SEED_EPOCH): SeedData {
   const rand = prng(seed)
   const pick = <T>(list: T[]) => list[Math.floor(rand() * list.length)]!
@@ -186,7 +192,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       packQty: demo ? 1 : packQty,
       minQty: demo ? 1 : packQty,
       description: `Товар раздела «${section.name}» бренда ${brand}.`,
-      properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: `${Math.ceil(rand() * 30)} кг` },
+      properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: weightOf(demo?.name, Math.ceil(rand() * 30)) },
       images: demo?.image && nextImage < DEMO_IMAGES_JPEG.length ? [addImage(DEMO_IMAGES_JPEG[nextImage++]!)] : [],
       analogs: [],
       // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.
@@ -198,8 +204,12 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
     basePrice.set(item.guid, demo ? demo.price : random)
   }
   // Аналоги — товары того же раздела другого бренда: связь двусторонняя, как в справочнике 1С.
+  // Соседи по кругу внутри раздела, а не первые два: иначе у всех товаров раздела одни аналоги (#86).
   for (const item of items) {
-    const peers = items.filter(o => o.sectionGuid === item.sectionGuid && o.brand !== item.brand && o.guid !== item.guid)
+    const section = items.filter(o => o.sectionGuid === item.sectionGuid)
+    const at = section.indexOf(item)
+    const ring = [...section.slice(at + 1), ...section.slice(0, at)]
+    const peers = ring.filter(o => o.brand !== item.brand)
     for (const peer of peers.slice(0, 2)) {
       if (!item.analogs.includes(peer.guid)) item.analogs.push(peer.guid)
       if (!peer.analogs.includes(item.guid)) peer.analogs.push(item.guid)

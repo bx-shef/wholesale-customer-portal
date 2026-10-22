@@ -32,7 +32,7 @@ export interface CatalogItemDetails extends CatalogItem {
   stock: { warehouseGuid: string, warehouseName: string, available: number }[]
 }
 
-export const SORTS = ['name', 'sku', 'available'] as const
+export const SORTS = ['name', 'sku', 'available', 'price', 'price_desc'] as const
 export type CatalogSort = typeof SORTS[number]
 
 export interface CatalogQuery {
@@ -41,6 +41,8 @@ export interface CatalogQuery {
   brand?: string
   inStock?: boolean
   sort?: CatalogSort
+  /** Вид цен соглашения клиента — для сортировки по цене (#86); нет — сортировка по названию. */
+  priceType?: string | null
   offset?: number
   limit?: number
 }
@@ -180,12 +182,22 @@ export function createCatalogStore(db: DatabaseSync) {
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-      const order = { name: 'i.name_sort, i.guid', sku: 'i.sku, i.guid', available: 'available DESC, i.name_sort, i.guid' }[query.sort ?? 'name']
+      // По цене — по виду цен соглашения клиента; товары без цены — в конце. Вида цен нет — по названию.
+      const byPrice = (query.sort === 'price' || query.sort === 'price_desc') && query.priceType
+      const join = byPrice ? 'LEFT JOIN price_list p ON p.item_guid = i.guid AND p.price_type_guid = ?' : ''
+      const sort = byPrice ? query.sort! : query.sort === 'price' || query.sort === 'price_desc' ? 'name' : query.sort ?? 'name'
+      const order = {
+        name: 'i.name_sort, i.guid',
+        sku: 'i.sku, i.guid',
+        available: 'available DESC, i.name_sort, i.guid',
+        price: 'p.price IS NULL, p.price, i.name_sort, i.guid',
+        price_desc: 'p.price IS NULL, p.price DESC, i.name_sort, i.guid',
+      }[sort]
       const limit = Math.min(Math.max(query.limit ?? 30, 1), CATALOG_PAGE_MAX)
       const offset = Math.max(query.offset ?? 0, 0)
       const total = (db.prepare(`SELECT COUNT(*) AS n FROM catalog_item i ${clause}`).get(...params) as { n: number }).n
-      const items = db.prepare(`SELECT ${COLUMNS} FROM catalog_item i ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`)
-        .all(...params, limit, offset) as unknown as CatalogItem[]
+      const items = db.prepare(`SELECT ${COLUMNS} FROM catalog_item i ${join} ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`)
+        .all(...(byPrice ? [query.priceType!.toLowerCase()] : []), ...params, limit, offset) as unknown as CatalogItem[]
       return { items, total: Number(total) }
     },
 

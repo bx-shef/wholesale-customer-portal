@@ -4,7 +4,7 @@ export interface CatalogFilters {
   section: string
   brand: string
   inStock: boolean
-  sort: 'name' | 'sku' | 'available'
+  sort: 'name' | 'sku' | 'available' | 'price' | 'price_desc'
 }
 
 export const DEFAULT_FILTERS: CatalogFilters = { q: '', section: '', brand: '', inStock: false, sort: 'name' }
@@ -18,7 +18,7 @@ export function filtersFromQuery(query: Record<string, unknown>): CatalogFilters
     section: one(query.section),
     brand: one(query.brand),
     inStock: one(query.inStock) === '1',
-    sort: sort === 'sku' || sort === 'available' ? sort : 'name',
+    sort: parseSort(sort),
   }
 }
 
@@ -38,9 +38,11 @@ export const SORT_ITEMS: Array<{ label: string, value: CatalogFilters['sort'] }>
   { label: 'По названию', value: 'name' },
   { label: 'Сначала в наличии', value: 'available' },
   { label: 'По артикулу', value: 'sku' },
+  { label: 'Сначала дешевле', value: 'price' },
+  { label: 'Сначала дороже', value: 'price_desc' },
 ]
 
 /** Значение из выбора сортировки — только известное, иначе по названию. */
 export function parseSort(v: unknown): CatalogFilters['sort'] {
-  return v === 'sku' || v === 'available' ? v : 'name'
+  return v === 'sku' || v === 'available' || v === 'price' || v === 'price_desc' ? v : 'name'
 }

@@ -17,5 +17,7 @@ export async function catalogContext(event: H3Event) {
   const contractGuid = parseContractCookie(getCookie(event, CONTRACT_COOKIE))
   const pricing = resolved.status === 'ok' ? { ...resolved, contractGuid } : resolved
   const prices = (guid: string, items: string[]) => usePrices().get(guid, items, contractGuid)
-  return { session, pricing, prices, store: useCatalog() }
+  // Вид цен — для сортировки по цене на сервере (#86): цена зависит от выбранного соглашения.
+  const priceType = resolved.status === 'ok' ? usePrices().priceTypeOf(resolved.clientGuid, contractGuid) : null
+  return { session, pricing, prices, priceType, store: useCatalog() }
 }
