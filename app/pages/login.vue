@@ -54,6 +54,9 @@ async function submit() {
             <B24Button type="submit" color="air-primary" block :loading="pending" label="Войти" />
           </form>
         </B24Card>
+        <p class="mt-4 text-center text-sm">
+          <NuxtLink to="/help" class="underline">Справка: как войти и пользоваться кабинетом</NuxtLink>
+        </p>
       </B24Container>
     </B24Main>
   </div>
