@@ -15,3 +15,12 @@ describe('ссылка на справку в шапке', () => {
     for (const h of ['## Как войти', '## Корзина и заявка', '## Мои заявки']) expect(md).toContain(h)
   })
 })
+
+describe('справка доступна до входа', () => {
+  it('на странице входа есть ссылка на справку', () => {
+    expect(readFileSync('app/pages/login.vue', 'utf8')).toMatch(/<NuxtLink to="\/help"/)
+  })
+  it('без сессии справка не показывает разделы кабинета', () => {
+    expect(readFileSync('app/pages/help.vue', 'utf8')).toMatch(/<AppHeader v-if="me"/)
+  })
+})
