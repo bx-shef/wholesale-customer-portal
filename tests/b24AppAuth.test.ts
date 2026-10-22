@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { acceptInstall, loadAppAuth, parseInstallPayload, safeServerEndpoint, saveAppAuth, type InstallPayload, type TokenFetch } from '../server/utils/b24AppAuth'
-import { COMPANY_GUID_FIELD, DEAL_CATEGORY_NAME, SMART_PROCESSES, spFieldName } from '../shared/b24Setup'
+import { DEAL_CATEGORY_NAME, SMART_PROCESSES, spFieldName } from '../shared/b24Setup'
 import { readPortalState, runSetup } from '../shared/b24SetupRun'
 
 const CREDS = { clientId: 'local.abc', clientSecret: 's3cret' }
@@ -68,7 +68,6 @@ describe('установка приложения: проверка продле
 /** Портал в памяти: отвечает на чтение настройки и запоминает созданное. */
 function fakePortal(opts: { extraTypes?: number } = {}) {
   const state = {
-    companyFields: [] as string[],
     types: Array.from({ length: opts.extraTypes ?? 0 }, (_, i) => ({ id: 100 + i, entityTypeId: 2000 + i, title: `Чужой ${i}` })),
     fields: new Map<number, string[]>(),
     categories: [] as string[],
@@ -77,15 +76,12 @@ function fakePortal(opts: { extraTypes?: number } = {}) {
     const start = Number(p.start ?? 0)
     const page = <T>(rows: T[]) => rows.slice(start, start + 50)
     switch (method) {
-      case 'crm.company.userfield.list': return page(state.companyFields.map(f => ({ FIELD_NAME: f })))
       case 'crm.type.list': return { types: page(state.types) }
       case 'userfieldconfig.list': {
         const id = Number(String((p.filter as { entityId: string }).entityId).replace('CRM_', ''))
         return { fields: page((state.fields.get(id) ?? []).map(fieldName => ({ fieldName }))) }
       }
       case 'crm.category.list': return { categories: page(state.categories.map(name => ({ name }))) }
-      case 'crm.company.userfield.add': state.companyFields.push(COMPANY_GUID_FIELD)
-        return 1
       case 'crm.type.add': {
         const id = 10 + state.types.length
         state.types.push({ id, entityTypeId: 1000 + id, title: String((p.fields as { title: string }).title) })

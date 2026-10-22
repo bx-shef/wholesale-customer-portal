@@ -1,17 +1,15 @@
 /**
- * Связь компании CRM с клиентом 1С. Штатный обмен 1С ↔ Битрикс24 кладёт GUID клиента в
- * стандартные поля связи: `ORIGINATOR_ID = ONE_C`, `ORIGIN_ID = <GUID>` (замерено на коробке
- * поставщика 14.10.2026: компании из 1С так и приходят, наше `UF_CRM_1C_GUID` у них пустое).
- * Поэтому GUID ищем сначала там, а своё поле — запасной путь для компаний, заведённых ЛК.
+ * Связь компании CRM с клиентом 1С. Компании заводит и правит только штатный обмен 1С ↔ Битрикс24
+ * (решение владельца 2026-10-22): он кладёт GUID клиента в стандартные поля связи
+ * `ORIGINATOR_ID = ONE_C`, `ORIGIN_ID = <GUID>` (замерено на коробке 14.10.2026, механизм обмена
+ * подтверждён программистом 1С 22.10.2026). Своего поля GUID у ЛК больше нет.
  */
 export const ONEC_ORIGINATOR = 'ONE_C'
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** GUID 1С компании из ответа `crm.item.*` (camelCase): связь обмена 1С, иначе наше поле. */
-export function companyOnecGuid(item: Record<string, unknown>, ufKey: string | null): string | null {
+/** GUID 1С компании из ответа `crm.item.*` (camelCase): только связь обмена 1С. */
+export function companyOnecGuid(item: Record<string, unknown>): string | null {
   const origin = String(item.originId ?? '').trim()
-  if (String(item.originatorId ?? '') === ONEC_ORIGINATOR && GUID_RE.test(origin)) return origin.toLowerCase()
-  const uf = ufKey ? String(item[ufKey] ?? '').trim() : ''
-  return GUID_RE.test(uf) ? uf.toLowerCase() : null
+  return String(item.originatorId ?? '') === ONEC_ORIGINATOR && GUID_RE.test(origin) ? origin.toLowerCase() : null
 }

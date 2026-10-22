@@ -1,6 +1,6 @@
 # Исходящие вызовы REST Битрикс24
 
-> Last reviewed: 2026-10-19
+> Last reviewed: 2026-10-22
 
 Реестр каждого метода, который зовёт ЛК. Добавили вызов в код — добавьте строку сюда:
 `tests/repoGuards.test.ts` сверяет имена методов в `app/`, `server/`, `shared/`, `scripts/` с этим
@@ -19,8 +19,6 @@
 
 | Метод | Кто зовёт | Транспорт | Статус | Заметки |
 | --- | --- | --- | --- | --- |
-| `crm.company.userfield.list` | `shared/b24SetupRun.ts` | приложение | 📄 | ищем `UF_CRM_1C_GUID` |
-| `crm.company.userfield.add` | `shared/b24Setup.ts` | приложение | 📄 | `FIELD_NAME` без префикса `UF_CRM_` — портал добавляет его сам |
 | `crm.type.list` | `shared/b24SetupRun.ts`, `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | ответ `result.types[]`; `id` типа ≠ `entityTypeId` |
 | `crm.type.add` | `shared/b24Setup.ts` | приложение | 📄 | «Доступ в ЛК» («Рейсы» сняты 2026-10-19: график ведётся в 1С) |
 | `userfieldconfig.list` | `shared/b24SetupRun.ts` | приложение | 📄 | `entityId` смарт-процесса — `CRM_<id типа>` |
@@ -29,12 +27,12 @@
 | `crm.category.add` | `shared/b24Setup.ts` | приложение | 📄 | воронка сделок «Заявки ЛК», `entityTypeId: 2` |
 | `crm.item.fields` | `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | ключи UF в `crm.item.*` — camelCase, правило не описано: ищем по исходному коду поля |
 | `crm.duplicate.findbycomm` | `server/services/b24Access.ts` | приложение | 📄 | контакт по телефону/email; до 20 значений; пустой ответ — массив, не объект; телефон шлём в двух записях (с «+» и без) — как CRM хранит «+», не описано |
-| `crm.item.list` | `server/services/b24Access.ts`, `b24Companies.ts`, `b24Orders.ts` | приложение | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); компания по связи обмена 1С (`originatorId = ONE_C`, `originId = GUID`), затем по `UF_CRM_1C_GUID` (`shared/onecLink.ts`); результат перепроверяем |
-| `crm.item.get` | `server/services/b24Access.ts`, `b24Orders.ts`, `server/api/callback.post.ts` | приложение | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и `UF_CRM_1C_GUID`. «Нет записи» — только NOT_FOUND; прочие сбои пробрасываются (иначе простой CRM = отзыв ключа); контакт (`entityTypeId: 3`) — имя для «Заказать звонок»; сделка (`entityTypeId: 2`) — `stageId` |
-| `crm.item.add` | `server/services/b24Access.ts`, `b24Companies.ts` | приложение | 📄 | новая запись доступа с `contactId`, `companyId`; новая компания из 1С |
+| `crm.item.list` | `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | «Доступ в ЛК» по одному `contactId` (оператор «в списке» не описан); результат перепроверяем |
+| `crm.item.get` | `server/services/b24Access.ts`, `b24Orders.ts`, `server/api/callback.post.ts` | приложение | 📄 | запись доступа; компания (`entityTypeId: 4`) — название и GUID 1С из связи обмена (`originatorId = ONE_C`, `originId`, `shared/onecLink.ts`). «Нет записи» — только NOT_FOUND; прочие сбои пробрасываются (иначе простой CRM = отзыв ключа); контакт (`entityTypeId: 3`) — имя для «Заказать звонок»; сделка (`entityTypeId: 2`) — `stageId` |
+| `crm.item.add` | `server/services/b24Access.ts` | приложение | 📄 | новая запись доступа с `contactId`, `companyId` (компании ЛК не создаёт — решение владельца 2026-10-22) |
 | `crm.item.update` | `server/services/b24Access.ts`, `b24Orders.ts` | приложение | 📄 | перевыпуск, отзыв, последний вход; стадия сделки при закрытии заказа 1С |
 | `crm.contact.company.items.get` | `server/services/b24Access.ts` | приложение | 📄 | ключ выдаётся только контакту, привязанному к компании |
-| `user.get` | `server/services/b24Companies.ts` | приложение | 📄 | ответственный по email менеджера из 1С; результат перепроверяем — фильтр могут проигнорировать |
+| `user.get` | `server/utils/profile.ts` | приложение | 📄 | менеджер компании по `ASSIGNED_BY_ID` для профиля |
 | `crm.deal.list` | `server/services/b24Orders.ts` | приложение | 📄 | поиск сделки по `ORIGINATOR_ID` + `ORIGIN_ID` — повторная отправка заявки не плодит сделок; совпадение перепроверяем |
 | `crm.deal.add` | `server/services/b24Orders.ts` | приложение | 📄 | заявка: воронка «Заявки ЛК», `COMPANY_ID`, `CONTACT_IDS`; `COMMENTS` поддерживает BB-коды — текст клиента обезврежен (`neutralizeBb`) |
 | `crm.deal.productrows.set` | `server/services/b24Orders.ts` | приложение | 📄 | товары без каталога Б24 (`PRODUCT_ID: 0`), цена 1С с НДС — `TAX_INCLUDED: 'Y'`; перезаписывает строки целиком, повтор безопасен |

@@ -14,7 +14,7 @@
 - [x] `@nuxtjs/mcp-toolkit` + zod, пустые `/mcp/client` и `/mcp/admin` с Bearer-проверкой.
 - [x] Docker: `Dockerfile`, `docker-compose.yml` (127.0.0.1), `docker-compose.prod.yml` (метки Watchtower и `keepalive=disabled`), `Makefile` (doctor, health, prod-up, prod-redeploy, self-update); `compose-update` и `proxy-timeout` — когда появятся стрим ИИ-чата и правки compose (этап 5).
 - [ ] Тестовая коробка Б24 на bitrix-tools/env-docker — порядок в `docs/TEST_STAND.md`, не поднята; локальное приложение пока проверяется на боевой коробке.
-- [x] Скрипт настройки Б24 (идемпотентный; с 14.10.2026 — токеном приложения при установке, вебхук только на тестовом стенде): поле `UF_CRM_1C_GUID` у компании, смарт-процессы «Доступ в ЛК» и «Рейсы» с полями, воронка «Заявки ЛК». Placement `CRM_COMPANY_DETAIL_TAB` и `event.bind` вебхуком нельзя — нужен контекст приложения, перенесены в этап 2 (`docs/REST_METHODS.md`).
+- [x] Скрипт настройки Б24 (идемпотентный; с 14.10.2026 — токеном приложения при установке, вебхук только на тестовом стенде): смарт-процессы «Доступ в ЛК» и «Рейсы» с полями, воронка «Заявки ЛК». Placement `CRM_COMPANY_DETAIL_TAB` и `event.bind` вебхуком нельзя — нужен контекст приложения, перенесены в этап 2 (`docs/REST_METHODS.md`).
 - [x] `.env.example`: `B24_WEBHOOK_URL`, `ONEC_URL`, `ONEC_TOKEN`, `ONEC_MOCK`, `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`, `SESSION_SECRET`, `MCP_ADMIN_TOKEN`.
 
 Готово, когда: пустой ЛК на Bitrix24 UI открывается на тестовом сервере, CI зелёный, в Б24 созданы сущности.
@@ -34,8 +34,8 @@
 - [x] **Сначала — постоянное хранилище**: SQLite из Node (`node:sqlite`, без зависимостей) на томе `/data` — `server/db/sqlite.ts`, миграции по `user_version`; курсоры и журнал синхронизации (`sqliteSyncStore`), журнал входов. Б24 отвергнут: частая запись по REST коробки и зависимость от её доступности.
 - [x] Регистрация локального приложения на коробке: права `crm`, `placement`, обработчик `/b24/company-tab`, установка `/b24/install` (`docs/DEPLOY_BITRIXVM.md`).
 
-- [x] Б24 на `B24Hook` (`server/utils/b24.ts`, `server/services/b24Access.ts`, `b24Companies.ts`); инструменты — `issue_access_key`, `revoke_access_key`, `sync_companies`. Прочие `b24_*` — вместе с потребителями (этапы 3–4).
-- [x] Синхронизация компаний: клиенты 1С → компании Б24 по `UF_CRM_1C_GUID`, ответственный — по email менеджера из 1С; задача Nitro раз в 10 минут + `sync_companies`; курсор в SQLite.
+- [x] Б24 на `B24Hook` (`server/utils/b24.ts`, `server/services/b24Access.ts`, `b24Orders.ts`); инструменты — `issue_access_key`, `revoke_access_key`. Прочие `b24_*` — вместе с потребителями (этапы 3–4).
+- [x] ~~Синхронизация компаний из ЛК~~ — снята 2026-10-22: компании заводит штатный обмен 1С ↔ Б24, GUID — из `ORIGIN_ID` (#80).
 - [x] Установка приложения: `placement.bind` `CRM_COMPANY_DETAIL_TAB` (`/b24/install`). `event.bind` — когда появится потребитель событий.
 - [x] Вкладка `/b24/company-tab` (`B24Frame`): контакты, статусы, выдать/отозвать/перевыпустить ключ. Выдаёт ответственный за компанию или администратор портала — по ответу портала на токен фрейма (`server/utils/managerTab.ts`).
 - [x] Хэширование ключей (scrypt из node:crypto), запись в «Доступ в ЛК»; выдача и отзыв — `issue_access_key`, `revoke_access_key` в `/mcp/admin` (вкладка компании будет звать ту же логику).

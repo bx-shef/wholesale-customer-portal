@@ -5,7 +5,7 @@ const TYPE_ID = 3
 const ETID = 1040
 // Ключи — в camelCase, как их отдаёт crm.item.*; resolveFieldKey должен найти их по исходному коду.
 const F = { keyHash: `ufCrm${TYPE_ID}KeyHash`, status: `ufCrm${TYPE_ID}Status`, expiresAt: `ufCrm${TYPE_ID}ExpiresAt`, lastLogin: `ufCrm${TYPE_ID}LastLogin` }
-const GUID = 'ufCrm1cGuid'
+const COMPANY_GUID = '3fbebdf8-bd8b-11f1-b86f-00155d008d05'
 
 interface Item { id: number, contactId: number, companyId: number, [k: string]: unknown }
 
@@ -17,9 +17,14 @@ function fakePortal(items: Item[], opts: { ignoreFilter?: boolean, companies?: R
     if (failMeta && method === 'crm.type.list') throw new Error('503')
     switch (method) {
       case 'crm.type.list': return { types: [{ id: TYPE_ID, entityTypeId: ETID, title: 'Доступ в ЛК' }] }
-      case 'crm.item.fields': return params.entityTypeId === 4
-        ? { fields: { id: {}, [GUID]: {} } }
-        : { fields: Object.fromEntries(['id', ...Object.values(F)].map(k => [k, {}])) }
+      case 'crm.item.fields': return { fields: Object.fromEntries(['id', ...Object.values(F)].map(k => [k, {}])) }
+      case 'crm.item.get': {
+        if (params.entityTypeId !== 4) break
+        if (params.id === 7) return { item: { id: 7, title: 'ООО Опт', originatorId: 'ONE_C', originId: COMPANY_GUID.toUpperCase(), assignedById: 5 } }
+        if (params.id === 8) return { item: { id: 8, title: 'Без связи', originId: COMPANY_GUID } }
+        if (params.id === 9) throw new Error('NOT_FOUND: Not found')
+        throw new Error('503')
+      }
       case 'crm.item.list': {
         const f = params.filter as { contactId: number }
         return { items: opts.ignoreFilter ? items : items.filter(i => i.contactId === f.contactId) }
@@ -99,5 +104,20 @@ describe('createB24AccessDirectory', () => {
     await expect(dir.listAccessByContacts([5])).rejects.toThrow('503')
     p.setFailMeta(false)
     expect((await dir.listAccessByContacts([5])).length).toBe(1)
+  })
+})
+
+describe('getCompany: GUID 1С только из связи обмена', () => {
+  it('ORIGINATOR_ID = ONE_C → GUID из ORIGIN_ID в нижнем регистре', async () => {
+    const dir = createB24AccessDirectory(fakePortal([]).call)
+    expect(await dir.getCompany(7)).toEqual({ id: 7, title: 'ООО Опт', onecGuid: COMPANY_GUID, assignedById: 5 })
+  })
+  it('без связи обмена — GUID нет', async () => {
+    expect((await createB24AccessDirectory(fakePortal([]).call).getCompany(8))?.onecGuid).toBeNull()
+  })
+  it('нет компании — null, прочий сбой пробрасывается', async () => {
+    const dir = createB24AccessDirectory(fakePortal([]).call)
+    expect(await dir.getCompany(9)).toBeNull()
+    await expect(dir.getCompany(10)).rejects.toThrow('503')
   })
 })

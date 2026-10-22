@@ -5,7 +5,7 @@ import { refreshSeenClients } from '../../utils/clientRefresh'
 
 const running = new Set<string>()
 const lastStartedAt = new Map<string, number>()
-const body = z.object({ flow: z.enum(['clients', 'client_data', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
+const body = z.object({ flow: z.enum(['client_data', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
 
 export default defineEventHandler(async (event) => {
   guardOnecTest(event)
@@ -26,7 +26,6 @@ export default defineEventHandler(async (event) => {
   running.add(flow)
   lastStartedAt.set(flow, now)
   const job = {
-    clients: () => syncCompanies(),
     client_data: () => refreshSeenClients({ loader: useClientLoader(), store: useClientStore(), runs: sqliteSyncStore(useDb()), ttlMs: readServerEnv().onecClientTtlMin * 60_000 }),
     catalog: () => syncCatalog(),
     prices: () => syncPrices(),

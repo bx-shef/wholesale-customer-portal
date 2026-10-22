@@ -1,6 +1,6 @@
 /**
  * Доступ в ЛК поверх CRM коробки (docs/spec.md §3): контакт по телефону/email, элемент
- * смарт-процесса «Доступ в ЛК» с хэшем ключа, компания с GUID 1С. Транспорт — функция
+ * смарт-процесса «Доступ в ЛК» с хэшем ключа, компания с GUID 1С (из связи обмена `ORIGINATOR_ID`/`ORIGIN_ID`). Транспорт — функция
  * `call(method, params)`: в приложении это B24Hook по вебхуку, в тестах — подделка.
  *
  * Имена пользовательских полей `crm.item.*` отдаёт в camelCase (`ufCrm…`), а точное правило
@@ -9,7 +9,7 @@
  * поля нет (не прогнан `pnpm b24:setup`).
  */
 import type { NormalizedLogin } from '../../shared/access/login'
-import { COMPANY_GUID_FIELD, SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
+import { SMART_PROCESSES, spFieldName } from '../../shared/b24Setup'
 import { companyOnecGuid } from '../../shared/onecLink'
 
 export type B24Call = (method: string, params: Record<string, unknown>) => Promise<unknown>
@@ -66,7 +66,6 @@ export function resolveFieldKey(keys: string[], original: string): string | null
 interface AccessMeta {
   entityTypeId: number
   fields: { keyHash: string, status: string, expiresAt: string, lastLogin: string }
-  companyGuid: string
 }
 
 export function createB24AccessDirectory(call: B24Call): AccessDirectory {
@@ -83,13 +82,9 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
       if (!key) throw new Error(`Field ${spFieldName(Number(type.id), postfix)} not found — run pnpm b24:setup`)
       return key
     }
-    const company = await call('crm.item.fields', { entityTypeId: 4 }) as { fields: Record<string, unknown> }
-    const companyGuid = resolveFieldKey(Object.keys(company.fields), COMPANY_GUID_FIELD)
-    if (!companyGuid) throw new Error(`Company field ${COMPANY_GUID_FIELD} not found — run pnpm b24:setup`)
     return {
       entityTypeId: Number(type.entityTypeId),
       fields: { keyHash: pick('KEY_HASH'), status: pick('STATUS'), expiresAt: pick('EXPIRES_AT'), lastLogin: pick('LAST_LOGIN') },
-      companyGuid,
     }
   }
   // Ошибка не кэшируется: после pnpm b24:setup следующий вызов найдёт поля.
@@ -144,11 +139,10 @@ export function createB24AccessDirectory(call: B24Call): AccessDirectory {
     },
 
     async getCompany(id) {
-      const m = await getMeta()
       try {
         const { item } = await call('crm.item.get', { entityTypeId: 4, id }) as { item: Record<string, unknown> }
         if (!item) return null
-        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: companyOnecGuid(item, m.companyGuid), assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
+        return { id: Number(item.id), title: String(item.title ?? ''), onecGuid: companyOnecGuid(item), assignedById: Number(item.assignedById) > 0 ? Number(item.assignedById) : null }
       }
       catch (e) {
         if (isNotFound(e)) return null

@@ -25,8 +25,6 @@ export interface ServerEnv {
   onecClientTtlMin: number
   /** Склады для остатков клиенту по OData, через запятую; пусто — «Основной склад». */
   onecStockWarehouses: string[]
-  /** OData: клиенты 1С → компании Б24 (`ONEC_ODATA_CLIENTS=true`); иначе поток клиентов пропускается. */
-  onecOdataClients: boolean
   /** OData: заказы ЛК → документы 1С и их статусы (`ONEC_ODATA_ORDERS=true`); иначе поток заказов пропускается. */
   onecOdataOrders: boolean
   /** OData: рейсы из «Заданий на перевозку» (`ONEC_ODATA_TRIPS=true`); иначе поток рейсов пропускается. */
@@ -65,7 +63,6 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecMock: get('ONEC_MOCK').toLowerCase() === 'true',
     onecMode: parseOnecMode(get('ONEC_MODE')),
     // Клиенты 1С по OData уходят в компании Б24: включаются отдельно, после проверки стендом (PR #63).
-    onecOdataClients: get('ONEC_ODATA_CLIENTS').trim().toLowerCase() === 'true',
     // Заказы ЛК пишутся в 1С: включаются отдельно, после проверки стендом на тестовой базе.
     onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
     // Рейсы: документ «Задание на перевозку» выпал из публикации OData — включать, когда вернут.

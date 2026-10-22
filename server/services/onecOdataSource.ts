@@ -32,14 +32,13 @@ export const SNAPSHOT_TTL_MS = 2 * 60_000
 export const ODATA_UNSUPPORTED_FLOWS = ['schedule'] as const
 
 /**
- * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; клиентов — пока
- * не включён `ONEC_ODATA_CLIENTS` (клиенты уходят в компании Б24), заказов — пока не включён
+ * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; заказов — пока не включён
  * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — пока не включён `ONEC_ODATA_TRIPS` (документ
  * выпал из публикации OData). График доставки в 1С не ведётся (Excel, #45).
  */
-export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataClients: boolean, onecOdataOrders: boolean, onecOdataTrips: boolean }): readonly string[] {
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataOrders: boolean, onecOdataTrips: boolean }): readonly string[] {
   if (env.onecMock || env.onecMode !== 'odata') return []
-  return [...(env.onecOdataClients ? [] : ['clients']), ...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...ODATA_UNSUPPORTED_FLOWS]
+  return [...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...ODATA_UNSUPPORTED_FLOWS]
 }
 
 export interface VersionStore {

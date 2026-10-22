@@ -3,7 +3,7 @@
  * недостающее (`planSetup`) и, если просили, записать. Транспорт — функция `call`: скрипт
  * `pnpm b24:setup` передаёт вебхук, сервер ЛК — токен установленного приложения.
  */
-import { COMPANY_GUID_FIELD, planSetup, type PortalState } from './b24Setup'
+import { planSetup, type PortalState } from './b24Setup'
 
 export type SetupCall = (method: string, params: Record<string, unknown>) => Promise<unknown>
 
@@ -22,7 +22,6 @@ async function callAll<T>(call: SetupCall, method: string, params: Record<string
 }
 
 export async function readPortalState(call: SetupCall): Promise<PortalState> {
-  const companyFields = await callAll(call, 'crm.company.userfield.list', { filter: { FIELD_NAME: COMPANY_GUID_FIELD } }, r => (Array.isArray(r) ? r : []) as { FIELD_NAME: string }[])
   const types = await callAll(call, 'crm.type.list', {}, r => ((r as { types?: unknown[] })?.types ?? []) as { id: number, entityTypeId: number, title: string }[])
   const smartProcesses = []
   for (const type of types) {
@@ -31,7 +30,6 @@ export async function readPortalState(call: SetupCall): Promise<PortalState> {
   }
   const categories = await callAll(call, 'crm.category.list', { entityTypeId: 2 }, r => ((r as { categories?: unknown[] })?.categories ?? []) as { name: string }[])
   return {
-    companyFieldNames: companyFields.map(f => f.FIELD_NAME),
     smartProcesses,
     dealCategoryNames: categories.map(c => c.name),
   }
