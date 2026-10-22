@@ -6,9 +6,9 @@ useHead({ title: 'Справка' })
 
 <template>
   <div>
-  <B24Header title="Справка" />
+  <AppHeader title="Справка" back="/" />
   <B24Main>
-    <B24Container class="py-8">
+    <B24Container class="py-8 max-w-2xl help-content">
       <ContentRenderer v-if="page" :value="page" />
       <B24Empty v-else title="Справка пока пуста" />
     </B24Container>
