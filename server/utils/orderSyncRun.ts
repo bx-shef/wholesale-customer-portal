@@ -16,6 +16,7 @@ export function runOrderSync() {
       b24: useB24Orders(),
       createOnecOrder: (o: OrderRequestT) => useOnec().createOrder(o),
       schedules: () => cachedSchedules(),
+      companyTitle: async (id: number) => (await useAccessDirectory().getCompany(id))?.title ?? null,
     }
     const summary = await syncOrders(deps)
     if (!onecOrders) return { ...summary, statuses: 0, statusRun: 'skipped' as const }

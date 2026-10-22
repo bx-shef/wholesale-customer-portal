@@ -20,7 +20,7 @@ import { neutralizeBb } from '../../shared/cart'
 import { MINSK_OFFSET_MIN, nextDelivery, type TripSchedule } from '../../shared/delivery'
 import type { DealStage, B24Orders } from '../services/b24Orders'
 import type { ClientStore } from './clients'
-import { sendToCrm, type OrderItem, type OrderStore } from './orders'
+import { dealClientName, sendToCrm, type OrderItem, type OrderStore } from './orders'
 
 export interface OrderSyncDeps {
   orders: OrderStore
@@ -33,6 +33,8 @@ export interface OrderSyncDeps {
    * досылка в CRM и отчёт в сделки работают — это не запись в 1С.
    */
   onecOrders?: boolean
+  /** Название компании из CRM для подписи сделки (#77). */
+  companyTitle?: (companyId: number) => Promise<string | null>
   now?: () => Date
 }
 
@@ -84,11 +86,16 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
   const iso = now.toISOString()
   const summary: SyncSummary = { resent: 0, ordered: 0, cancelled: 0, reported: 0, failed: 0 }
 
-  // 1. Досылка зависших без сделки.
+  // 1. Досылка зависших без сделки. Название компании — один запрос в CRM на компанию за прогон.
+  const titles = new Map<number, Promise<string | null>>()
+  const companyTitle = deps.companyTitle && ((id: number) => {
+    if (!titles.has(id)) titles.set(id, deps.companyTitle!(id))
+    return titles.get(id)!
+  })
   for (const row of deps.orders.toResend(now)) {
     if (!deps.orders.claim(row.id, now)) continue
     const client = deps.clients.get(row.client_guid)
-    if (await sendToCrm(row, client?.name ?? '', deps, now)) summary.resent++
+    if (await sendToCrm(row, await dealClientName(row.company_id, client?.name ?? '', companyTitle), deps, now)) summary.resent++
     else summary.failed++
   }
 

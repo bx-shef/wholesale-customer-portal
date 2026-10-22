@@ -94,7 +94,7 @@ onMounted(() => {
   catch { /* хранилище недоступно — каталог просто без сохранённых фильтров */ }
   watch(filters, (f) => {
     try {
-      localStorage.setItem(SAVED_KEY, JSON.stringify(filtersToQuery({ ...f, sort: 'name' })))
+      localStorage.setItem(SAVED_KEY, JSON.stringify(filtersToQuery(f)))
     }
     catch { /* приватный режим */ }
   })
@@ -118,6 +118,7 @@ onMounted(() => {
 
 const filtersOpen = ref(false)
 const sectionItems = computed(() => [{ label: 'Все разделы', value: '' }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
+const sortItems = SORT_ITEMS
 const brandItems = computed(() => [{ label: 'Все бренды', value: '' }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
 const activeCount = computed(() => [filters.value.section, filters.value.brand, filters.value.inStock].filter(Boolean).length)
@@ -202,6 +203,9 @@ function reset() {
           </B24FormField>
           <B24FormField label="Бренд">
             <B24Select :model-value="filters.brand" :items="brandItems" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
+          </B24FormField>
+          <B24FormField label="Сортировка">
+            <B24Select :model-value="filters.sort" :items="sortItems" class="w-full" @update:model-value="v => setFilters({ sort: parseSort(v) })" />
           </B24FormField>
           <B24Switch :model-value="filters.inStock" label="Только в наличии" @update:model-value="v => setFilters({ inStock: !!v })" />
           <div class="flex gap-2">

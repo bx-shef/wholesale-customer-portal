@@ -32,3 +32,15 @@ export function filtersToQuery(f: CatalogFilters): Record<string, string> {
   if (f.sort !== 'name') out.sort = f.sort
   return out
 }
+
+/** Варианты сортировки каталога для выбора в фильтрах (#77). */
+export const SORT_ITEMS: Array<{ label: string, value: CatalogFilters['sort'] }> = [
+  { label: 'По названию', value: 'name' },
+  { label: 'Сначала в наличии', value: 'available' },
+  { label: 'По артикулу', value: 'sku' },
+]
+
+/** Значение из выбора сортировки — только известное, иначе по названию. */
+export function parseSort(v: unknown): CatalogFilters['sort'] {
+  return v === 'sku' || v === 'available' ? v : 'name'
+}
