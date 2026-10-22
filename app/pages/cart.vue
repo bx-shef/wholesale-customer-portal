@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import CartIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
 import { COMMENT_MAX } from '~~/shared/cart'
+import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Корзина' })
@@ -46,6 +47,31 @@ async function refresh() {
 }
 onMounted(refresh)
 watch(cart.lines, refresh, { deep: true })
+
+// Соглашение заявки (#46): у клиента их может быть несколько, цены — по выбранному.
+const clientData = useState<ClientDataResponse | null>('client-data', () => null)
+const contractItems = computed(() => (clientData.value?.contracts ?? []).map(c => ({ label: c.label, value: c.guid })))
+const contractGuid = ref(clientData.value?.selected ?? '')
+watch(() => clientData.value?.selected, (v) => { if (v && !contractGuid.value) contractGuid.value = v })
+const contractError = ref('')
+async function chooseContract(guid: string) {
+  if (!guid || guid === clientData.value?.selected) return
+  contractError.value = ''
+  try {
+    const r = await $fetch<{ selected: string | null }>('/api/contract', { method: 'POST', body: { guid } })
+    if (clientData.value) clientData.value = { ...clientData.value, selected: r.selected }
+    // Сохранённый без сети каталог — с ценами прежнего соглашения: стираем и привязываем заново.
+    const companyId = useNuxtData<{ company: { id: number } }>('me').data.value?.company.id
+    await clearCatalogCache()
+    if (companyId) setCacheCompany(companyId)
+    await refresh()
+  }
+  catch {
+    contractError.value = 'Не удалось сменить соглашение. Повторите.'
+    contractGuid.value = clientData.value?.selected ?? ''
+  }
+}
+watch(contractGuid, chooseContract)
 
 const comment = ref('')
 const sending = ref(false)
@@ -153,6 +179,10 @@ async function submit() {
 
           <B24Card>
             <div class="flex flex-col gap-3">
+              <B24FormField v-if="contractItems.length > 1" label="Соглашение" description="Цены и заявка — по выбранному соглашению.">
+                <B24Select v-model="contractGuid" :items="contractItems" class="w-full" />
+              </B24FormField>
+              <B24Alert v-if="contractError" color="air-primary-alert" :title="contractError" />
               <B24FormField label="Адрес доставки">
                 <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full" />
                 <p v-else class="text-sm">

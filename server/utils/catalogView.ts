@@ -70,7 +70,8 @@ export function parseCatalogQuery(q: Record<string, unknown>): CatalogQuery {
 const toPrice = (p: PriceT | undefined): ItemPrice | null => (p ? { value: p.price, currency: p.currency, vatRate: p.vatRate } : null)
 
 /** Контекст клиента: GUID договора или почему цен нет. */
-export type ClientPricing = { status: 'ok', clientGuid: string } | { status: 'no-contract' | 'unavailable' }
+/** `contractGuid` — выбранное клиентом соглашение (#46); не из его соглашений — берётся основное. */
+export type ClientPricing = { status: 'ok', clientGuid: string, contractGuid?: string | null } | { status: 'no-contract' | 'unavailable' }
 
 async function withPrices<T extends CatalogItem>(items: T[], pricing: ClientPricing, prices: PriceSource): Promise<{ items: Priced<T>[], priceStatus: PriceStatus }> {
   const none = (status: PriceStatus) => ({ items: items.map(i => ({ ...i, price: null })), priceStatus: status })

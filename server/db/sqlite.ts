@@ -198,6 +198,8 @@ export const MIGRATIONS: string[] = [
   // 2026-10-22): когда загружены и когда клиент последний раз заходил.
   `ALTER TABLE onec_client ADD COLUMN loaded_at TEXT;
    ALTER TABLE onec_client ADD COLUMN seen_at TEXT;`,
+  // Все действующие соглашения клиента (#46): клиент выбирает соглашение в корзине.
+  `ALTER TABLE onec_client ADD COLUMN contracts TEXT;`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

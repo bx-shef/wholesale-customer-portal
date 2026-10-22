@@ -20,7 +20,7 @@ import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSch
 import type { CatalogStore } from './catalog'
 import type { ClientPricing, PriceSource } from './catalogView'
 import { GUID_RE } from './catalogView'
-import type { ClientStore } from './clients'
+import { chooseContract, type ClientStore } from './clients'
 import type { B24Orders } from '../services/b24Orders'
 
 export type LineProblem = 'not_found' | 'no_price' | 'bad_qty'
@@ -333,7 +333,9 @@ export async function submitOrder(
   if (pricing.status === 'no-contract') return { ok: false, status: 409, error: 'no_contract' }
   if (pricing.status !== 'ok') return { ok: false, status: 503, error: 'crm_unavailable' }
   const client = deps.clients.get(pricing.clientGuid)
-  if (!client?.contractGuid || client.deleted) return { ok: false, status: 409, error: 'no_contract' }
+  // Соглашение заявки — выбранное клиентом в корзине, если оно из его действующих, иначе основное (#46).
+  const contract = client && !client.deleted ? chooseContract(client, pricing.contractGuid) : null
+  if (!client || !contract) return { ok: false, status: 409, error: 'no_contract' }
   const address = client.addresses.find(a => a.guid === input.addressGuid.toLowerCase())
   if (!address) return { ok: false, status: 400, error: 'bad_address' }
 
@@ -355,7 +357,7 @@ export async function submitOrder(
 
   const draft: OrderDraft = {
     requestId: input.requestId, companyId: session.companyId, contactId: session.contactId, clientGuid: client.guid,
-    contractGuid: client.contractGuid, addressGuid: address.guid, addressText: addressLine(address.city, address.address), slot,
+    contractGuid: contract.guid, addressGuid: address.guid, addressText: addressLine(address.city, address.address), slot,
     items: quote.lines.map(l => ({ guid: l.guid, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty, price: l.price!, vatRate: l.vatRate })),
     total: quote.total, currency: quote.currency!, comment: input.comment.trim(),
   }

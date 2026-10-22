@@ -34,6 +34,8 @@ export const DeliveryAddress = z.object({ guid: Guid, city: z.string(), address:
 
 export const Contract = z.object({
   guid: Guid,
+  /** Наименование соглашения в 1С — по нему клиент выбирает соглашение в корзине (#46). */
+  name: z.string().default(''),
   number: z.string(),
   date: DateOnly,
   priceTypeGuid: Guid,
@@ -59,6 +61,8 @@ export const Client = z.object({
   managerEmail: z.string(),
   /** Договор для заказов из ЛК; `null` — договора нет, цен клиенту не показываем. */
   contract: Contract.nullable(),
+  /** Все действующие соглашения клиента, первое — `contract` (по умолчанию); выбор в корзине — #46. */
+  contracts: z.array(Contract).default([]),
   deliveryAddresses: z.array(DeliveryAddress),
   changedAt: DateTime,
   deleted: z.boolean(),

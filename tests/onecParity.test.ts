@@ -37,9 +37,10 @@ describe('1С: спецификация = клиент ЛК = мок = OpenAPI',
   })
 
   it('каждый вызов клиента ЛК мок принимает, и ответ проходит схему клиента', async () => {
-    const state = createMockState('parity')
+    // Демо-клиент — с двумя соглашениями (#46).
+    const state = createMockState('parity', 1, ['aaaaaaaa-0000-4000-8000-000000000001'])
     const c = new OnecClient({ baseUrl: 'http://mock.local/mock-1c', token: state.token, fetch: mockFetch(state), retries: 0 })
-    const clients = await c.clients({ pageSize: 5 })
+    const clients = await c.clients({ pageSize: 50 })
     const client = clients.items.find(x => x.contract)!
     expect((await c.clientByGuid(client.guid))?.guid).toBe(client.guid)
     expect(await c.clientByGuid('00000000-0000-4000-8000-000000000000')).toBeNull()
@@ -54,6 +55,14 @@ describe('1С: спецификация = клиент ЛК = мок = OpenAPI',
       items: [{ itemGuid: prices[0]!.itemGuid, qty: 1, price: prices[0]!.price }],
     })
     expect(order.items).toHaveLength(1)
+    // Заказ по второму соглашению клиента принимается (#46).
+    const two = clients.items.find(x => x.contracts.length > 1)
+    expect(two).toBeDefined()
+    if (two) {
+      const p2 = (await c.prices({ pageSize: 500 })).items.find(p => p.priceTypeGuid === two.contracts[1]!.priceTypeGuid)!
+      const o2 = await c.createOrder({ externalId: 'parity-2', clientGuid: two.guid, contractGuid: two.contracts[1]!.guid, deliveryAddressGuid: two.deliveryAddresses[0]!.guid, deliveryDate: '2026-10-20', items: [{ itemGuid: p2.itemGuid, qty: 1, price: p2.price }] })
+      expect(o2.items).toHaveLength(1)
+    }
     const status = await c.orderStatus({ pageSize: 5 })
     expect(status.items.map(o => o.orderGuid)).toContain(order.orderGuid)
     const schedule = await c.deliverySchedule()

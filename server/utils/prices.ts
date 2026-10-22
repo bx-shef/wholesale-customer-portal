@@ -14,7 +14,7 @@ export function createPriceStore(db: DatabaseSync) {
     ON CONFLICT (price_type_guid, item_guid) DO UPDATE SET price = excluded.price, currency = excluded.currency,
       vat_rate = excluded.vat_rate, changed_at = excluded.changed_at`)
   const remove = db.prepare('DELETE FROM price_list WHERE price_type_guid = ? AND item_guid = ?')
-  const contractOf = db.prepare('SELECT contract FROM onec_client WHERE guid = ? AND deleted = 0')
+  const contractOf = db.prepare('SELECT contract, contracts FROM onec_client WHERE guid = ? AND deleted = 0')
   const lower = (s: string) => s.toLowerCase()
 
   return {
@@ -32,16 +32,24 @@ export function createPriceStore(db: DatabaseSync) {
         throw e
       }
     },
-    /** Вид цен договора клиента; нет клиента или договора — null. */
-    priceTypeOf(clientGuid: string): string | null {
-      const row = contractOf.get(lower(clientGuid)) as { contract: string | null } | undefined
-      const contract = row?.contract ? JSON.parse(row.contract) as { priceTypeGuid?: string } : null
+    /**
+     * Вид цен соглашения клиента: выбранного (`contractGuid`), если оно из его действующих, иначе
+     * основного (#46). Нет клиента или соглашения — null. Чужое соглашение не подставить: ищем
+     * только среди соглашений этого клиента.
+     */
+    priceTypeOf(clientGuid: string, contractGuid?: string | null): string | null {
+      const row = contractOf.get(lower(clientGuid)) as { contract: string | null, contracts: string | null } | undefined
+      if (!row) return null
+      const main = row.contract ? JSON.parse(row.contract) as { guid: string, priceTypeGuid?: string } : null
+      const all = row.contracts ? JSON.parse(row.contracts) as { guid: string, priceTypeGuid?: string }[] : []
+      const wanted = contractGuid ? all.find(c => lower(c.guid) === lower(contractGuid)) : undefined
+      const contract = wanted ?? main
       return contract?.priceTypeGuid ? lower(contract.priceTypeGuid) : null
     },
-    /** Цены товаров для клиента по его договору; товара без цены в ответе нет. */
-    async get(clientGuid: string, itemGuids: string[]): Promise<Map<string, PriceT>> {
+    /** Цены товаров для клиента по выбранному (или основному) соглашению; товара без цены в ответе нет. */
+    async get(clientGuid: string, itemGuids: string[], contractGuid?: string | null): Promise<Map<string, PriceT>> {
       const out = new Map<string, PriceT>()
-      const priceType = this.priceTypeOf(clientGuid)
+      const priceType = this.priceTypeOf(clientGuid, contractGuid)
       const wanted = [...new Set(itemGuids.map(lower))]
       if (!priceType || wanted.length === 0) return out
       const rows = db.prepare(`SELECT item_guid AS itemGuid, price, currency, vat_rate AS vatRate, changed_at AS changedAt
