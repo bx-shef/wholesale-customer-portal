@@ -20,6 +20,11 @@ describe('ширина страниц на телефоне', () => {
     expect(page).toContain('<dd class="break-words">{{ v }}</dd>')
   })
 
+  it('корзина и заявки: длинное название не распирает строку с кнопкой', () => {
+    expect(read('app/pages/cart.vue')).toContain('leading-snug min-w-0 break-words')
+    expect(read('app/pages/orders.vue')).toContain('font-semibold min-w-0 break-words')
+  })
+
   it('минимальный заказ виден всегда', () => {
     expect(read('app/pages/product/[guid].vue')).toContain('минимальный заказ {{ formatQty(Math.max(item.minQty, item.packQty), item.unit) }}')
   })
