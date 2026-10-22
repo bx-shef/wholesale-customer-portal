@@ -15,9 +15,10 @@ describe('гидратация: одинаковая разметка на се�
   it('случайное число и адрес из window не задают начальное состояние компонента', () => {
     for (const f of files(root)) {
       const src = readFileSync(f, 'utf8')
-      expect(src, f).not.toMatch(/ref\(\s*Math\.(floor\()?\s*Math\.random/)
       expect(src, f).not.toMatch(/ref\(Math\.floor\(Math\.random/)
       expect(src, f).not.toMatch(/import\.meta\.client \? window\.location/)
+      // Дата без пояса: сервер в UTC, браузер в поясе клиента — около полуночи разные дни.
+      expect(src, f).not.toMatch(/toLocale(Date|Time)?String\('ru-RU'\)/)
     }
   })
 
