@@ -50,6 +50,8 @@ describe('mapClients', () => {
     const stats = emptyClientStats()
     const two = base({ agreements: [...base().agreements, { ...base().agreements[0]!, Ref_Key: G(5), Дата: '2026-05-01T00:00:00' }] })
     expect(mapClients(two, TODAY, stats)[0]!.client.contract?.guid).toBe(G(5))
+    // Все действующие — для выбора в корзине (#46), основное первым.
+    expect(mapClients(two, TODAY)[0]!.client.contracts.map(c => c.guid)).toEqual([G(5), G(3)])
     expect(stats.manyAgreements).toBe(1)
     const none = mapClients(base({ agreements: [] }), TODAY, stats)
     expect(none[0]!.client.contract).toBeNull()

@@ -103,6 +103,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
   for (let i = 0; i < 5; i++) {
     const contract: ContractT = {
       guid: guidFrom(rand),
+      name: `Основное соглашение ${i + 1}`,
       number: `ОПТ-${String(i + 1).padStart(3, '0')}/2026`,
       date: at(i * 3).slice(0, 10),
       priceTypeGuid: priceTypes[i % priceTypes.length]!.guid,
@@ -124,6 +125,7 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       shipmentBlocked: i === 4,
       managerEmail: `manager${(i % 2) + 1}@example.by`,
       contract,
+      contracts: [contract],
       deliveryAddresses: [{ guid: guidFrom(rand), city, address: `г. ${city}, ул. Строителей, ${10 + i}` }],
       changedAt: at(1 + i),
       deleted: false,
@@ -142,6 +144,8 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       shipmentBlocked: false,
       managerEmail: '',
       contract: contracts[0]!,
+      // Два соглашения с разными видами цен — на демо виден выбор соглашения в корзине (#46).
+      contracts: [contracts[0]!, contracts[1]!],
       deliveryAddresses: [{ guid: guidFrom(prng(i + 1000)), city: 'Минск', address: 'г. Минск, ул. Строителей, 1' }],
       // Время запуска процесса: синхронизация по курсору иначе не заметила бы GUID, добавленный позже.
       changedAt: demoChangedAt,

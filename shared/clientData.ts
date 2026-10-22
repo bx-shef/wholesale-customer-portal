@@ -2,7 +2,14 @@
  * Экран данных клиента из 1С: что показать по ответу `/api/client-data`. Чистые правила — под тестом.
  */
 export type ClientDataStatus = 'fresh' | 'loaded' | 'stale' | 'missing' | 'error' | 'crm_unavailable'
-export interface ClientDataResponse { status: ClientDataStatus, loadedAt: string | null, hasContract: boolean }
+export interface ClientDataResponse {
+  status: ClientDataStatus
+  loadedAt: string | null
+  hasContract: boolean
+  /** Действующие соглашения для выбора в корзине (#46). */
+  contracts?: Array<{ guid: string, label: string }>
+  selected?: string | null
+}
 
 /** Страницы клиента, которым нужны его данные из 1С. Вход, справка и коробка — без них. */
 export function isClientRoute(path: string): boolean {

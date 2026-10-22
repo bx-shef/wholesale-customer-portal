@@ -137,6 +137,7 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
     })
     if (!addresses.length) stats.noAddress++
     const unique = [...new Map(addresses.map(x => [x.guid, x])).values()]
+    const picked = pickContracts(agreements.get(guid) ?? [], contracts, src.currencies, stats)
     const client: ClientT = {
       guid,
       name: (p.Description ?? '').trim(),
@@ -147,7 +148,8 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
       shipmentBlocked: blocked,
       // E-mail менеджера — в контактной информации пользователя, справочник ещё не читаем.
       managerEmail: '',
-      contract: pickContract(agreements.get(guid) ?? [], contracts, src.currencies, stats),
+      contract: picked[0] ?? null,
+      contracts: picked,
       // Пока все адреса партнёра: какой вид — «адрес доставки», покажет стенд (ответ 1С 2026-10-20).
       deliveryAddresses: unique,
       changedAt: '',
@@ -159,42 +161,45 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
 }
 
 /**
- * Соглашение клиента в форме `Contract`: из действующих — только с видом цен и известной валютой
- * (иначе цены клиента ушли бы не в той валюте); из них — самое позднее по началу действия, затем
- * по дате, затем по ссылке. Подходящих нет — договора нет, цен клиент не видит.
+ * Соглашения клиента в форме `Contract`: из действующих — только с видом цен и известной валютой
+ * (иначе цены клиента ушли бы не в той валюте); сначала самое позднее по началу действия, затем
+ * по дате, затем по ссылке. Первое — соглашение по умолчанию; выбрать другое клиент может в
+ * корзине (#46). Подходящих нет — договора нет, цен клиент не видит.
  */
-function pickContract(active: AgreementRow[], contracts: Map<string, ContractRow>, currencies: Map<string, string>, stats: ClientStats): ContractT | null {
+function pickContracts(active: AgreementRow[], contracts: Map<string, ContractRow>, currencies: Map<string, string>, stats: ClientStats): ContractT[] {
   if (!active.length) {
     stats.noAgreement++
-    return null
+    return []
   }
   if (active.length > 1) stats.manyAgreements++
   const withPrice = active.filter(a => ref(a.ВидЦен_Key))
   if (!withPrice.length) {
     stats.noPriceType++
-    return null
+    return []
   }
   const usable = withPrice.filter(a => ref(a.Валюта_Key) && currencies.has(ref(a.Валюта_Key)!))
   if (!usable.length) {
     stats.noCurrency++
-    return null
+    return []
   }
   const when = (a: AgreementRow) => `${day(a.ДатаНачалаДействия)}|${day(a.Дата)}`
-  const a = [...usable].sort((x, y) => when(y).localeCompare(when(x)) || x.Ref_Key.toLowerCase().localeCompare(y.Ref_Key.toLowerCase()))[0]!
-  const contract = ref(a.Договор_Key) ? contracts.get(ref(a.Договор_Key)!) : undefined
-  return {
-    guid: a.Ref_Key.toLowerCase(),
-    number: ((a.Номер || contract?.Номер) ?? '').trim(),
-    // Дата обязательна в контракте; пустые у 1С — «0001-01-01», тогда начало действия или договор.
-    date: day(a.Дата) || day(a.ДатаНачалаДействия) || day(contract?.Дата) || '2000-01-01',
-    priceTypeGuid: ref(a.ВидЦен_Key)!,
-    // Отсрочка — в табличной части «Этапы графика оплаты», её пока не читаем (docs/onec-odata.md).
-    paymentDelayDays: 0,
-    creditLimit: money(contract?.ДопустимаяСуммаЗадолженности),
-    // Долг — в регистре расчётов, он ещё не опубликован.
-    debt: 0,
-    currency: currencies.get(ref(a.Валюта_Key)!)!,
-  }
+  return [...usable].sort((x, y) => when(y).localeCompare(when(x)) || x.Ref_Key.toLowerCase().localeCompare(y.Ref_Key.toLowerCase())).map((a) => {
+    const contract = ref(a.Договор_Key) ? contracts.get(ref(a.Договор_Key)!) : undefined
+    return {
+      guid: a.Ref_Key.toLowerCase(),
+      name: (a.Description ?? '').trim(),
+      number: ((a.Номер || contract?.Номер) ?? '').trim(),
+      // Дата обязательна в контракте; пустые у 1С — «0001-01-01», тогда начало действия или договор.
+      date: day(a.Дата) || day(a.ДатаНачалаДействия) || day(contract?.Дата) || '2000-01-01',
+      priceTypeGuid: ref(a.ВидЦен_Key)!,
+      // Отсрочка — в табличной части «Этапы графика оплаты», её пока не читаем (docs/onec-odata.md).
+      paymentDelayDays: 0,
+      creditLimit: money(contract?.ДопустимаяСуммаЗадолженности),
+      // Долг — в регистре расчётов, он ещё не опубликован.
+      debt: 0,
+      currency: currencies.get(ref(a.Валюта_Key)!)!,
+    }
+  })
 }
 
 /** Все строки набора страницами по `ODATA_PAGE` (упорядочено по `orderby`, чтобы `$skip` был устойчив). */

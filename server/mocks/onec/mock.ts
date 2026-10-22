@@ -217,6 +217,7 @@ function newClient(state: MockState, name: string | undefined, now: number): Cli
   const { data } = state
   const contract = {
     guid: guidFrom(state.rand),
+    name: 'Основное соглашение',
     number: `ОПТ-${String(data.contracts.length + 1).padStart(3, '0')}/2026`,
     date: new Date(now).toISOString().slice(0, 10),
     priceTypeGuid: data.priceTypes[0]!.guid,
@@ -236,6 +237,7 @@ function newClient(state: MockState, name: string | undefined, now: number): Cli
     shipmentBlocked: false,
     managerEmail: 'manager1@example.by',
     contract,
+    contracts: [contract],
     deliveryAddresses: [{ guid: guidFrom(state.rand), city: 'Минск', address: 'г. Минск, ул. Новая, 1' }],
     changedAt: new Date(now).toISOString(),
     deleted: false,
@@ -334,7 +336,9 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     }
     const client = state.data.clients.find(c => c.guid.toLowerCase() === parsed.data.clientGuid.toLowerCase() && !c.deleted)
     if (!client) return error('not_found', 'Client not found')
-    if (client.contract?.guid !== parsed.data.contractGuid.toLowerCase() || !client.deliveryAddresses.some(a => a.guid === parsed.data.deliveryAddressGuid.toLowerCase())) {
+    // Любое из действующих соглашений клиента (#46), не только основное.
+    const contract = [client.contract, ...client.contracts].find(c => c?.guid === parsed.data.contractGuid.toLowerCase())
+    if (!contract || !client.deliveryAddresses.some(a => a.guid === parsed.data.deliveryAddressGuid.toLowerCase())) {
       return error('validation', 'Contract or delivery address does not belong to the client')
     }
     const order = existing ?? (() => {
@@ -346,7 +350,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         test: parsed.data.test === true,
         createdAt: now,
         cancelledAt: null,
-        lines: orderFacts(state, client.contract!.priceTypeGuid, parsed.data.items),
+        lines: orderFacts(state, contract.priceTypeGuid, parsed.data.items),
       }
       state.orders.set(created.orderGuid, created)
       state.ordersByExternalId.set(created.externalId, created)
