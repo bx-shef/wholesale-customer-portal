@@ -34,10 +34,10 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
               <div v-if="item.images.length" class="flex gap-2 overflow-x-auto">
                 <img v-for="src in item.images" :key="src" :src="src" :alt="item.name" onerror="this.remove()" class="h-48 max-w-full shrink-0 rounded object-contain bg-white">
               </div>
-              <h1 class="text-lg font-semibold leading-snug">
+              <h1 class="text-lg font-semibold leading-snug break-words">
                 {{ item.name }}
               </h1>
-              <p class="text-sm text-(--ui-color-design-plain-na-content-secondary)">
+              <p class="text-sm text-(--ui-color-design-plain-na-content-secondary) break-words">
                 Артикул {{ item.sku }} · {{ item.brand }}
               </p>
               <p class="text-2xl font-semibold">
@@ -56,9 +56,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
               </div>
               <B24Button color="air-secondary-accent" class="self-start" label="Обсудить с ИИ" @click="ai.discuss({ guid: item.guid, name: item.name })" />
               <p class="text-sm">
-                Кратность: {{ formatQty(item.packQty, item.unit) }}<template v-if="item.minQty > item.packQty">
-                  , минимум {{ formatQty(item.minQty, item.unit) }}
-                </template>
+                Кратность: {{ formatQty(item.packQty, item.unit) }}, минимальный заказ {{ formatQty(Math.max(item.minQty, item.packQty), item.unit) }}
               </p>
             </div>
           </B24Card>
@@ -71,7 +69,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
             </template>
             <dl class="grid grid-cols-2 gap-2 text-sm">
               <template v-for="s in item.stock" :key="s.warehouseGuid">
-                <dt>{{ s.warehouseName }}</dt><dd>{{ formatQty(s.available, item.unit) }}</dd>
+                <dt class="break-words">{{ s.warehouseName }}</dt><dd class="break-words">{{ formatQty(s.available, item.unit) }}</dd>
               </template>
             </dl>
           </B24Card>
@@ -87,7 +85,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
             </p>
             <dl class="grid grid-cols-2 gap-2 text-sm">
               <template v-for="(v, k) in item.properties" :key="k">
-                <dt>{{ k }}</dt><dd>{{ v }}</dd>
+                <dt class="break-words">{{ k }}</dt><dd class="break-words">{{ v }}</dd>
               </template>
             </dl>
           </B24Card>
@@ -99,15 +97,15 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
             <NuxtLink v-for="a in item.analogs" :key="a.guid" :to="`/product/${a.guid}`">
               <B24Card>
                 <div class="flex items-center justify-between gap-2">
-                  <div>
-                    <p class="font-medium">
+                  <div class="min-w-0">
+                    <p class="font-medium break-words">
                       {{ a.name }}
                     </p>
-                    <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
+                    <p class="text-xs text-(--ui-color-design-plain-na-content-secondary) break-words">
                       {{ a.sku }} · {{ a.brand }}
                     </p>
                   </div>
-                  <div class="text-right">
+                  <div class="text-right shrink-0">
                     <p class="font-semibold">
                       {{ a.price ? formatMoney(a.price.value, a.price.currency) : '—' }}
                     </p>

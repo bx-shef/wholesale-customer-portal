@@ -128,7 +128,7 @@ async function submit() {
           <B24Card v-for="l in quote?.lines ?? []" :key="l.guid">
             <div class="flex flex-col gap-2">
               <div class="flex justify-between gap-2">
-                <NuxtLink :to="`/product/${l.guid}`" class="font-medium leading-snug">
+                <NuxtLink :to="`/product/${l.guid}`" class="font-medium leading-snug min-w-0 break-words">
                   {{ l.name }}
                 </NuxtLink>
                 <B24Button color="air-tertiary" size="sm" label="Удалить" :aria-label="`Удалить ${l.name} из корзины`" @click="cart.setQty(l.guid, 0)" />

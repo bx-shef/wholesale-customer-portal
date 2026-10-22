@@ -60,9 +60,10 @@ async function logout() {
 <template>
   <B24Header v-model:open="menuOpen" :title="shortTitle" :to="props.back">
     <template #title>
-      <span class="flex min-w-0 items-center gap-3">
+      <!-- Ширина заголовка ограничена: длинное название товара раздувало страницу на телефоне до 494 px (#77). -->
+      <span class="flex min-w-0 max-w-[calc(100vw-8rem)] md:max-w-md items-center gap-3 overflow-hidden">
         <img src="/logo.png" alt="Алгена" class="h-7 w-auto shrink-0">
-        <span class="truncate">{{ shortTitle }}</span>
+        <span class="min-w-0 truncate">{{ shortTitle }}</span>
       </span>
     </template>
     <template #right>

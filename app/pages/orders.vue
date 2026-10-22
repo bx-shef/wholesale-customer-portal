@@ -59,7 +59,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
         <B24Card v-for="o in data?.items ?? []" :key="o.id">
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">
-              <p class="font-semibold">
+              <p class="font-semibold min-w-0 break-words">
                 Заявка №{{ o.id }} от {{ date(o.createdAt) }}
               </p>
               <B24Badge :color="orderStatus(o.status).color" :label="orderStatus(o.status).label" />
