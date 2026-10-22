@@ -5,14 +5,15 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_FILTERS, filtersToQuery, parseSort, SORT_ITEMS } from '../app/utils/catalogQuery'
 
 describe('сортировка каталога', () => {
-  it('три варианта, по названию — первым', () => {
-    expect(SORT_ITEMS.map(s => s.value)).toEqual(['name', 'available', 'sku'])
+  it('пять вариантов, по названию — первым, цена — в обе стороны (#86)', () => {
+    expect(SORT_ITEMS.map(s => s.value)).toEqual(['name', 'available', 'sku', 'price', 'price_desc'])
   })
 
   it('выбор: известное значение — оно, прочее — по названию', () => {
     expect(parseSort('available')).toBe('available')
     expect(parseSort('sku')).toBe('sku')
-    for (const v of ['price', '', null, 1]) expect(parseSort(v)).toBe('name')
+    expect(parseSort('price_desc')).toBe('price_desc')
+    for (const v of ['random', '', null, 1]) expect(parseSort(v)).toBe('name')
   })
 
   it('сортировка попадает в адрес и в сохранённые фильтры', () => {

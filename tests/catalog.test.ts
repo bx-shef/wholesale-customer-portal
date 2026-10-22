@@ -231,7 +231,7 @@ describe('каталог глазами клиента', () => {
   })
 
   it('разбор запроса: кривое отбрасывается', () => {
-    expect(parseCatalogQuery({ section: 'x; DROP', sort: 'price', offset: '-5', limit: 'abc', inStock: 'yes' }))
+    expect(parseCatalogQuery({ section: 'x; DROP', sort: 'random', offset: '-5', limit: 'abc', inStock: 'yes' }))
       .toEqual({ q: undefined, section: undefined, brand: undefined, inStock: false, sort: undefined, offset: undefined, limit: undefined })
     expect(parseCatalogQuery({ sort: 'sku', inStock: '1', offset: '30' })).toMatchObject({ sort: 'sku', inStock: true, offset: 30 })
     expect(parseCatalogQuery({ limit: '0', section: '-'.repeat(36) })).toMatchObject({ limit: undefined, section: undefined })
@@ -260,5 +260,56 @@ describe('каталог глазами клиента', () => {
     expect(await resolve(7)).toBeNull()
     t = COMPANY_NO_GUID_TTL_MS + 1
     expect(await resolve(7)).toBe(g(100))
+  })
+})
+
+describe('сортировка по цене соглашения (#86)', () => {
+  const pt = g(700)
+  const setup = () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createCatalogStore(db)
+    store.saveCatalog([], [item(1, { name: 'А' }), item(2, { name: 'Б' }), item(3, { name: 'В' }), item(4, { name: 'Г' })])
+    createPriceStore(db).save([
+      { priceTypeGuid: pt, itemGuid: g(1), price: 30, currency: 'BYN', vatRate: 20, changedAt: at, deleted: false },
+      { priceTypeGuid: pt, itemGuid: g(2), price: 10, currency: 'BYN', vatRate: 20, changedAt: at, deleted: false },
+      { priceTypeGuid: pt, itemGuid: g(3), price: 20, currency: 'BYN', vatRate: 20, changedAt: at, deleted: false },
+      // Другой вид цен — на порядок не влияет.
+      { priceTypeGuid: g(701), itemGuid: g(4), price: 1, currency: 'BYN', vatRate: 20, changedAt: at, deleted: false },
+    ])
+    return store
+  }
+
+  it('сначала дешевле / дороже — по виду цен клиента, товары без цены в конце', () => {
+    const store = setup()
+    expect(store.search({ sort: 'price', priceType: pt }).items.map(i => i.name)).toEqual(['Б', 'В', 'А', 'Г'])
+    expect(store.search({ sort: 'price_desc', priceType: pt.toUpperCase() }).items.map(i => i.name)).toEqual(['А', 'В', 'Б', 'Г'])
+  })
+
+  it('без вида цен — по названию, а не случайно', () => {
+    expect(setup().search({ sort: 'price' }).items.map(i => i.name)).toEqual(['А', 'Б', 'В', 'Г'])
+  })
+
+  it('параметр sort=price из адреса принимается', () => {
+    expect(parseCatalogQuery({ sort: 'price_desc' }).sort).toBe('price_desc')
+  })
+})
+
+describe('данные мока (#86)', () => {
+  it('вес демо-товара — из фасовки в названии', async () => {
+    const { weightOf } = await import('../server/mocks/onec/seed')
+    expect(weightOf('ilmax CemTop Express (25кг) стяжка', 7)).toBe('25 кг')
+    expect(weightOf('Шпатлевка SP21 4кг белая', 7)).toBe('4 кг')
+    expect(weightOf(undefined, 7)).toBe('7 кг')
+  })
+
+  it('у товаров одного раздела разные аналоги', () => {
+    const bySection = new Map<string, Set<string>>()
+    for (const i of seed.items) {
+      const set = bySection.get(i.sectionGuid) ?? new Set<string>()
+      set.add([...i.analogs].sort().join(','))
+      bySection.set(i.sectionGuid, set)
+    }
+    for (const sets of bySection.values()) expect(sets.size).toBeGreaterThan(1)
   })
 })
