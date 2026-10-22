@@ -62,6 +62,10 @@ describe('mapClients', () => {
     const a0 = base().agreements[0]!
     expect(mapClients(base({ agreements: [{ ...a0, ВидЦен_Key: undefined }] }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noPriceType).toBe(1)
+    // Соглашение действует, но без вида цен — клиент остаётся (договора нет), а не удалённым.
+    expect(mapClients(base({ agreements: [{ ...a0, ВидЦен_Key: undefined }] }), TODAY)[0]!.client.deleted).toBe(false)
+    // Истёкшее соглашение — как его отсутствие.
+    expect(mapClients(base({ agreements: [{ ...a0, ДатаОкончанияДействия: '2026-10-20T00:00:00' }] }), TODAY)[0]!.client.deleted).toBe(true)
     expect(mapClients(base({ currencies: new Map([[G(40), 'USD']]) }), TODAY, s)[0]!.client.contract?.currency).toBe('USD')
     expect(mapClients(base({ currencies: new Map() }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noCurrency).toBe(1)
@@ -188,6 +192,11 @@ describe('readClientSources и OdataOnec.clients', () => {
   it('всё обязательно: не прочиталось — прогон падает, запрет отгрузки молча не снимается', async () => {
     for (const set of ['Catalog_СегментыПартнеров', 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', 'Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
       await expect(readClientSources(client(fake([set]))), set).rejects.toBeInstanceOf(Error)
+  })
+
+  it('пустой набор соглашений при живых партнёрах — сбой, а не «все удалены»', async () => {
+    const f: typeof fetch = async (u, i) => decodeURIComponent(String(u)).includes('Catalog_СоглашенияСКлиентами?') ? Response.json({ value: [] }) : fake()(u, i)
+    await expect(readClientSources(client(f))).rejects.toThrow('no rows')
   })
 
   it('без сегментов с запретом участников не спрашиваем; удалённый сегмент не блокирует', async () => {
