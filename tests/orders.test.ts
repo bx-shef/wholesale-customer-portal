@@ -165,6 +165,12 @@ describe('заявка', () => {
     expect(deps.orders.list(7)).toMatchObject([{ status: 'sent', total: 55, address: 'Минск, ул. Строителей, 1' }])
   })
 
+  it('сделка подписана названием компании из CRM, а не именем клиента из 1С (#77)', async () => {
+    deps.companyTitle = vi.fn(async (id: number) => (id === 7 ? 'Рога И Копыта' : null))
+    await submitOrder(session, ok, input(), deps)
+    expect(deps.b24.createDeal.mock.calls[0]![0].title).toBe('Заявка ЛК №1: Рога И Копыта')
+  })
+
   it('повтор с тем же requestId — та же заявка, вторая сделка не создаётся', async () => {
     const a = await submitOrder(session, ok, input(), deps)
     const b = await submitOrder(session, ok, input(), deps)

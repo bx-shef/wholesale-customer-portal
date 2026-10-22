@@ -86,11 +86,16 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
   const iso = now.toISOString()
   const summary: SyncSummary = { resent: 0, ordered: 0, cancelled: 0, reported: 0, failed: 0 }
 
-  // 1. Досылка зависших без сделки.
+  // 1. Досылка зависших без сделки. Название компании — один запрос в CRM на компанию за прогон.
+  const titles = new Map<number, Promise<string | null>>()
+  const companyTitle = deps.companyTitle && ((id: number) => {
+    if (!titles.has(id)) titles.set(id, deps.companyTitle!(id))
+    return titles.get(id)!
+  })
   for (const row of deps.orders.toResend(now)) {
     if (!deps.orders.claim(row.id, now)) continue
     const client = deps.clients.get(row.client_guid)
-    if (await sendToCrm(row, await dealClientName(row.company_id, client?.name ?? '', deps.companyTitle), deps, now)) summary.resent++
+    if (await sendToCrm(row, await dealClientName(row.company_id, client?.name ?? '', companyTitle), deps, now)) summary.resent++
     else summary.failed++
   }
 

@@ -72,6 +72,16 @@ describe('синхронизация заявок', () => {
       expect(deps.b24.createDeal.mock.calls[0]![0]).toMatchObject({ requestId: draft(1).requestId, title: 'Заявка ЛК №1: ООО «К»', total: 10 })
     })
 
+    it('досылка: название компании из CRM, один запрос на компанию за прогон (#77)', async () => {
+      begin(1, '2026-10-12T09:58:30Z')
+      begin(2, '2026-10-12T09:58:00Z')
+      deps.companyTitle = vi.fn(async () => 'Рога И Копыта')
+      await syncOrders(deps)
+      expect(deps.b24.createDeal).toHaveBeenCalledTimes(2)
+      expect(deps.b24.createDeal.mock.calls.every(c => c[0].title.endsWith('Рога И Копыта'))).toBe(true)
+      expect(deps.companyTitle).toHaveBeenCalledTimes(1)
+    })
+
     it('отказ CRM — failed, заявка снова pending, пауза растёт', async () => {
       const row = begin(1, '2026-10-12T09:00:00Z')
       deps.b24.createDeal.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'AjaxError' }))
