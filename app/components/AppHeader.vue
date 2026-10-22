@@ -13,6 +13,7 @@ const links = [
   { to: '/cart', label: 'Корзина' },
   { to: '/orders', label: 'Заявки' },
   { to: '/profile', label: 'Профиль' },
+  { to: '/help', label: 'Справка' },
 ]
 function openAi() {
   menuOpen.value = false
@@ -42,6 +43,9 @@ async function logout() {
   logoutError.value = ''
   // Сохранённое с устройства уходит в любом случае.
   cart.forget()
+  // Поиск и фильтры прежнего пользователя на общем устройстве не оставляем.
+  try { localStorage.removeItem('wcp-catalog-filters') }
+  catch { /* хранилище недоступно — стирать нечего */ }
   await clearCatalogCache()
   // Данные клиента из 1С — следующему вошедшему не показываем.
   clearNuxtState('client-data')
@@ -73,6 +77,7 @@ async function logout() {
         <B24Button to="/cart" color="air-tertiary" :label="cart.count.value ? `Корзина · ${cart.count.value}` : 'Корзина'" />
         <B24Button to="/orders" color="air-tertiary" label="Заявки" />
         <B24Button to="/profile" color="air-tertiary" label="Профиль" />
+        <B24Button to="/help" color="air-tertiary" label="Справка" />
         <B24Button color="air-tertiary" label="Выйти" @click="logout" />
       </div>
     </template>
