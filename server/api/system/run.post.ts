@@ -1,10 +1,11 @@
 // Запустить поток обмена сейчас, не дожидаясь расписания. Идёт в фоне: итог — в таблице запусков.
 import { z } from 'zod'
 import { manualRunVerdict } from '../../utils/manualRun'
+import { refreshSeenClients } from '../../utils/clientRefresh'
 
 const running = new Set<string>()
 const lastStartedAt = new Map<string, number>()
-const body = z.object({ flow: z.enum(['clients', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
+const body = z.object({ flow: z.enum(['clients', 'client_data', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
 
 export default defineEventHandler(async (event) => {
   guardOnecTest(event)
@@ -26,6 +27,7 @@ export default defineEventHandler(async (event) => {
   lastStartedAt.set(flow, now)
   const job = {
     clients: () => syncCompanies(),
+    client_data: () => refreshSeenClients({ loader: useClientLoader(), store: useClientStore(), runs: sqliteSyncStore(useDb()), ttlMs: readServerEnv().onecClientTtlMin * 60_000 }),
     catalog: () => syncCatalog(),
     prices: () => syncPrices(),
     stock: () => syncStock(),

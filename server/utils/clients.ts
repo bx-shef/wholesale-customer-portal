@@ -31,7 +31,7 @@ export function createClientStore(db: DatabaseSync) {
   const get = db.prepare('SELECT guid, name, contract_guid, contract, addresses, region_guid, region_name, shipment_blocked, deleted, loaded_at FROM onec_client WHERE guid = ?')
   const markLoaded = db.prepare('UPDATE onec_client SET loaded_at = ? WHERE guid = ?')
   const markSeen = db.prepare('UPDATE onec_client SET seen_at = ? WHERE guid = ?')
-  const due = db.prepare('SELECT guid FROM onec_client WHERE seen_at >= ? AND (loaded_at IS NULL OR loaded_at < ?) ORDER BY loaded_at LIMIT ?')
+  const due = db.prepare('SELECT guid FROM onec_client WHERE seen_at >= ? AND (loaded_at IS NULL OR loaded_at < ?) ORDER BY loaded_at, guid LIMIT ?')
   return {
     /** `loadedAt` — загружено поклиентски из 1С в этот момент. */
     save(clients: ClientT[], loadedAt?: string) {

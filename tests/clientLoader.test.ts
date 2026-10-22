@@ -2,7 +2,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { migrate } from '../server/db/sqlite'
-import { createClientLoader } from '../server/utils/clientLoader'
+import { createClientLoader, FORCE_MIN_MS, NEGATIVE_TTL_MS } from '../server/utils/clientLoader'
 import { createClientStore } from '../server/utils/clients'
 import { refreshSeenClients, REFRESH_BATCH } from '../server/utils/clientRefresh'
 import { memorySyncStore } from '../server/utils/onecSync'
@@ -23,8 +23,8 @@ function setup(load: (guid: string) => Promise<ClientT | null>) {
   migrate(db)
   const store = createClientStore(db)
   let now = T0
-  const fails: Array<{ guid: string, cached: boolean }> = []
-  const loader = createClientLoader({ store, load, ttlMs: 15 * MIN, now: () => new Date(now), onFail: (guid, _e, cached) => fails.push({ guid, cached }) })
+  const fails: Array<{ guid: string, cached: boolean, scheduled?: boolean }> = []
+  const loader = createClientLoader({ store, load, ttlMs: 15 * MIN, now: () => new Date(now), onFail: (guid, _e, cached, scheduled) => fails.push(scheduled ? { guid, cached, scheduled } : { guid, cached }) })
   return { store, loader, fails, tick: (ms: number) => { now += ms } }
 }
 
@@ -39,8 +39,36 @@ describe('createClientLoader', () => {
     s.tick(2 * MIN)
     expect((await s.loader.ensure(G(1))).status).toBe('loaded')
     expect(calls).toBe(2)
+    // «Повторить» сразу после загрузки в 1С не идёт.
+    expect((await s.loader.ensure(G(1), { force: true })).status).toBe('fresh')
+    s.tick(FORCE_MIN_MS)
     expect((await s.loader.ensure(G(1), { force: true })).status).toBe('loaded')
     expect(calls).toBe(3)
+  })
+
+  it('«нет в 1С» и сбой без кэша помнятся NEGATIVE_TTL_MS — перезагрузка страницы в 1С не идёт; расписание — идёт', async () => {
+    let calls = 0
+    const s = setup(async () => { calls++; return null })
+    expect((await s.loader.ensure(G(5))).status).toBe('missing')
+    expect((await s.loader.ensure(G(5))).status).toBe('missing')
+    expect(calls).toBe(1)
+    await s.loader.ensure(G(5), { scheduled: true })
+    expect(calls).toBe(2)
+    s.tick(NEGATIVE_TTL_MS)
+    await s.loader.ensure(G(5))
+    expect(calls).toBe(3)
+  })
+
+  it('«Повторить» не прилипает к идущей обычной загрузке', async () => {
+    let calls = 0
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const s = setup(async () => { calls++; await gate; return client(1) })
+    const a = s.loader.ensure(G(1))
+    const b = s.loader.ensure(G(1), { force: true })
+    release()
+    await Promise.all([a, b])
+    expect(calls).toBe(2)
   })
 
   it('1С упала: есть кэш — работаем по нему с датой; нет кэша — ошибка и сигнал без кэша', async () => {
@@ -56,6 +84,8 @@ describe('createClientLoader', () => {
     const none = await s.loader.ensure(G(2))
     expect(none).toMatchObject({ status: 'error', client: null })
     expect(s.fails).toEqual([{ guid: G(1), cached: true }, { guid: G(2), cached: false }])
+    await s.loader.ensure(G(3), { scheduled: true })
+    expect(s.fails.at(-1)).toEqual({ guid: G(3), cached: false, scheduled: true })
   })
 
   it('клиента нет в 1С — missing, кэш не пишется; один GUID — одна загрузка за раз', async () => {
@@ -91,7 +121,7 @@ describe('refreshSeenClients — расписание', () => {
     const r = await refreshSeenClients({ loader: s.loader, store: s.store, runs, ttlMs: 15 * MIN, now: () => new Date(T0 + 20 * MIN) })
     expect(r).toEqual({ due: 2, loaded: 2, failed: 0 })
     expect(loaded.sort()).toEqual([G(1), G(2)])
-    expect(runs.runs.at(-1)).toMatchObject({ flow: 'clients', status: 'done', received: 2 })
+    expect(runs.runs.at(-1)).toMatchObject({ flow: 'client_data', status: 'done', received: 2 })
     // Заходил 31 день назад — не трогаем.
     expect(s.store.due(new Date(T0 + 32 * 86_400_000 - 30 * 86_400_000).toISOString(), new Date(T0 + 40 * MIN).toISOString(), REFRESH_BATCH)).toEqual([])
   })
@@ -101,10 +131,11 @@ describe('refreshSeenClients — расписание', () => {
     const s = setup(async g => { if (!up) throw new Error('down'); return client(Number(g.slice(-3))) })
     await s.loader.ensure(G(1))
     up = false
+    s.tick(20 * MIN)
     const runs = memorySyncStore()
     const r = await refreshSeenClients({ loader: s.loader, store: s.store, runs, ttlMs: 15 * MIN, now: () => new Date(T0 + 20 * MIN) })
     expect(r.failed).toBe(1)
-    expect(runs.runs.at(-1)).toMatchObject({ flow: 'clients', status: 'failed' })
+    expect(runs.runs.at(-1)).toMatchObject({ flow: 'client_data', status: 'failed' })
   })
 })
 

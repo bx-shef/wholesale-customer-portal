@@ -5,6 +5,7 @@ import { createB24Orders, type B24Orders } from '../services/b24Orders'
 import { loadAppAuth } from './b24AppAuth'
 import { createClientStore, type ClientStore } from './clients'
 import { createClientLoader, type ClientLoader } from './clientLoader'
+import { CLIENT_DATA_FLOW } from './clientRefresh'
 import { createOrderStore, type OrderStore } from './orders'
 import { createRateLimiter } from './rateLimit'
 import { sqliteSyncStore } from './onecSync'
@@ -29,17 +30,23 @@ export function useClientLoader(): ClientLoader {
     load: guid => useOnec().clientByGuid(guid),
     ttlMs: readServerEnv().onecClientTtlMin * 60_000,
     // Сбой без кэша — запуск потока «клиенты» со сбоем: оповещение в Telegram идёт тем же путём.
-    onFail: (guid, e, cached) => {
+    onFail: (_guid, e, cached, scheduled) => {
       console.error(`[clients] load failed${cached ? ' (cache used)' : ''}: ${e.name}`)
-      if (!cached) recordClientFailure(e)
+      if (!cached && !scheduled) recordClientFailure(e)
     },
   })
   return loader
 }
 
+/** Сбой без кэша при входе — в журнал потока не чаще этого: 1С в простое не засыпает журнал и Telegram. */
+const FAILURE_RECORD_MS = 10 * 60_000
+let lastFailureRecord = 0
 function recordClientFailure(e: Error) {
+  if (Date.now() - lastFailureRecord < FAILURE_RECORD_MS) return
+  lastFailureRecord = Date.now()
   const at = new Date().toISOString()
-  void sqliteSyncStore(useDb()).saveRun({ flow: 'clients', status: 'failed', startedAt: at, finishedAt: at, cursorFrom: null, cursorTo: null, received: 0, error: e.message.slice(0, 300) })
+  // Только класс ошибки: текст сетевого сбоя может содержать адрес 1С.
+  void sqliteSyncStore(useDb()).saveRun({ flow: CLIENT_DATA_FLOW, status: 'failed', startedAt: at, finishedAt: at, cursorFrom: null, cursorTo: null, received: 0, error: `client load failed without cache: ${e.name}` })
 }
 
 export function useB24Orders(): B24Orders {

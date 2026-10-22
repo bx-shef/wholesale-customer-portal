@@ -10,6 +10,7 @@ export interface FlowRunRow { flow: string, status: string, startedAt: string, f
 /** Потоки обмена: подпись и сколько можно жить без удачного запуска (несколько интервалов расписания). */
 export const FLOWS: Record<string, { label: string, staleMs: number }> = {
   clients: { label: 'клиенты и договоры', staleMs: 40 * 60_000 },
+  client_data: { label: 'данные клиентов ЛК', staleMs: 40 * 60_000 },
   catalog: { label: 'каталог', staleMs: 3 * 60 * 60_000 },
   prices: { label: 'прайс', staleMs: 60 * 60_000 },
   stock: { label: 'остатки', staleMs: 30 * 60_000 },

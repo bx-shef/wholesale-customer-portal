@@ -257,7 +257,7 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
   const agreements = await client.list<AgreementRow>('Catalog_СоглашенияСКлиентами', {
     $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key', ...byPartner,
   })
-  const contractKeys = [...new Set(agreements.flatMap(a => (ref(a.Договор_Key) ? [ref(a.Договор_Key)!] : [])))].slice(0, 40)
+  const contractKeys = [...new Set(agreements.flatMap(a => (ref(a.Договор_Key) ? [ref(a.Договор_Key)!] : [])))].slice(0, 40) // у клиента их единицы (стенд: максимум 31 соглашение)
   const contracts = contractKeys.length
     ? await client.list<ContractRow>('Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности', $filter: contractKeys.map(k => `Ref_Key eq guid'${assertGuid(k)}'`).join(' or ') })
     : []
@@ -269,7 +269,7 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
   const members = await client.list<{ Ref_Key: string, Партнер_Key?: string }>('Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key', ...byPartner })
   let blocked = new Set<string>()
   if (members.length) {
-    const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
+    const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark', $filter: 'ЗапретОтгрузки eq true' })
     const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
     if (members.some(m => stop.has(m.Ref_Key.toLowerCase()))) blocked = new Set([partnerGuid.toLowerCase()])
   }

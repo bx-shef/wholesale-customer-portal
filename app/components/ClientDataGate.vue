@@ -27,7 +27,16 @@ async function load(refresh = false) {
 }
 
 const active = computed(() => isClientRoute(route.path))
-watch(active, (on) => { if (on && !data.value && !pending.value) load() }, { immediate: true })
+// Только в браузере: на сервере нет куки сессии в $fetch, и разметка разошлась бы с клиентом.
+const mounted = ref(false)
+onMounted(() => {
+  mounted.value = true
+  if (active.value) load()
+})
+// Сбой сети не держит кабинет открытым без данных навсегда: на следующей странице пробуем снова.
+watch(() => route.path, () => {
+  if (mounted.value && active.value && (!data.value || failed.value) && !pending.value) load()
+})
 const view = computed(() => clientDataView(data.value))
 </script>
 
