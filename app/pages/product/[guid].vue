@@ -15,6 +15,8 @@ watch(error, (e) => {
 useHead({ title: () => data.value?.item.name ?? 'Товар' })
 
 const item = computed(() => data.value?.item)
+// Экран загрузки не мигает (#78): держится не меньше 3 секунд.
+const holding = useMinLoading(() => !item.value && status.value !== 'error')
 const cart = useCart()
 const ai = useAiChat()
 const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
@@ -27,7 +29,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
       <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
         <B24Alert v-if="error?.statusCode === 404" color="air-primary-warning" title="Товар не найден" description="Его могли убрать из каталога. Вернитесь в каталог и найдите похожий." />
         <B24Alert v-else-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить товар. Обновите страницу." />
-        <BuildLoader v-else-if="!item && status !== 'error'" title="Загружаем товар, цену и остатки…" />
+        <BuildLoader v-else-if="holding && status !== 'error'" title="Загружаем товар, цену и остатки…" />
         <template v-else-if="item">
           <B24Card>
             <div class="flex flex-col gap-2">

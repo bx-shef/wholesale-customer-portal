@@ -38,6 +38,8 @@ watch(() => route.path, () => {
   if (mounted.value && active.value && (!data.value || failed.value) && !pending.value) load()
 })
 const view = computed(() => clientDataView(data.value))
+// Экран загрузки не мигает (#78): держится не меньше 3 секунд.
+const holding = useMinLoading(() => pending.value || !data.value)
 </script>
 
 <template>
@@ -50,7 +52,7 @@ const view = computed(() => clientDataView(data.value))
   <template v-else>
     <B24Alert v-if="mounted && active && !failed && view.message" color="air-primary-warning" :title="view.message" class="rounded-none" />
     <slot />
-    <div v-if="mounted && active && !failed && (pending || !data)" class="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 p-6 overflow-auto">
+    <div v-if="mounted && active && !failed && holding" class="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 p-6 overflow-auto">
       <BuildLoader title="Загружаем ваши данные из учётной системы…" />
     </div>
   </template>
