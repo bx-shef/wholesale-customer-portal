@@ -279,6 +279,13 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
     return ok(paginate(rows, q.page, q.pageSize))
   }
 
+  const clientMatch = /^\/client\/([^/]+)$/.exec(path)
+  if (method === 'GET' && clientMatch) {
+    const guid = decodeURIComponent(clientMatch[1]!).toLowerCase()
+    const client = state.data.clients.find(c => c.guid.toLowerCase() === guid)
+    return client ? ok(client) : error('not_found', 'Client not found')
+  }
+
   if (method === 'GET' && path === '/catalog') {
     const q = list()
     if (!q) return error('validation', 'Bad list parameters')

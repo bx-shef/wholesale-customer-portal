@@ -21,7 +21,9 @@ onMounted(registerServiceWorker)
         title="Нет сети: открыто сохранённое ранее, цены и остатки могли измениться. Заявку отправьте, когда сеть вернётся."
         class="rounded-none"
       />
-      <NuxtPage />
+      <ClientDataGate>
+        <NuxtPage />
+      </ClientDataGate>
       <AppFooter v-if="!$route.path.startsWith('/b24')" />
     </div>
     <ClientOnly>

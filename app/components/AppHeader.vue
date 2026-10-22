@@ -43,6 +43,8 @@ async function logout() {
   // Сохранённое с устройства уходит в любом случае.
   cart.forget()
   await clearCatalogCache()
+  // Данные клиента из 1С — следующему вошедшему не показываем.
+  clearNuxtState('client-data')
   try {
     await $fetch('/api/auth/logout', { method: 'POST' })
   }

@@ -1,6 +1,6 @@
 # Выкат ЛК
 
-> Last reviewed: 2026-10-21
+> Last reviewed: 2026-10-22
 
 Схема выката собрана из трёх рабочих примеров флота. Код выката пишем на этапе 0 (CI, образ, compose, `Makefile`) и этапе 7 (ВМ клиента); здесь — что берём и почему.
 
@@ -127,6 +127,7 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
 | `B24_PORTAL_HOST` | Хост портала: установку и вкладку компании сервер принимает только от него |
 | `ONEC_URL`, `ONEC_TOKEN`, `ONEC_MOCK` | 1С или мок. Мок — только при явном `ONEC_MOCK=true`; тогда `ONEC_TOKEN` — токен `/mock-1c` (пусто — мок закрыт снаружи) |
 | `ONEC_MODE`, `ONEC_LOGIN`, `ONEC_PASSWORD`, `ONEC_PRICE_TYPES`, `ONEC_STOCK_WAREHOUSES`, `ONEC_ODATA_CLIENTS`, `ONEC_ODATA_ORDERS`, `ONEC_ODATA_TRIPS` | `ONEC_MODE=odata` — 1С по стандартному OData (`ONEC_URL` — адрес публикации; вход — `ONEC_LOGIN`/`ONEC_PASSWORD`; `ONEC_MOCK=true` перекрывает режим); виды цен и склады по наименованию (склады — и запасной склад заказа); `ONEC_ODATA_CLIENTS=true` — клиенты 1С в компании Б24, `ONEC_ODATA_ORDERS=true` — заявки в заказы 1С, `ONEC_ODATA_TRIPS=true` — рейсы (все — только после проверки стендом; заказы — после #46, порядок — `docs/project-map.md`) — `docs/onec-odata.md` |
+| `ONEC_CLIENT_TTL_MIN` | Сколько минут данные клиента из 1С (соглашение, адреса, зона) свежи при входе; старше — ЛК грузит их заново по GUID клиента. 1–1440, по умолчанию 15 |
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | ИИ-помощник; без ключа чат отвечает `503`, ЛК работает |
 | `SESSION_SECRET` | Подпись сессий клиентов и HMAC логина в журнале, не короче 32 символов (`openssl rand -hex 32`). Смена разлогинивает всех и обнуляет счётчики попыток |
 | `MCP_ADMIN_TOKEN` | Bearer для `/mcp/admin` |

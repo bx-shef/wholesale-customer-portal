@@ -58,6 +58,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /client/{guid}:
+    get:
+      summary: "Один клиент по GUID: договор, адреса, регион — ЛК грузит его при входе и по расписанию"
+      parameters:
+        - name: guid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Клиент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "400":
+          description: Неверные параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Нет или неверный Bearer-токен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Нет такого клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Сервис временно недоступен — ЛК повторит запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /image/{id}:
     get:
       summary: Картинка товара в base64 (JPEG, PNG, WebP; до 5 МБ)

@@ -37,6 +37,13 @@ export function buildOnecOpenApi() {
     security: [{ bearer: [] }, { basic: [] }],
     paths: {
       '/clients': { get: { summary: 'Контрагенты с договорами и адресами доставки', parameters: listParams, responses: { 200: { description: 'Страница', content: content('ClientsPage') }, ...errors } } },
+      '/client/{guid}': {
+        get: {
+          summary: 'Один клиент по GUID: договор, адреса, регион — ЛК грузит его при входе и по расписанию',
+          parameters: [{ name: 'guid', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { 200: { description: 'Клиент', content: content('Client') }, 404: { description: 'Нет такого клиента', content: content('Error') }, ...errors },
+        },
+      },
       '/image/{id}': {
         get: {
           summary: 'Картинка товара в base64 (JPEG, PNG, WebP; до 5 МБ)',

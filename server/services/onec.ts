@@ -9,7 +9,7 @@
  */
 import type { z } from 'zod'
 import {
-  CatalogPage, ClientsPage, DeliverySchedulePage, TripsPage, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
+  CatalogPage, Client, type ClientT, ClientsPage, DeliverySchedulePage, TripsPage, ErrorBody, ImageFile, OrderCreated, OrderRequest, OrderStatusPage,
   PricesPage, StockPage,
 } from '../../shared/onec/schemas'
 
@@ -94,6 +94,17 @@ export class OnecClient {
 
   clients(params: ListParams = {}) {
     return this.request('GET', '/clients', ClientsPage, { query: params })
+  }
+
+  /** Один клиент по GUID (решение владельца 2026-10-22): нет в 1С — `null`. */
+  async clientByGuid(guid: string): Promise<ClientT | null> {
+    try {
+      return await this.request('GET', `/client/${encodeURIComponent(guid)}`, Client)
+    }
+    catch (e) {
+      if (e instanceof OnecError && e.status === 404) return null
+      throw e
+    }
   }
 
   catalog(params: ListParams = {}) {
@@ -215,7 +226,7 @@ export class OnecClient {
  * `stockIsSnapshot` — остатки приходят снимком целиком: чего нет в снимке, того на складе нет.
  * `unsupportedFlows` — потоки, которых у этого транспорта нет: их не запускают и не ждут.
  */
-export type OnecApi = Pick<OnecClient, 'clients' | 'catalog' | 'prices' | 'stock' | 'createOrder' | 'image' | 'deliverySchedule' | 'trips' | 'orderStatus'> & { readonly stockIsSnapshot?: boolean, readonly unsupportedFlows?: readonly string[] }
+export type OnecApi = Pick<OnecClient, 'clients' | 'clientByGuid' | 'catalog' | 'prices' | 'stock' | 'createOrder' | 'image' | 'deliverySchedule' | 'trips' | 'orderStatus'> & { readonly stockIsSnapshot?: boolean, readonly unsupportedFlows?: readonly string[] }
 
 /** Все страницы списка подряд — для синхронизации по курсору. */
 export async function collectPages<T>(
