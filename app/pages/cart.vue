@@ -129,9 +129,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="pb-28 md:pb-0">
-    <AppHeader title="Корзина" />
-    <B24Main>
+  <AppPage id="cart" class="pb-28 md:pb-0" title="Корзина">
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
         <B24Alert v-if="sent" color="air-primary-success" :title="`Заявка №${sent.orderId} отправлена`" :description="sent.deliveryFrom && sent.deliveryTo ? `Машина приедет: ${formatSlot({ arrivalFrom: sent.deliveryFrom, arrivalTo: sent.deliveryTo })}. Менеджер подтвердит заявку, статус — в разделе «Заявки».` : 'Менеджер подтвердит заявку и согласует дату доставки. Статус — в разделе «Заявки».'" />
 
@@ -227,6 +225,5 @@ async function submit() {
           </div>
         </div>
       </B24Container>
-    </B24Main>
-  </div>
+  </AppPage>
 </template>

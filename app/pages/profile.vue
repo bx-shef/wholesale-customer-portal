@@ -28,9 +28,7 @@ async function requestCallback() {
 </script>
 
 <template>
-  <div>
-    <AppHeader title="Профиль" />
-    <B24Main>
+  <AppPage id="profile" title="Профиль">
       <B24Container class="py-6 flex flex-col gap-4 max-w-xl">
         <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-warning" title="Не удалось загрузить профиль. Обновите страницу." />
         <template v-else-if="data">
@@ -88,6 +86,5 @@ async function requestCallback() {
           </B24Card>
         </template>
       </B24Container>
-    </B24Main>
-  </div>
+  </AppPage>
 </template>

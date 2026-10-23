@@ -309,6 +309,17 @@ describe('данные мока (#86)', () => {
     expect(weightOf('ilmax CemTop Express (25кг) стяжка', 7)).toBe('25 кг')
     expect(weightOf('Шпатлевка SP21 4кг белая', 7)).toBe('4 кг')
     expect(weightOf(undefined, 7)).toBe('7 кг')
+    expect(weightOf(undefined, 14, { unit: 'кг', packQty: 1 })).toBe('1 кг')
+    expect(weightOf(undefined, 14, { unit: 'шт', packQty: 1 })).toBe('14 кг')
+  })
+
+  it('товар в килограммах: вес совпадает с фасовкой; аналоги в той же единице', () => {
+    const byGuid = new Map(seed.items.map(i => [i.guid, i]))
+    for (const i of seed.items) {
+      if (i.unit === 'кг') expect(i.properties['Вес']).toBe(`${i.packQty} кг`)
+      for (const a of i.analogs) if (!byGuid.get(a)!.name.includes(':') || !i.name.includes(':')) continue
+      else expect(byGuid.get(a)!.unit).toBe(i.unit)
+    }
   })
 
   it('у товаров одного раздела разные аналоги', () => {

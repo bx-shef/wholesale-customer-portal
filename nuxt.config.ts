@@ -20,7 +20,7 @@ export default defineNuxtConfig({
         { name: 'robots', content: 'noindex, nofollow' },
       ],
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'icon', type: 'image/png', href: '/favicon.png' },
         // PWA: установка на телефон и каталог без сети (public/sw.js, app/composables/usePwa.ts).
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'apple-touch-icon', href: '/icon-192.png' },
@@ -67,6 +67,10 @@ export default defineNuxtConfig({
       '/manifest.webmanifest': { headers: { 'Cache-Control': 'no-cache', 'X-Robots-Tag': 'noindex, nofollow' } },
     },
   },
+
+  // Расхождения гидрации — с подробностями и в боевой сборке: иначе консоль пишет только
+  // «Hydration completed but contains mismatches», и найти элемент нельзя (проверка 2026-10-22).
+  vite: { define: { __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'true' } },
 
   eslint: {
     config: { stylistic: false },

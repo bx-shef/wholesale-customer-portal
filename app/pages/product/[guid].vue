@@ -23,9 +23,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
 </script>
 
 <template>
-  <div>
-    <AppHeader :title="item?.name || 'Товар'" back="/" />
-    <B24Main>
+  <AppPage id="product" :title="item?.name || 'Товар'" back="/">
       <B24Container class="py-4 flex flex-col gap-4 max-w-2xl">
         <B24Alert v-if="error?.statusCode === 404" color="air-primary-warning" title="Товар не найден" description="Его могли убрать из каталога. Вернитесь в каталог и найдите похожий." />
         <B24Alert v-else-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить товар. Обновите страницу." />
@@ -119,6 +117,5 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
           </section>
         </template>
       </B24Container>
-    </B24Main>
-  </div>
+  </AppPage>
 </template>

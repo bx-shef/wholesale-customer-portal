@@ -52,7 +52,7 @@ const holding = useMinLoading(() => pending.value || !data.value)
   <template v-else>
     <B24Alert v-if="mounted && active && !failed && view.message" color="air-primary-warning" :title="view.message" class="rounded-none" />
     <slot />
-    <div v-if="mounted && active && !failed && holding" class="fixed inset-0 z-50 bg-white/95 dark:bg-gray-950/95 p-6 overflow-auto">
+    <div v-if="mounted && active && !failed && holding" class="fixed inset-0 z-50 bg-white dark:bg-gray-950 p-6 overflow-auto">
       <BuildLoader title="Загружаем ваши данные из учётной системы…" />
     </div>
   </template>

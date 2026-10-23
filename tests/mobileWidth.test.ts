@@ -7,10 +7,10 @@ import { describe, expect, it } from 'vitest'
 const read = (p: string) => readFileSync(join(__dirname, '..', p), 'utf8')
 
 describe('ширина страниц на телефоне', () => {
-  it('заголовок шапки ограничен шириной экрана и обрезается', () => {
-    const header = read('app/components/AppHeader.vue')
-    expect(header).toMatch(/max-w-\[calc\(100vw-[^\]]+\)\]/)
-    expect(header).toContain('<span class="min-w-0 truncate">')
+  it('заголовок страницы обрезается, а не раздувает ширину', () => {
+    const page = read('app/components/AppPage.vue')
+    expect(page).toContain('<span class="block min-w-0 truncate">{{ title }}</span>')
+    expect(page).toContain("title: 'min-w-0 truncate'")
   })
 
   it('карточка товара: длинные слова переносятся, название аналога сжимается', () => {
