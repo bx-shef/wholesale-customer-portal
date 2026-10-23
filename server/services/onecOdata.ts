@@ -323,13 +323,20 @@ export class ODataClient {
     // сегменты в запросе к контейнеру сущностей», прогон 2026-10-21) — срез берём у `_RecordType`.
     // Прежний путь оставлен запасным: на какой из них ответит база, видно в `tried`.
     let rows: PriceRow[] = []
-    for (const base of [`${register}_RecordType`, register]) {
+    // Только нужные поля: без `$select` 1С отдаёт строку целиком, и срез 121 тыс. строк весил ~100 МБ
+    // и ронял контейнер (512 МБ) на стенде 2026-10-23. Не примет `$select` — читаем как раньше.
+    const attempts = [`${register}_RecordType`, register].flatMap(base => [
+      { base, select: base.endsWith('_RecordType') ? PRICE_SELECT_CO : PRICE_SELECT_PLAIN },
+      { base, select: null },
+    ])
+    for (const { base, select } of attempts) {
       const slice = `${encodeURIComponent(base)}/SliceLast()`
       try {
         rows = []
         for (let page = 0; ; page++) {
-          const chunk = await this.listPath<PriceRow>(slice, `${base}/SliceLast`, { ...filter, $top: pageSize, $skip: page * pageSize })
-          rows.push(...chunk)
+          const chunk = await this.listPath<PriceRow>(slice, `${base}/SliceLast`, { ...filter, ...(select ? { $select: select } : {}), $top: pageSize, $skip: page * pageSize })
+          // Держим только поля строки цены: остальное в ответе (без `$select`) — лишняя память.
+          for (const r of chunk) rows.push(slimPriceRow(r))
           if (chunk.length < pageSize || (opts.limit && rows.length >= opts.limit)) break
           if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData ${base}/SliceLast: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
         }
@@ -337,7 +344,7 @@ export class ODataClient {
       }
       catch (e) {
         if (!(e instanceof OnecError) || e.kind !== 'http') throw e
-        tried.push(`${base}/SliceLast: ${e.message}`)
+        tried.push(`${base}/SliceLast${select ? ' $select' : ''}: ${e.message}`)
       }
     }
     const currencies = await this.currencies()
@@ -450,6 +457,19 @@ export interface PricesResult {
   tried: string[]
   stats: PriceStats
   missing: string[]
+}
+
+/** Поля среза цен: регистр `…_RecordType` — с измерениями «ЦО», прежний — без них. */
+export const PRICE_SELECT_CO = 'Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key'
+export const PRICE_SELECT_PLAIN = 'Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,Характеристика_Key,Упаковка_Key'
+
+/** Копия строки цены только с нужными полями: сырые строки OData без `$select` в разы тяжелее. */
+export function slimPriceRow(r: PriceRow): PriceRow {
+  const out: PriceRow = { Номенклатура_Key: r.Номенклатура_Key, ВидЦены_Key: r.ВидЦены_Key }
+  for (const k of ['Period', 'Active', 'Цена', 'Валюта_Key', 'ХарактеристикаЦО_Key', 'УпаковкаЦО_Key', 'Характеристика_Key', 'Упаковка_Key'] as const) {
+    if (r[k] !== undefined) (out as unknown as Record<string, unknown>)[k] = r[k]
+  }
+  return out
 }
 
 export interface PriceRow {

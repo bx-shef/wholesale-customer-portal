@@ -11,6 +11,9 @@ RUN pnpm build
 FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+# Предел кучи Node — под лимит контейнера 512 МБ (docker-compose.prod.yml): сам Node по умолчанию
+# брал меньше и падал «heap out of memory» на прайсе 1С (стенд 2026-10-23), пока контейнеру хватало.
+ENV NODE_OPTIONS=--max-old-space-size=400
 ENV PORT=3000
 ENV NITRO_HOST=0.0.0.0
 # Файлы — пользователю node. Базу справки Nuxt Content пишет при старте в /tmp
