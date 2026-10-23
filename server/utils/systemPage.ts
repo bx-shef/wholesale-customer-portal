@@ -53,6 +53,12 @@ export const SYSTEM_PAGE = `<!doctype html>
     <button id="guid-check">Сверить</button>
     <table hidden id="guid-table"><thead><tr><th>Компания</th><th>GUID 1С</th><th>В 1С</th></tr></thead><tbody id="guid-rows"></tbody></table>
   </div>
+  <div class="card" id="reset-card">
+    <h2>Переход с мока на 1С</h2>
+    <p class="muted">Удаляет из базы ЛК каталог, прайс, остатки, график, рейсы и кэш клиентов (с курсорами) — первая выгрузка из 1С ляжет на чистую базу. Заявки, ключи и журналы не трогает. До выгрузки каталог у клиентов будет пуст.</p>
+    <button id="reset-data">Очистить данные мока</button>
+    <pre id="reset-out" hidden></pre>
+  </div>
   <div class="card"><h2>База ЛК</h2><div class="grid" id="counts"></div></div>
 
   <div class="card" id="mock-card" hidden>
@@ -133,6 +139,10 @@ export const SYSTEM_PAGE = `<!doctype html>
         b.textContent = 'Запущено — итог в таблице ниже'
       }
       else if (b.dataset.mock) out('mock-out', JSON.stringify((await api('/api/system/mock', { action: b.dataset.mock })).body, null, 2))
+      else if (b.id === 'reset-data') {
+        const word = prompt('Каталог, прайс и остатки будут удалены из базы ЛК. Введите ОЧИСТИТЬ')
+        if (word === 'ОЧИСТИТЬ') out('reset-out', JSON.stringify((await api('/api/system/reset-data', { confirm: word })).removed, null, 2))
+      }
       else if (b.id === 'guid-check') {
         const r = await api('/api/system/guid-check', {})
         const ONEC = { found: '✅ есть, с соглашением', 'no-contract': '⚠️ есть, без соглашения', missing: '❌ нет', error: '⚠️ 1С не ответила' }

@@ -118,3 +118,17 @@ describe('сверка компаний коробки с 1С', () => {
     expect(rows[3]!.guid).toBeNull()
   })
 })
+
+describe('очистка данных мока перед выгрузкой из 1С', () => {
+  it('стирает данные обмена и их курсоры, заявки и чужие курсоры не трогает', async () => {
+    const { resetSyncData } = await import('../server/utils/resetSyncData')
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    db.exec("INSERT INTO catalog_section (guid, parent_guid, name) VALUES ('s', NULL, 'Раздел')")
+    db.exec("INSERT INTO sync_cursor (flow, cursor, updated_at) VALUES ('catalog', 'x', 'x'), ('orders', 'y', 'y')")
+    const removed = resetSyncData(db)
+    expect(removed.catalog_section).toBe(1)
+    expect(db.prepare('SELECT count(*) AS n FROM catalog_section').get()).toEqual({ n: 0 })
+    expect(db.prepare('SELECT flow FROM sync_cursor').all().map(r => (r as { flow: string }).flow)).toEqual(['orders'])
+  })
+})
