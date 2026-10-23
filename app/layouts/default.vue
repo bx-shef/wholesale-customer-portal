@@ -81,7 +81,7 @@ async function logout() {
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
         <span v-if="!collapsed" class="flex min-w-0 items-center gap-2">
           <img src="/logo.png" alt="Алгена" class="h-7 w-auto shrink-0">
-          <span class="truncate font-semibold">Личный кабинет</span>
+          <span class="font-semibold leading-tight">Личный кабинет</span>
         </span>
       </template>
       <template #default="{ collapsed }">

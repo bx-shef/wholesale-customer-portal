@@ -199,7 +199,9 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       images: demo?.image && nextImage < DEMO_IMAGES_JPEG.length ? [addImage(DEMO_IMAGES_JPEG[nextImage++]!)] : [],
       analogs: [],
       // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.
-      changedAt: demo ? at(287) : at(10 + (i % 60)),
+      // Вес и единицы сгенерированных товаров исправлены 2026-10-22 (#86): момент позже курсора,
+      // иначе уже заполненный индекс стенда их не перечитает и покажет старый вес.
+      changedAt: demo ? at(287) : at(294),
       deleted: false,
     }
     items.push(item)

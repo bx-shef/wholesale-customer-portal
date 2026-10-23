@@ -28,3 +28,20 @@ describe('гидратация: одинаковая разметка на се�
     expect(src).toMatch(/onMounted\(\(\) => \{\s*tip\.value = Math\.floor\(Math\.random\(\)/)
   })
 })
+
+describe('каталог: загрузка только в браузере не расходится при гидрации', () => {
+  const page = readFileSync(join(__dirname, '../app/pages/index.vue'), 'utf8')
+  it('экран загрузки и на сервере («idle»), и в браузере («pending»); «ничего не нашлось» — только после ответа', () => {
+    expect(page).toContain("status === 'idle' || status === 'pending'")
+    expect(page).toMatch(/<B24Empty\s+v-if="status === 'success'/)
+  })
+})
+
+describe('мок: исправленные товары доходят до заполненного индекса', () => {
+  it('момент изменения сгенерированных товаров позже витринных (курсор синхронизации)', async () => {
+    const { generateSeed } = await import('../server/mocks/onec/seed')
+    const items = generateSeed(1).items
+    const demo = items.filter(i => !i.name.includes(':')).map(i => i.changedAt).sort().at(-1)!
+    for (const i of items.filter(i => i.name.includes(':'))) expect(i.changedAt > demo).toBe(true)
+  })
+})

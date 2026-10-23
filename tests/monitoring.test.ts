@@ -111,18 +111,20 @@ describe('управление моком для проверки синхрон
   const req = (r: Partial<MockRequest>): MockRequest => ({ method: 'GET', path: '/', query: {}, authorization: 'Bearer t', ...r })
 
   it('_admin/price, _admin/item и _admin/debt видны по changedSince', () => {
+    // Позже всех changedAt сида (сгенерированные товары — 2026-10-22).
+    const T1 = Date.parse('2026-10-23T10:00:00Z')
     const state = createMockState('t')
     const since = (path: string, t: number) => handleMockRequest(state, req({ path, query: { changedSince: new Date(t).toISOString(), pageSize: '500' } }), t + 1000).body as { items: unknown[] }
-    expect(since('/prices', T0 + 1).items).toEqual([])
-    handleMockRequest(state, req({ method: 'POST', path: '/_admin/price', body: { count: 2 } }), T0 + 10)
+    expect(since('/prices', T1 + 1).items).toEqual([])
+    handleMockRequest(state, req({ method: 'POST', path: '/_admin/price', body: { count: 2 } }), T1 + 10)
     // Цена товара — по каждому виду цен: 2 товара × 3 вида.
-    expect(new Set((since('/prices', T0 + 1).items as { itemGuid: string }[]).map(p => p.itemGuid)).size).toBe(2)
-    handleMockRequest(state, req({ method: 'POST', path: '/_admin/price', body: { count: 999 } }), T0 + 20)
-    expect(new Set((since('/prices', T0 + 11).items as { itemGuid: string }[]).map(p => p.itemGuid)).size).toBe(50)
-    handleMockRequest(state, req({ method: 'POST', path: '/_admin/item', body: { index: 1, name: 'Новое имя' } }), T0 + 10)
-    expect((since('/catalog', T0 + 1).items as { name: string }[]).map(i => i.name)).toEqual(['Новое имя'])
-    handleMockRequest(state, req({ method: 'POST', path: '/_admin/debt', body: { add: 100 } }), T0 + 10)
-    expect(since('/clients', T0 + 1).items).toHaveLength(1)
+    expect(new Set((since('/prices', T1 + 1).items as { itemGuid: string }[]).map(p => p.itemGuid)).size).toBe(2)
+    handleMockRequest(state, req({ method: 'POST', path: '/_admin/price', body: { count: 999 } }), T1 + 20)
+    expect(new Set((since('/prices', T1 + 11).items as { itemGuid: string }[]).map(p => p.itemGuid)).size).toBe(50)
+    handleMockRequest(state, req({ method: 'POST', path: '/_admin/item', body: { index: 1, name: 'Новое имя' } }), T1 + 10)
+    expect((since('/catalog', T1 + 1).items as { name: string }[]).map(i => i.name)).toEqual(['Новое имя'])
+    handleMockRequest(state, req({ method: 'POST', path: '/_admin/debt', body: { add: 100 } }), T1 + 10)
+    expect(since('/clients', T1 + 1).items).toHaveLength(1)
   })
 
   it('reset сохраняет демо-клиентов из ONEC_MOCK_CLIENTS', () => {
