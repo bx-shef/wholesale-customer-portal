@@ -49,15 +49,11 @@ export default defineNuxtConfig({
     preset: 'node-server',
     // Обмены по расписанию (docs/spec.md §4); задача сама молчит без B24_WEBHOOK_URL.
     experimental: { tasks: true },
+    // Синхронизация с 1С: задачи просыпаются раз в минуту, частота каждой — окружением
+    // (SYNC_*_EVERY_MIN, server/utils/syncSchedule.ts), пауза — на странице «Состояние системы».
     scheduledTasks: {
-      '*/10 * * * *': ['sync:clients'],
-      '*/5 * * * *': ['sync:stock'],
-      '3-59/15 * * * *': ['sync:prices'],
+      '* * * * *': ['sync:catalog', 'sync:prices', 'sync:stock', 'sync:clients', 'sync:orders', 'sync:schedule', 'sync:trips'],
       '1-59/5 * * * *': ['monitor:alerts'],
-      '*/2 * * * *': ['sync:orders'],
-      '7 * * * *': ['sync:catalog'],
-      '13 * * * *': ['sync:schedule'],
-      '4-59/10 * * * *': ['sync:trips'],
       '17 3 * * *': ['maintenance:prune'],
     },
     routeRules: {
