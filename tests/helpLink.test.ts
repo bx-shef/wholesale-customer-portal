@@ -42,3 +42,18 @@ describe('фавикон и превью ссылки', () => {
     for (const f of ['public/favicon.png', 'public/og.png', 'public/icon-192.png']) expect(readFileSync(f).subarray(1, 4).toString()).toBe('PNG')
   })
 })
+
+describe('раскладка: выход, гидрация, чат (панель PR #92)', () => {
+  const src = readFileSync('app/layouts/default.vue', 'utf8')
+  it('выход сбрасывает «кто вошёл» до перехода на /login, на /login меню нет', () => {
+    expect(src.indexOf("clearNuxtData('me')")).toBeGreaterThan(-1)
+    expect(src.indexOf("clearNuxtData('me')")).toBeLessThan(src.indexOf("navigateTo('/login')"))
+    expect(src).toContain("route.path !== '/login'")
+  })
+  it('свёрнутость меню не из localStorage (иначе расхождение гидрации)', () => {
+    expect(src).not.toMatch(/storage="local"/)
+  })
+  it('открытый чат сдвигает раскладку', () => {
+    expect(src).toContain("'md:pr-[440px]': ai.open.value")
+  })
+})

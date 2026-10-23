@@ -11,7 +11,7 @@ onMounted(registerServiceWorker)
 
 // Превью ссылки в мессенджерах: картинка — абсолютным адресом этого же сайта (public/og.png,
 // scripts/make-brand.mjs). Адрес берём из запроса — один образ на любой домен.
-const origin = useState('site-origin', () => useRequestURL().origin)
+const origin = useState('site-origin', () => useRequestURL({ xForwardedHost: true, xForwardedProto: true }).origin)
 const ogTitle = 'Личный кабинет оптового покупателя — Алгена'
 const ogDescription = 'Каталог с вашими ценами и остатками, заявка и дата доставки.'
 useSeoMeta({
@@ -29,7 +29,7 @@ useSeoMeta({
 <template>
   <B24App :locale="ru">
     <NuxtLoadingIndicator color="#0075ff" />
-    <!-- Открытый чат на компьютере сдвигает страницу влево, а не закрывает её (как в skills-site). -->
+    <!-- Открытый чат на компьютере сдвигает страницу влево: без меню — эта обёртка, в кабинете — раскладка (fixed). -->
     <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
       <B24Alert
         v-if="!online"

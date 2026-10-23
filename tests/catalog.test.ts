@@ -317,8 +317,12 @@ describe('данные мока (#86)', () => {
     const byGuid = new Map(seed.items.map(i => [i.guid, i]))
     for (const i of seed.items) {
       if (i.unit === 'кг') expect(i.properties['Вес']).toBe(`${i.packQty} кг`)
-      for (const a of i.analogs) if (!byGuid.get(a)!.name.includes(':') || !i.name.includes(':')) continue
-      else expect(byGuid.get(a)!.unit).toBe(i.unit)
+      // Витринные товары algena.by — «шт» независимо от раздела; сверяем только сгенерированные.
+      const generated = (x: { name: string }) => x.name.includes(':')
+      for (const a of i.analogs) {
+        const analog = byGuid.get(a)!
+        if (generated(i) && generated(analog)) expect(analog.unit).toBe(i.unit)
+      }
     }
   })
 

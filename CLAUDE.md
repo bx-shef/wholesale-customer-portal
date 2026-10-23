@@ -27,6 +27,7 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | Где | Что |
 |---|---|
 | `app/` | страницы на Bitrix24 UI: `login`, `index` (каталог), `product/[guid]`, `cart`, `orders`, `profile`, `help` (справка из Nuxt Content); `layouts/default` (боковое меню по шаблону bitrix24/templates-dashboard; на телефоне выезжает), `AppPage` (панель страницы с заголовком), `PublicHeader` (вход и справка без входа), `useCart` (корзина в localStorage по компании) |
+| `public/{favicon,icon-192,icon-512,og}.png`, `scripts/make-brand.mjs` | фавикон, иконки PWA и картинка превью ссылки — из `logo.png` (Playwright + Chromium) |
 | `content/help/` | справка ЛК (коллекция `help`, `content.config.ts`) |
 | `public/sw.js`, `public/manifest.webmanifest`, `app/composables/usePwa.ts` | PWA: установка на телефон, каталог без сети — кэш на компанию (`setCacheCompany` в `layouts/default`), стирается при входе, выходе (`Clear-Site-Data`) и 401; плашка «Нет сети» в `app.vue`; правила — `tests/sw.test.ts`, выкат и аварийное снятие — `docs/DEPLOY.md` |
 | `server/mcp/handlers/admin` | `/mcp/admin` — Bearer `MCP_ADMIN_TOKEN`, без токена закрыт для всех |

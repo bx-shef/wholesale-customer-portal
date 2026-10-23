@@ -22,11 +22,13 @@ const ai = useAiChat()
 const open = ref(false)
 const logoutError = ref('')
 
-const withMenu = computed(() => !!me.value && !route.path.startsWith('/b24'))
+// Вход и фрейм коробки — без меню, даже если `me` ещё в памяти.
+// Свёрнутость меню — в cookie (умолчание DashboardGroup): её видит и сервер, разметка при гидрации совпадает.
+const withMenu = computed(() => !!me.value && route.path !== '/login' && !route.path.startsWith('/b24'))
 const close = () => { open.value = false }
 
 const sections = computed<NavigationMenuItem[]>(() => [
-  { label: 'Каталог', icon: ProductsCubeIcon, to: '/', exact: true, onSelect: close },
+  { label: 'Каталог', icon: ProductsCubeIcon, to: '/', active: route.path === '/' || route.path.startsWith('/product'), onSelect: close },
   // Число в корзине известно только в браузере (localStorage): до монтирования его нет и на сервере,
   // поэтому разметка совпадает при гидрации.
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
@@ -64,12 +66,15 @@ async function logout() {
     logoutError.value = 'Выйти не удалось: нет связи с сервером. Повторите, когда появится сеть.'
     return
   }
+  // Сессии больше нет: меню и название компании не должны пережить выход.
+  me.value = undefined
+  clearNuxtData('me')
   await navigateTo('/login')
 }
 </script>
 
 <template>
-  <B24DashboardGroup v-if="withMenu" unit="px" storage="local">
+  <B24DashboardGroup v-if="withMenu" unit="px" :class="{ 'md:pr-[440px]': ai.open.value }" class="transition-[padding] duration-200">
     <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1">
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />
