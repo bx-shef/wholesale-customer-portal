@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { generateSeed } from '../server/mocks/onec/seed'
 import { emptyDeliveryState, episodeKey, markAnnounced, markRecovered, MIN_REANNOUNCE_MS, planAlertDelivery, recoveryMessage, alertMessage, type Alert } from '../server/utils/alertDelivery'
 import { errorClass, FAILURES_TO_ALERT, flowHealth, healthAlerts, type FlowRunRow } from '../server/utils/syncHealth'
 import { MAX_TELEGRAM_TEXT, resolveTelegramConfig, sendTelegramAlert, type TelegramSendResult } from '../server/utils/telegramAlert'
@@ -112,7 +113,7 @@ describe('управление моком для проверки синхрон
 
   it('_admin/price, _admin/item и _admin/debt видны по changedSince', () => {
     // Позже всех changedAt сида (сгенерированные товары — 2026-10-22).
-    const T1 = Date.parse('2026-10-23T10:00:00Z')
+    const T1 = Math.max(...generateSeed(1).items.map(i => Date.parse(i.changedAt))) + 60_000
     const state = createMockState('t')
     const since = (path: string, t: number) => handleMockRequest(state, req({ path, query: { changedSince: new Date(t).toISOString(), pageSize: '500' } }), t + 1000).body as { items: unknown[] }
     expect(since('/prices', T1 + 1).items).toEqual([])
