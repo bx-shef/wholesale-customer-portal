@@ -8,12 +8,28 @@ useColorMode()
 const { open: aiOpen } = useAiChat()
 const online = useOnline()
 onMounted(registerServiceWorker)
+
+// Превью ссылки в мессенджерах: картинка — абсолютным адресом этого же сайта (public/og.png,
+// scripts/make-brand.mjs). Адрес берём из запроса — один образ на любой домен.
+const origin = useState('site-origin', () => useRequestURL({ xForwardedHost: true, xForwardedProto: true }).origin)
+const ogTitle = 'Личный кабинет оптового покупателя — Алгена'
+const ogDescription = 'Каталог с вашими ценами и остатками, заявка и дата доставки.'
+useSeoMeta({
+  description: ogDescription,
+  ogTitle,
+  ogDescription,
+  ogType: 'website',
+  ogImage: () => `${origin.value}/og.png`,
+  ogImageWidth: 1200,
+  ogImageHeight: 630,
+  twitterCard: 'summary_large_image',
+})
 </script>
 
 <template>
   <B24App :locale="ru">
     <NuxtLoadingIndicator color="#0075ff" />
-    <!-- Открытый чат на компьютере сдвигает страницу влево, а не закрывает её (как в skills-site). -->
+    <!-- Открытый чат на компьютере сдвигает страницу влево: без меню — эта обёртка, в кабинете — раскладка (fixed). -->
     <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
       <B24Alert
         v-if="!online"
@@ -22,9 +38,10 @@ onMounted(registerServiceWorker)
         class="rounded-none"
       />
       <ClientDataGate>
-        <NuxtPage />
+        <NuxtLayout>
+          <NuxtPage />
+        </NuxtLayout>
       </ClientDataGate>
-      <AppFooter v-if="!$route.path.startsWith('/b24')" />
     </div>
     <ClientOnly>
       <AiChatPanel />

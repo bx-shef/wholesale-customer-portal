@@ -67,7 +67,9 @@ export function round2(value: number): number {
  * `demoChangedAt` — их changedAt.
  */
 /** Вес демо-товара — из фасовки в названии («мешок 25 кг»), иначе случайный (#86). */
-export function weightOf(name: string | undefined, fallbackKg: number): string {
+export function weightOf(name: string | undefined, fallbackKg: number, pack?: { unit: string, packQty: number }): string {
+  // Товар продаётся в килограммах — вес и есть фасовка, иначе «1 кг» с весом «14 кг» (#86).
+  if (pack?.unit === 'кг') return `${pack.packQty} кг`
   const m = name?.match(/(\d+(?:[.,]\d+)?)\s*кг/i)
   return `${m ? m[1]!.replace('.', ',') : fallbackKg} кг`
 }
@@ -188,11 +190,12 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       name: demo?.name ?? `${section.name}: ${brand} модель ${100 + i}`,
       sectionGuid: section.guid,
       brand,
-      unit: demo ? (pick(UNITS), 'шт') : pick(UNITS),
+      // Единица — одна на раздел: у аналогов она совпадает (#86). pick() оставлен ради той же последовательности сида.
+      unit: (pick(UNITS), demo ? 'шт' : UNITS[sections.indexOf(section) % UNITS.length]!),
       packQty: demo ? 1 : packQty,
       minQty: demo ? 1 : packQty,
       description: `Товар раздела «${section.name}» бренда ${brand}.`,
-      properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: weightOf(demo?.name, Math.ceil(rand() * 30)) },
+      properties: { Страна: pick(['Беларусь', 'Германия', 'Польша', 'Россия']), Вес: weightOf(demo?.name, Math.ceil(rand() * 30), demo ? undefined : { unit: UNITS[sections.indexOf(section) % UNITS.length]!, packQty }) },
       images: demo?.image && nextImage < DEMO_IMAGES_JPEG.length ? [addImage(DEMO_IMAGES_JPEG[nextImage++]!)] : [],
       analogs: [],
       // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.

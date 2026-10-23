@@ -61,7 +61,7 @@ describe('sw.js: cacheRule', () => {
   it('статика с хешем — сначала кэш; логотип и иконка — мимо (без хеша устарели бы навсегда)', () => {
     for (const p of ['/_nuxt/app.js', '/images/abc.def']) expect(at(p)).toBe('static')
     expect(at('/_nuxt/builds/latest.json')).toBeNull()
-    for (const p of ['/logo.png', '/favicon.svg', '/sw.js']) expect(at(p)).toBeNull()
+    for (const p of ['/logo.png', '/favicon.png', '/sw.js']) expect(at(p)).toBeNull()
   })
   it('каталог и его страницы — сначала сеть', () => {
     for (const p of ['/api/catalog/list?q=клей', '/', '/product/x']) expect(at(p)).toBe('data')
@@ -199,9 +199,9 @@ describe('sw.js: статика и обновление', () => {
 })
 
 describe('страница и сервер чистят каталог при входе и выходе', () => {
-  it('login.vue, AppHeader.vue (в finally), выход шлёт Clear-Site-Data, префикс кэша совпадает', () => {
+  it('login.vue, раскладка (в finally), выход шлёт Clear-Site-Data, префикс кэша совпадает', () => {
     expect(readFileSync(join(root, 'app/pages/login.vue'), 'utf8')).toContain('await clearCatalogCache()')
-    const header = readFileSync(join(root, 'app/components/AppHeader.vue'), 'utf8')
+    const header = readFileSync(join(root, 'app/layouts/default.vue'), 'utf8')
     // Выход: сохранённое стирается до запроса; без сети на /login не уходим.
     expect(header.indexOf('await clearCatalogCache()')).toBeLessThan(header.indexOf("$fetch('/api/auth/logout'"))
     expect(header).toMatch(/catch \{[^}]*logoutError\.value = [^}]*return\s*\}/)

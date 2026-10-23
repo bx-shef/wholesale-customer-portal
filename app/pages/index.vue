@@ -131,12 +131,10 @@ function reset() {
 </script>
 
 <template>
-  <div>
-    <AppHeader />
-    <B24Main>
+  <AppPage id="catalog" title="Каталог">
       <B24Container class="py-4 flex flex-col gap-3">
         <!-- Поиск и фильтры прилипают под шапкой: при прокрутке длинного каталога они под рукой. -->
-        <div class="sticky top-(--b24ui-header-height) z-10 -mx-4 flex gap-2 bg-(--ui-color-bg-content-secondary) px-4 py-2 sm:-mx-6 sm:px-6">
+        <div class="sticky top-0 z-10 -mx-4 flex gap-2 bg-(--ui-color-bg-content-secondary) px-4 py-2 sm:-mx-6 sm:px-6">
           <B24Input v-model="search" type="search" placeholder="Название или артикул" class="flex-1" aria-label="Поиск по каталогу" />
           <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
         </div>
@@ -193,7 +191,6 @@ function reset() {
         <BuildLoader v-if="status === 'pending' && !extra.length" />
         <BuildLoader v-else-if="loading" compact title="Загружаем ещё товары…" />
       </B24Container>
-    </B24Main>
 
     <B24Drawer v-model:open="filtersOpen" title="Фильтры" direction="bottom" handle>
       <template #body>
@@ -215,5 +212,5 @@ function reset() {
         </div>
       </template>
     </B24Drawer>
-  </div>
+  </AppPage>
 </template>

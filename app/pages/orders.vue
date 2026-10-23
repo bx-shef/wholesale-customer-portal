@@ -44,9 +44,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
 </script>
 
 <template>
-  <div>
-    <AppHeader title="Мои заявки" />
-    <B24Main>
+  <AppPage id="orders" title="Мои заявки">
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
         <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить заявки. Обновите страницу." />
         <B24Empty
@@ -139,6 +137,5 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
           </div>
         </B24Card>
       </B24Container>
-    </B24Main>
-  </div>
+  </AppPage>
 </template>
