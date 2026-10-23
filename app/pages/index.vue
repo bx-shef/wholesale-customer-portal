@@ -154,7 +154,7 @@ function reset() {
         </p>
 
         <B24Empty
-          v-if="!loading && !firstError && items.length === 0"
+          v-if="status === 'success' && !loadingMore && items.length === 0"
           :icon="ProductIcon"
           title="Ничего не нашлось"
           :description="filters.q || activeCount ? 'Измените запрос или сбросьте фильтры.' : 'Каталог ещё загружается из учётной системы. Обновите страницу через пару минут.'"
@@ -188,7 +188,9 @@ function reset() {
         <div ref="sentinel" />
         <B24Alert v-if="moreFailed" color="air-primary-alert" title="Не удалось загрузить следующие товары" description="Нажмите «Показать ещё», чтобы повторить." />
         <B24Button v-if="more && !loading" color="air-tertiary" block label="Показать ещё" @click="loadMore" />
-        <BuildLoader v-if="status === 'pending' && !extra.length" />
+        <!-- Каталог грузится только в браузере: на сервере статус «idle», в браузере при гидрации — «pending»;
+             экран загрузки в обоих случаях, иначе разметка расходится. -->
+        <BuildLoader v-if="(status === 'idle' || status === 'pending') && !extra.length" />
         <BuildLoader v-else-if="loading" compact title="Загружаем ещё товары…" />
       </B24Container>
 

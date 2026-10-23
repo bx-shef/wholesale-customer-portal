@@ -199,7 +199,11 @@ export function generateSeed(seed = 1, demoClients: string[] = [], demoChangedAt
       images: demo?.image && nextImage < DEMO_IMAGES_JPEG.length ? [addImage(DEMO_IMAGES_JPEG[nextImage++]!)] : [],
       analogs: [],
       // Товары витрины появились позже основного сида: уже заполненный индекс их подтянет.
-      changedAt: demo ? at(287) : at(10 + (i % 60)),
+      // Вес и единицы сгенерированных товаров исправлены 2026-10-22 (#86): момент позже курсора,
+      // иначе уже заполненный индекс стенда их не перечитает и покажет старый вес.
+      // Моменты разные (+i минут): курсор включает границу, и с одинаковым моментом каждый прогон
+      // перечитывал бы все товары.
+      changedAt: demo ? at(287) : new Date(Date.parse(at(294)) + i * 60_000).toISOString(),
       deleted: false,
     }
     items.push(item)
