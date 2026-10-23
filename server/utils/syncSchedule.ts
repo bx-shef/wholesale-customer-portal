@@ -46,7 +46,9 @@ export function isDue(lastStartMs: number | undefined, everyMin: number, nowMs: 
 
 /** Срок «давно не было» для оповещений: не меньше трёх интервалов, иначе редкое расписание тревожит зря. */
 export function staleMsFor(defaultMs: number, everyMin: number | undefined): number {
-  return everyMin && everyMin > 0 ? Math.max(defaultMs, everyMin * 3 * 60_000) : defaultMs
+  if (everyMin === undefined) return defaultMs
+  // 0 — поток только вручную: «давно не было» для него не тревога.
+  return everyMin > 0 ? Math.max(defaultMs, everyMin * 3 * 60_000) : Infinity
 }
 
 const PAUSE_KEY = 'auto-sync-paused'
@@ -61,13 +63,33 @@ export function writeAutoSyncPaused(db: DatabaseSync, paused: boolean, at: strin
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`).run(PAUSE_KEY, paused ? '1' : '0', at)
 }
 
+/**
+ * Пауза не останавливает заявки: досылка заявок в CRM от 1С не зависит, а остановленная молча
+ * оставила бы клиента без ответа менеджера (ревью PR #94).
+ */
+export const PAUSE_EXEMPT: readonly AutoFlow[] = ['orders']
+
 const lastAutoStart = new Map<AutoFlow, number>()
+
+/** Последний запуск потока: память процесса, иначе журнал `sync_run` — выкат не будит все потоки разом. */
+function lastStart(flow: AutoFlow, db: DatabaseSync): number | undefined {
+  if (!lastAutoStart.has(flow)) {
+    const row = db.prepare('SELECT max(started_at) AS at FROM sync_run WHERE flow = ?').get(flow) as { at: string | null } | undefined
+    if (row?.at) lastAutoStart.set(flow, Date.parse(row.at))
+  }
+  return lastAutoStart.get(flow)
+}
+
+/** Запуск мимо расписания (прогрев при старте, кнопка): расписание не повторит его тут же. */
+export function markAutoStart(flow: AutoFlow, now = Date.now()): void {
+  lastAutoStart.set(flow, now)
+}
 
 /** Решение задачи расписания: `null` — запускать (и момент запомнен), иначе причина пропуска. */
 export function autoSyncSkip(flow: AutoFlow, deps: { db: DatabaseSync, every: Record<AutoFlow, number>, now?: number }): string | null {
   const now = deps.now ?? Date.now()
-  if (readAutoSyncPaused(deps.db).paused) return 'skipped: auto sync paused'
-  if (!isDue(lastAutoStart.get(flow), deps.every[flow], now)) return deps.every[flow] <= 0 ? 'skipped: auto sync off for this flow' : 'skipped: not due'
+  if (!PAUSE_EXEMPT.includes(flow) && readAutoSyncPaused(deps.db).paused) return 'skipped: auto sync paused'
+  if (!isDue(lastStart(flow, deps.db), deps.every[flow], now)) return deps.every[flow] <= 0 ? 'skipped: auto sync off for this flow' : 'skipped: not due'
   lastAutoStart.set(flow, now)
   return null
 }

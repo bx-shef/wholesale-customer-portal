@@ -24,6 +24,8 @@ export default defineEventHandler(async (event) => {
     })
   }
   running.add(flow)
+  // Ручной запуск считается запуском: расписание не повторит его в ту же минуту.
+  markAutoStart(flow)
   lastStartedAt.set(flow, now)
   const job = {
     client_data: () => refreshSeenClients({ loader: useClientLoader(), store: useClientStore(), runs: sqliteSyncStore(useDb()), ttlMs: readServerEnv().onecClientTtlMin * 60_000 }),
