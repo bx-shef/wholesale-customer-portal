@@ -132,3 +132,22 @@ describe('очистка данных мока перед выгрузкой и�
     expect(db.prepare('SELECT flow FROM sync_cursor').all().map(r => (r as { flow: string }).flow)).toEqual(['orders'])
   })
 })
+
+describe('прогоны, прерванные перезапуском', () => {
+  it('«идёт» после старта становится «ошибка: прервано», завершённые не трогаем', async () => {
+    const { closeInterruptedRuns } = await import('../server/utils/onecSync')
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    db.exec("INSERT INTO sync_run (flow, status, started_at, received) VALUES ('prices', 'running', 'a', 0), ('catalog', 'done', 'b', 5)")
+    expect(closeInterruptedRuns(db, 'c')).toBe(1)
+    expect(db.prepare('SELECT flow, status, finished_at AS f FROM sync_run ORDER BY flow').all()).toEqual([{ flow: 'catalog', status: 'done', f: null }, { flow: 'prices', status: 'failed', f: 'c' }])
+  })
+})
+
+describe('прайс 1С: только нужные поля', () => {
+  it('slimPriceRow отбрасывает лишние поля, оставляет поля цены', async () => {
+    const { slimPriceRow } = await import('../server/services/onecOdata')
+    const slim = slimPriceRow({ Номенклатура_Key: 'a', ВидЦены_Key: 'b', Цена: 1, Recorder: 'x', LineNumber: '1' } as never)
+    expect(slim).toEqual({ Номенклатура_Key: 'a', ВидЦены_Key: 'b', Цена: 1 })
+  })
+})

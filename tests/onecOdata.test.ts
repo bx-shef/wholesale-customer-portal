@@ -140,6 +140,28 @@ describe('prices: страницы среза и запасной путь', () 
   })
 })
 
+describe('prices: только нужные поля (стенд 2026-10-23, heap out of memory)', () => {
+  it('сначала с $select полей цены; 1С не приняла $select — тот же срез без него', async () => {
+    const urls: string[] = []
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('_RecordType/SliceLast') && url.includes('$select=')) return Response.json({ 'odata.error': { code: '-1', message: { lang: 'ru', value: 'Неверный запрос' } } }, { status: 400 })
+      if (url.includes('_RecordType/SliceLast')) return Response.json({ value: [{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 1, Валюта_Key: G(90), Recorder: 'лишнее' }] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(90), Description: 'BYN' }] })
+      if (url.includes('Catalog_СтавкиНДС') || url.includes('Catalog_Номенклатура')) return Response.json({ value: [] })
+      return new Response('', { status: 404 })
+    }
+    const c = new ODataClient({ baseUrl: 'https://x/odata', auth: { kind: 'bearer', token: 't' }, fetch: fake })
+    const p = await c.prices({})
+    const slices = urls.filter(u => u.includes('SliceLast'))
+    expect(slices[0]).toContain('$select=Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key')
+    expect(slices[1]).not.toContain('$select=')
+    expect(p.items.map(i => i.price)).toEqual([1])
+    expect(p.tried[0]).toContain('$select')
+  })
+})
+
 describe('stock: склады', () => {
   it('оставляет только заданные склады, без учёта регистра', async () => {
     const fake: typeof fetch = async (u) => {

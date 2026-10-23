@@ -19,6 +19,7 @@
  * Потребители (запись компаний в Б24, индекс каталога, остатки) появляются на этапах 2–4;
  * здесь — механика, без привязки к ним.
  */
+import type { DatabaseSync } from 'node:sqlite'
 import type { ListParams } from '../services/onec'
 import { OnecError } from '../services/onec'
 
@@ -153,4 +154,13 @@ export function sqliteSyncStore(db: import('node:sqlite').DatabaseSync): SyncSto
       if (Number(changed) === 0) insertRun.run(run.flow, run.status, run.startedAt, run.finishedAt, run.cursorFrom, run.cursorTo, run.received, run.error)
     },
   }
+}
+
+/**
+ * Прогоны, которые процесс не дописал (упал или перезапущен посреди обмена): при старте помечаем
+ * их «прервано» — иначе в журнале они висят «идёт» навсегда (стенд 2026-10-23).
+ */
+export function closeInterruptedRuns(db: DatabaseSync, at: string): number {
+  return Number(db.prepare(`UPDATE sync_run SET status = 'failed', finished_at = ?, error = 'Прервано: сервер перезапущен во время обмена'
+    WHERE status = 'running'`).run(at).changes)
 }
