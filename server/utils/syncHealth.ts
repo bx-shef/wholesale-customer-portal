@@ -36,8 +36,10 @@ export interface FlowHealth {
 }
 
 /** `runs` — последние запуски потока, новые первыми. */
-export function flowHealth(flow: string, runs: FlowRunRow[], nowMs: number, sinceStartMs: number): FlowHealth {
-  const def = FLOWS[flow] ?? { label: flow, staleMs: 60 * 60_000 }
+/** `staleMs` — срок «давно не было» с учётом частоты из окружения (`staleMsFor`); без него — из FLOWS. */
+export function flowHealth(flow: string, runs: FlowRunRow[], nowMs: number, sinceStartMs: number, staleMs?: number): FlowHealth {
+  const base = FLOWS[flow] ?? { label: flow, staleMs: 60 * 60_000 }
+  const def = { ...base, staleMs: staleMs ?? base.staleMs }
   const finished = runs.filter(r => r.status !== 'running')
   let failuresInRow = 0
   for (const r of finished) {
@@ -63,13 +65,14 @@ export function errorClass(error: string | null | undefined): string {
   return name ?? 'ошибка'
 }
 
-export function healthAlerts(flows: FlowHealth[], onec: { pausedUntil: number }, nowMs: number): Alert[] {
+/** `autoPaused` — автосинхронизация на паузе кнопкой: «давно не было» тогда не тревога, а ожидаемое. */
+export function healthAlerts(flows: FlowHealth[], onec: { pausedUntil: number }, nowMs: number, autoPaused = false): Alert[] {
   const alerts: Alert[] = []
   for (const f of flows) {
     if (f.state === 'failing') {
       alerts.push({ kind: 'sync-failed', subject: f.label, text: `обмен «${f.label}» падает ${f.failuresInRow} раз подряд (${errorClass(f.lastRun?.error)}). Подробности — на странице состояния.` })
     }
-    else if (f.state === 'stale') {
+    else if (f.state === 'stale' && !autoPaused) {
       alerts.push({ kind: 'sync-stale', subject: f.label, text: f.lastOkAt ? `обмен «${f.label}» не проходил с ${f.lastOkAt}.` : `обмен «${f.label}» ни разу не прошёл.` })
     }
   }

@@ -3,6 +3,8 @@
  * префикса NUXT_: runtimeConfig Nuxt подхватывает при запуске только NUXT_*, а значения без
  * префикса запёк бы в образ на сборке. Читаем при каждом вызове — образ один на все серверы.
  */
+import { everyFromEnv, type AutoFlow } from './syncSchedule'
+
 export interface ServerEnv {
   /** Ключи локального приложения коробки (карточка приложения → client_id / client_secret). */
   b24ClientId: string
@@ -48,6 +50,8 @@ export interface ServerEnv {
   dataDir: string
   /** За обратным прокси (nginx-proxy): адрес клиента берём из X-Forwarded-For — для лимита входа. */
   trustProxy: boolean
+  /** Частота автосинхронизации по потокам, минут (`SYNC_*_EVERY_MIN`, 0 — только вручную). */
+  syncEvery: Record<AutoFlow, number>
 }
 
 export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -79,6 +83,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecTestLogin: get('ONEC_TEST_LOGIN'),
     publicUrl: get('PUBLIC_URL').replace(/\/+$/, ''),
     commitSha: get('COMMIT_SHA'),
+    syncEvery: everyFromEnv(get),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',
   }

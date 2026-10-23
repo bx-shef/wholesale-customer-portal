@@ -47,6 +47,12 @@ export const SYSTEM_PAGE = `<!doctype html>
     <table><thead><tr><th>Поток</th><th>Состояние</th><th>Последний удачный</th><th class="hide-m">Последний запуск</th><th></th></tr></thead><tbody id="flows"></tbody></table>
   </div>
 
+  <div class="card">
+    <h2>Компании коробки ↔ 1С</h2>
+    <p class="muted">5 последних изменённых компаний из обмена 1С: есть ли такой клиент с соглашением в подключённой 1С — войдут ли они в ЛК.</p>
+    <button id="guid-check">Сверить</button>
+    <table hidden id="guid-table"><thead><tr><th>Компания</th><th>GUID 1С</th><th>В 1С</th></tr></thead><tbody id="guid-rows"></tbody></table>
+  </div>
   <div class="card"><h2>База ЛК</h2><div class="grid" id="counts"></div></div>
 
   <div class="card" id="mock-card" hidden>
@@ -101,9 +107,13 @@ export const SYSTEM_PAGE = `<!doctype html>
     const mode = { mock: 'мок 1С', real: 'настоящая 1С', odata: 'настоящая 1С по OData', off: '1С не настроена' }[s.onec.mode]
     $('summary').innerHTML = '<b>' + esc(mode) + '</b>'
       + (s.onec.pausedUntil ? ' · <span class="alert">обращения к 1С на паузе до ' + esc(ago(s.onec.pausedUntil).split(' · ')[0]) + '</span>' : ' · сбоев подряд: ' + Number(s.onec.failuresInRow))
+      + '<div style="margin-top:6px">Автосинхронизация: ' + (s.autoSync.paused
+        ? '<span class="alert">на паузе с ' + esc(ago(s.autoSync.since)) + '</span> <button id="auto-resume">Возобновить</button>'
+        : 'идёт <button id="auto-pause">Поставить на паузу</button>') + ' <span class="muted">ручной запуск работает всегда</span></div>'
       + (s.alerts.length ? '<div class="alert" style="margin-top:6px">' + s.alerts.map((a) => '⚠️ ' + esc(a.text)).join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>')
     $('flows').innerHTML = s.flows.map((f) => '<tr><td><b>' + esc(f.label) + '</b></td><td><span class="b ' + f.state + '">' + STATE[f.state] + '</span>'
-      + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + Number(f.failuresInRow) + '</span>' : '') + '</td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'
+      + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + Number(f.failuresInRow) + '</span>' : '')
+      + '<br><span class="muted">' + (s.autoSync.every[f.flow] > 0 ? 'сам — каждые ' + Number(s.autoSync.every[f.flow]) + ' мин' : 'сам не ходит, только вручную') + '</span></td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'
       + (f.lastRun ? '<span class="b ' + esc(f.lastRun.status) + '">' + esc(RUN[f.lastRun.status]) + '</span> ' + esc(ago(f.lastRun.startedAt)) + ', получено ' + Number(f.lastRun.received) : '—')
       + '</td><td><button data-run="' + f.flow + '">Запустить</button></td></tr>').join('')
     $('counts').innerHTML = Object.entries(s.counts).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>' + esc(k) + '</div>').join('')
@@ -123,6 +133,13 @@ export const SYSTEM_PAGE = `<!doctype html>
         b.textContent = 'Запущено — итог в таблице ниже'
       }
       else if (b.dataset.mock) out('mock-out', JSON.stringify((await api('/api/system/mock', { action: b.dataset.mock })).body, null, 2))
+      else if (b.id === 'guid-check') {
+        const r = await api('/api/system/guid-check', {})
+        const ONEC = { found: '✅ есть, с соглашением', 'no-contract': '⚠️ есть, без соглашения', missing: '❌ нет', error: '⚠️ 1С не ответила' }
+        $('guid-table').hidden = false
+        $('guid-rows').innerHTML = r.rows.length ? r.rows.map((x) => '<tr><td>' + esc(x.title) + ' <span class="muted">#' + Number(x.companyId) + '</span></td><td class="muted">' + esc(x.guid || '—') + '</td><td>' + esc(ONEC[x.onec]) + '</td></tr>').join('') : '<tr><td colspan="3">Компаний из обмена 1С не найдено</td></tr>'
+      }
+      else if (b.id === 'auto-pause' || b.id === 'auto-resume') await api('/api/system/pause', { paused: b.id === 'auto-pause' })
       else if (b.id === 'tg-test') { const r = await api('/api/system/alert-test', {}); out('tg-out', r.ok ? 'Доставлено.' : 'Telegram ответил ' + r.status) }
     }
     catch (err) { alert(err.message) }

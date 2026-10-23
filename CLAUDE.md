@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-22
+> Last reviewed: 2026-10-23
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -52,13 +52,13 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `server/utils/onecProbe.ts`, `server/api/onec-test.{get,post}.ts`, `onecTestAuth.ts`, `onecTestPage.ts` | стенд проверки сервиса 1С `/api/onec-test` (логин/пароль `ONEC_TEST_LOGIN`/`ONEC_TEST_PASSWORD`): прогон контракта против адреса 1С (Bearer или логин/пароль) или мока |
 | `server/services/onecOdata.ts`, `onecOdataSource.ts`, `onecOdataClients.ts`, `onecOdataOrders.ts`, `onecOdataTrips.ts`, `server/utils/{odataSnapshot,odataVersions}.ts` | 1С по OData (`ONEC_MODE=odata`): каталог, картинки, цены, остатки, клиенты и соглашения, заказы и их статусы, рейсы в форме контракта; снимок за прогон, моменты изменения по `DataVersion` (у клиентов — по хешу содержимого; заказы — с `ONEC_ODATA_ORDERS=true`, рейсы — с `ONEC_ODATA_TRIPS=true`) (`docs/onec-odata.md`) |
 | `server/utils/odataProbe.ts`, `docs/onec-odata.md` | 1С только по OData (решение 2026-10-20): разведка полей на стенде — имена и типы без значений; план перехода |
-| `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, управление моком — `docs/MONITORING.md` |
+| `server/api/system/*`, `server/utils/{systemStatus,systemPage,syncHealth}.ts` | страница «Состояние системы» `/api/system` (пароль стенда): потоки обмена, база, ручной запуск, пауза автосинхронизации, сверка компаний коробки с 1С (`guidCheck.ts`), управление моком — `docs/MONITORING.md` |
 | `server/utils/{telegramAlert,alertDelivery}.ts`, `server/tasks/monitor/alerts.ts` | оповещения в Telegram по эпизодам (порт из client-bank-alfa-by), раз в 5 минут |
 | `server/utils/onecSync.ts` | синхронизация по курсору с журналом запусков |
 | `server/mcp/handlers/admin/tools/onec_*` | инструменты обмена с 1С |
 | `server/utils/imageStore.ts`, `server/routes/images/[name].get.ts` | картинки товаров: из 1С base64 (`GET /image/{id}`), на томе `/data/images`, раздача `/images/<id>.<hash>` |
 | `server/utils/catalog.ts`, `catalogSync.ts`, `prices.ts`, `catalogView.ts`, `catalogApi.ts` | индекс каталога и остатков, синхронизация, прайс по видам цен в базе (цена клиента — по его договору; сортировка по цене — на сервере по виду цен соглашения сессии), каталог глазами клиента, обвязка маршрутов |
-| `server/tasks/sync/{catalog,stock,prices}.ts`, `server/plugins/catalogWarmup.ts` | каталог раз в час, остатки раз в 5 минут, прайс раз в 15 минут, первый прогон при старте; к 1С ходит только расписание |
+| `server/tasks/sync/{catalog,stock,prices}.ts`, `server/plugins/catalogWarmup.ts` | задачи просыпаются раз в минуту, частота каждого потока — `SYNC_*_EVERY_MIN` (0 — только вручную), пауза — кнопкой на «Состоянии системы» (`server/utils/syncSchedule.ts`); первый прогон при старте; к 1С ходит только расписание и ручной запуск |
 | `server/utils/onecGuard.ts` | бережём 1С: один запрос за раз, пауза 10 минут после трёх сбоев подряд (`onec-contract.md` §1.8) |
 | `shared/catalogView.ts` | формы ответов каталога для сервера и страниц |
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса) |

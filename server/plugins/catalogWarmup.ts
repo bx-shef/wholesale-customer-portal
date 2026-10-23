@@ -4,7 +4,10 @@ export default defineNitroPlugin(() => {
   if (import.meta.prerender) return
   const env = readServerEnv()
   if (!env.onecMock && !(env.onecUrl && (env.onecToken || (env.onecLogin && env.onecPassword)))) return
+  // Автосинхронизация на паузе или каталог только вручную — при старте в 1С не идём.
+  if (env.syncEvery.catalog <= 0) return
   setTimeout(() => {
+    if (readAutoSyncPaused(useDb()).paused) return
     // Остатки — только поверх каталога: без товаров в индексе они не сохраняются.
     syncCatalog()
       .then(run => (run.status === 'done' ? syncStock().then(() => syncPrices()) : undefined))
