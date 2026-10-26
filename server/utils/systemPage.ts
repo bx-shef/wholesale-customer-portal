@@ -98,6 +98,13 @@ export const SYSTEM_PAGE = `<!doctype html>
     const t = new Date(iso).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     return t + ' · ' + (m < 1 ? 'только что' : m < 60 ? m + ' мин назад' : Math.round(m / 60) + ' ч назад')
   }
+  // Длительность: законченного — от старта до конца, идущего — сколько уже идёт (#97).
+  const dur = (r) => {
+    const ms = (r.finishedAt ? Date.parse(r.finishedAt) : Date.now()) - Date.parse(r.startedAt)
+    if (!(ms >= 0)) return ''
+    const s = Math.round(ms / 1000)
+    return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с'
+  }
   const STATE = { ok: 'в порядке', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
   const FLOWS = { catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы' }
@@ -120,11 +127,11 @@ export const SYSTEM_PAGE = `<!doctype html>
     $('flows').innerHTML = s.flows.map((f) => '<tr><td><b>' + esc(f.label) + '</b></td><td><span class="b ' + f.state + '">' + STATE[f.state] + '</span>'
       + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + Number(f.failuresInRow) + '</span>' : '')
       + '<br><span class="muted">' + (s.autoSync.every[f.flow] > 0 ? 'сам — каждые ' + Number(s.autoSync.every[f.flow]) + ' мин' : 'сам не ходит, только вручную') + '</span></td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'
-      + (f.lastRun ? '<span class="b ' + esc(f.lastRun.status) + '">' + esc(RUN[f.lastRun.status]) + '</span> ' + esc(ago(f.lastRun.startedAt)) + ', получено ' + Number(f.lastRun.received) : '—')
+      + (f.lastRun ? '<span class="b ' + esc(f.lastRun.status) + '">' + esc(RUN[f.lastRun.status]) + '</span> ' + esc(ago(f.lastRun.startedAt)) + ' · ' + esc(dur(f.lastRun)) + ', получено ' + Number(f.lastRun.received) : '—')
       + '</td><td><button data-run="' + f.flow + '">Запустить</button></td></tr>').join('')
     $('counts').innerHTML = Object.entries(s.counts).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>' + esc(k) + '</div>').join('')
       + Object.entries(s.orders).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>заявки: ' + esc(k) + '</div>').join('')
-    $('runs').innerHTML = s.recentRuns.map((r) => '<tr><td>' + esc(ago(r.startedAt)) + '</td><td>' + esc(FLOWS[r.flow] || r.flow) + '</td><td><span class="b ' + r.status + '">' + RUN[r.status] + '</span></td><td>' + r.received + '</td><td class="hide-m muted">' + esc(r.error || '') + '</td></tr>').join('')
+    $('runs').innerHTML = s.recentRuns.map((r) => '<tr><td>' + esc(ago(r.startedAt)) + '</td><td>' + esc(FLOWS[r.flow] || r.flow) + '</td><td><span class="b ' + r.status + '">' + RUN[r.status] + '</span> <span class="muted">' + esc(dur(r)) + '</span></td><td>' + r.received + '</td><td class="hide-m muted">' + esc(r.error || '') + '</td></tr>').join('')
     $('mock-card').hidden = s.onec.mode !== 'mock'
     $('tg').textContent = s.telegram ? 'Включены: сообщение на каждую поломку обмена и на восстановление.' : 'Выключены: задайте TELEGRAM_ALERT_BOT_TOKEN и TELEGRAM_ALERT_CHAT_ID.'
   }

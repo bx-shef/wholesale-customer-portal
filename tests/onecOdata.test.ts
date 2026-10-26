@@ -141,7 +141,7 @@ describe('prices: страницы среза и запасной путь', () 
 })
 
 describe('prices: только нужные поля (стенд 2026-10-23, heap out of memory)', () => {
-  it('сначала с $select полей цены; 1С не приняла $select — тот же срез без него', async () => {
+  it('наборы полей по очереди (ЦО → без ЦО → минимум); ни один не принят — срез целиком', async () => {
     const urls: string[] = []
     const fake: typeof fetch = async (u) => {
       const url = decodeURIComponent(String(u))
@@ -156,9 +156,27 @@ describe('prices: только нужные поля (стенд 2026-10-23, hea
     const p = await c.prices({})
     const slices = urls.filter(u => u.includes('SliceLast'))
     expect(slices[0]).toContain('$select=Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key')
-    expect(slices[1]).not.toContain('$select=')
+    expect(slices[1]).toContain('$select=Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,Характеристика_Key,Упаковка_Key')
+    expect(slices[2]).toContain('$select=Period,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key')
+    expect(slices[3]).not.toContain('$select=')
     expect(p.items.map(i => i.price)).toEqual([1])
-    expect(p.tried[0]).toContain('$select')
+    expect(p.tried).toHaveLength(3)
+  })
+
+  it('принят второй набор (без «ЦО», как на тестовой базе 2026-10-26) — дальше не пробуем', async () => {
+    const urls: string[] = []
+    const fake: typeof fetch = async (u) => {
+      const url = decodeURIComponent(String(u))
+      urls.push(url)
+      if (url.includes('SliceLast') && url.includes('ЦО_Key')) return Response.json({ 'odata.error': { code: '-1', message: { lang: 'ru', value: 'Сегмент пути ХарактеристикаЦО_Key не найден!' } } }, { status: 400 })
+      if (url.includes('SliceLast')) return Response.json({ value: [{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 2, Валюта_Key: G(90) }] })
+      if (url.includes('Catalog_Валюты')) return Response.json({ value: [{ Ref_Key: G(90), Description: 'BYN' }] })
+      if (url.includes('Catalog_СтавкиНДС') || url.includes('Catalog_Номенклатура')) return Response.json({ value: [] })
+      return new Response('', { status: 404 })
+    }
+    const p = await new ODataClient({ baseUrl: 'https://x/odata', auth: { kind: 'bearer', token: 't' }, fetch: fake }).prices({})
+    expect(urls.filter(u => u.includes('SliceLast'))).toHaveLength(2)
+    expect(p.items.map(i => i.price)).toEqual([2])
   })
 })
 
