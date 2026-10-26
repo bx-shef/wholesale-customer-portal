@@ -39,7 +39,11 @@ const sections = computed<NavigationMenuItem[]>(() => [
 const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
 watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
 const catalogFilters = computed(() => filtersFromQuery(route.path === '/' ? route.query : {}))
-const tree = computed(() => sectionTree(filterOptions.value?.sections ?? []))
+const tree = computed(() => {
+  const all = sectionTree(filterOptions.value?.sections ?? [])
+  // При «Только в наличии» пустые папки не показываем.
+  return catalogFilters.value.inStock ? pruneTree(all, filterOptions.value?.stockSections ?? []) : all
+})
 const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
 function sectionLink(guid: string) {
   return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid }) }
@@ -73,19 +77,18 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
 
 <template>
   <B24DashboardGroup v-if="withMenu" unit="px" :class="{ 'md:pr-[440px]': ai.open.value }" class="transition-[padding] duration-200">
-    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1">
+    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
         <img v-if="!collapsed" src="/logo.png" alt="Алгена — личный кабинет" class="h-7 w-auto shrink-0">
+        <!-- «В наличии» — в шапке меню: она не прокручивается вместе с длинным списком разделов. -->
+        <B24Switch v-if="!collapsed" :model-value="catalogFilters.inStock" size="xs" label="Только в наличии" class="basis-full ps-1" @update:model-value="v => setInStock(!!v)" />
       </template>
       <template #default="{ collapsed }">
         <B24NavigationMenu :collapsed="collapsed" :items="sections" orientation="vertical" />
         <div v-if="!collapsed && sectionItems.length" class="flex flex-col gap-2 border-t border-(--ui-color-divider-default) pt-3">
-          <div class="flex items-center justify-between gap-2 px-2.5">
-            <span class="text-xs font-semibold uppercase text-(--ui-color-design-plain-content)">Разделы</span>
-            <B24Switch :model-value="catalogFilters.inStock" size="xs" label="В наличии" @update:model-value="v => setInStock(!!v)" />
-          </div>
+          <span class="px-2.5 text-xs font-semibold uppercase text-(--ui-color-design-plain-content)">Разделы</span>
           <!-- Длинные названия разделов 1С переносим, а не обрезаем: иначе «Материалы для внутрен…» не прочитать. -->
           <B24NavigationMenu
             :items="sectionItems"

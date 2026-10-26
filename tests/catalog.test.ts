@@ -48,6 +48,7 @@ describe('индекс каталога', () => {
     expect(store.search({ section: g(901) }).total).toBe(1)
     expect(store.search({ brand: 'Other' }).items.map(i => i.guid)).toEqual([g(2)])
     expect(store.search({ inStock: true }).items.map(i => i.guid)).toEqual([g(2)])
+    expect(store.stockSections()).toEqual([g(901)])
   })
 
   it('остатки суммируются по складам, обновляются, удалённый товар уходит вместе с остатками', () => {

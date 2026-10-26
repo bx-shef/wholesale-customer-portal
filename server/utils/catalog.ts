@@ -156,6 +156,10 @@ export function createCatalogStore(db: DatabaseSync) {
       const rows = db.prepare(`SELECT j.value AS url FROM catalog_item i, json_each(i.images) j`).all() as { url: string }[]
       return rows.map(r => refFromUrl(r.url)).filter((r): r is ImageRefT => r !== null)
     },
+    /** Разделы, где есть товар в наличии (сами, без родителей) — меню прячет пустые при «В наличии». */
+    stockSections(): string[] {
+      return (db.prepare(`SELECT DISTINCT i.section_guid AS guid FROM catalog_item i WHERE ${AVAILABLE} > 0`).all() as { guid: string }[]).map(r => r.guid)
+    },
     brands(): string[] {
       return (db.prepare('SELECT DISTINCT brand FROM catalog_item WHERE brand <> \'\' ORDER BY brand').all() as { brand: string }[]).map(r => r.brand)
     },
