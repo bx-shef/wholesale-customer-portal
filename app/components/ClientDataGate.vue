@@ -7,6 +7,7 @@
 import { clientDataView, isClientRoute, type ClientDataResponse } from '~~/shared/clientData'
 
 const route = useRoute()
+const { logout, logoutError } = useLogout()
 const data = useState<ClientDataResponse | null>('client-data', () => null)
 const pending = ref(false)
 const failed = ref(false)
@@ -47,7 +48,12 @@ const holding = useMinLoading(() => pending.value || !data.value)
        загрузка и ошибка ложатся поверх только в браузере — разметка сервера и браузера совпадает. -->
   <div v-if="mounted && active && !failed && view.block" class="mx-auto max-w-xl p-6 flex flex-col gap-4">
     <B24Alert color="air-primary-alert" :title="view.message" />
-    <B24Button v-if="view.retry" color="air-primary" label="Повторить" class="self-start" @click="load(true)" />
+    <div class="flex gap-2">
+      <B24Button v-if="view.retry" color="air-primary" label="Повторить" @click="load(true)" />
+      <!-- Выход — всегда: иначе клиент, которого нет в 1С, застревает на этом экране. -->
+      <B24Button color="air-tertiary" label="Выйти" @click="logout" />
+    </div>
+    <B24Alert v-if="logoutError" color="air-primary-alert" :title="logoutError" />
   </div>
   <template v-else>
     <B24Alert v-if="mounted && active && !failed && view.message" color="air-primary-warning" :title="view.message" class="rounded-none" />

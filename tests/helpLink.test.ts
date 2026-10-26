@@ -2,6 +2,14 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 // #72: справку было не открыть — пункт «Справка» обязан быть в боковом меню (на телефоне оно выезжает).
+describe('выход с экрана ошибки данных клиента (стенд 2026-10-26)', () => {
+  it('на экране ошибки есть «Выйти» общим выходом', () => {
+    const gate = readFileSync('app/components/ClientDataGate.vue', 'utf8')
+    expect(gate).toContain('useLogout()')
+    expect(gate).toMatch(/<B24Button color="air-tertiary" label="Выйти" @click="logout" \/>/)
+  })
+})
+
 describe('ссылка на справку в меню', () => {
   const src = readFileSync('app/layouts/default.vue', 'utf8')
   it('пункт «Справка» в разделах меню', () => {
@@ -28,7 +36,7 @@ describe('справка доступна до входа', () => {
 
 describe('выход стирает фильтры (справка это обещает)', () => {
   it('logout удаляет wcp-catalog-filters', () => {
-    expect(readFileSync('app/layouts/default.vue', 'utf8')).toContain("localStorage.removeItem('wcp-catalog-filters')")
+    expect(readFileSync('app/composables/useLogout.ts', 'utf8')).toContain("localStorage.removeItem('wcp-catalog-filters')")
     expect(readFileSync('app/pages/index.vue', 'utf8')).toContain("'wcp-catalog-filters'")
   })
 })
@@ -45,9 +53,11 @@ describe('фавикон и превью ссылки', () => {
 
 describe('раскладка: выход, гидрация, чат (панель PR #92)', () => {
   const src = readFileSync('app/layouts/default.vue', 'utf8')
+  const logout = readFileSync('app/composables/useLogout.ts', 'utf8')
   it('выход сбрасывает «кто вошёл» до перехода на /login, на /login меню нет', () => {
-    expect(src.indexOf("clearNuxtData('me')")).toBeGreaterThan(-1)
-    expect(src.indexOf("clearNuxtData('me')")).toBeLessThan(src.indexOf("navigateTo('/login')"))
+    expect(logout.indexOf("clearNuxtData('me')")).toBeGreaterThan(-1)
+    expect(logout.indexOf("clearNuxtData('me')")).toBeLessThan(logout.indexOf("navigateTo('/login')"))
+    expect(src).toContain('useLogout()')
     expect(src).toContain("route.path !== '/login'")
   })
   it('свёрнутость меню не из localStorage (иначе расхождение гидрации)', () => {
