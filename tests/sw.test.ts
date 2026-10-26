@@ -201,11 +201,11 @@ describe('sw.js: статика и обновление', () => {
 describe('страница и сервер чистят каталог при входе и выходе', () => {
   it('login.vue, раскладка (в finally), выход шлёт Clear-Site-Data, префикс кэша совпадает', () => {
     expect(readFileSync(join(root, 'app/pages/login.vue'), 'utf8')).toContain('await clearCatalogCache()')
-    const header = readFileSync(join(root, 'app/layouts/default.vue'), 'utf8')
+    const header = readFileSync(join(root, 'app/composables/useLogout.ts'), 'utf8')
     // Выход: сохранённое стирается до запроса; без сети на /login не уходим.
     expect(header.indexOf('await clearCatalogCache()')).toBeLessThan(header.indexOf("$fetch('/api/auth/logout'"))
     expect(header).toMatch(/catch \{[^}]*logoutError\.value = [^}]*return\s*\}/)
-    expect(header).toContain('setCacheCompany(')
+    expect(readFileSync(join(root, 'app/layouts/default.vue'), 'utf8')).toContain('setCacheCompany(')
     expect(readFileSync(join(root, 'server/api/auth/logout.post.ts'), 'utf8')).toContain("'Clear-Site-Data', '\"cache\", \"storage\"'")
     const prefix = /DATA_CACHE_PREFIX = '([^']+)'/.exec(readFileSync(join(root, 'app/composables/usePwa.ts'), 'utf8'))![1]
     expect(src).toContain(`const DATA_PREFIX = '${prefix}'`)

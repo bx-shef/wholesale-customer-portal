@@ -20,7 +20,7 @@ const { data: me } = await useFetch('/api/auth/me', { headers, key: 'me' })
 const cart = useCart()
 const ai = useAiChat()
 const open = ref(false)
-const logoutError = ref('')
+const { logout, logoutError } = useLogout()
 
 // Вход и фрейм коробки — без меню, даже если `me` ещё в памяти.
 // Свёрнутость меню — в cookie (умолчание DashboardGroup): её видит и сервер, разметка при гидрации совпадает.
@@ -48,29 +48,6 @@ function bindCompany(id: number) {
 onMounted(() => { if (me.value) bindCompany(me.value.company.id) })
 watch(me, (v) => { if (v) bindCompany(v.company.id) })
 
-async function logout() {
-  logoutError.value = ''
-  // Сохранённое с устройства уходит в любом случае.
-  cart.forget()
-  // Поиск и фильтры прежнего пользователя на общем устройстве не оставляем.
-  try { localStorage.removeItem('wcp-catalog-filters') }
-  catch { /* хранилище недоступно — стирать нечего */ }
-  await clearCatalogCache()
-  // Данные клиента из 1С — следующему вошедшему не показываем.
-  clearNuxtState('client-data')
-  try {
-    await $fetch('/api/auth/logout', { method: 'POST' })
-  }
-  catch {
-    // Без сети сервер сессию не закрыл: «вышли» показывать нельзя — следующий вошёл бы под ней.
-    logoutError.value = 'Выйти не удалось: нет связи с сервером. Повторите, когда появится сеть.'
-    return
-  }
-  // Сессии больше нет: меню и название компании не должны пережить выход.
-  me.value = undefined
-  clearNuxtData('me')
-  await navigateTo('/login')
-}
 </script>
 
 <template>
