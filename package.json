@@ -22,7 +22,7 @@
     "onec:openapi": "tsx scripts/onec-openapi.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^2.0.82",
+    "@ai-sdk/openai-compatible": "^3.0.77",
     "@ai-sdk/vue": "^4.0.148",
     "@bitrix24/b24icons-vue": "^2.0.8",
     "@bitrix24/b24jssdk": "^3.0.0",
