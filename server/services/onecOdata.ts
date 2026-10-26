@@ -325,10 +325,14 @@ export class ODataClient {
     let rows: PriceRow[] = []
     // Только нужные поля: без `$select` 1С отдаёт строку целиком, и срез 121 тыс. строк весил ~100 МБ
     // и ронял контейнер (512 МБ) на стенде 2026-10-23. Не примет `$select` — читаем как раньше.
+    // Наборы полей — по очереди: имена измерений у баз разные (тестовая база 2026-10-26 не знает
+    // `ХарактеристикаЦО_Key`, #97). Ни один не подошёл — срез целиком.
     const attempts = [`${register}_RecordType`, register].flatMap(base => [
-      { base, select: base.endsWith('_RecordType') ? PRICE_SELECT_CO : PRICE_SELECT_PLAIN },
-      { base, select: null },
-    ])
+      ...(base.endsWith('_RecordType') ? [PRICE_SELECT_CO] : []),
+      PRICE_SELECT_PLAIN,
+      PRICE_SELECT_MIN,
+      null,
+    ].map(select => ({ base, select })))
     for (const { base, select } of attempts) {
       const slice = `${encodeURIComponent(base)}/SliceLast()`
       try {
@@ -462,6 +466,8 @@ export interface PricesResult {
 /** Поля среза цен: регистр `…_RecordType` — с измерениями «ЦО», прежний — без них. */
 export const PRICE_SELECT_CO = 'Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,ХарактеристикаЦО_Key,УпаковкаЦО_Key'
 export const PRICE_SELECT_PLAIN = 'Period,Active,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key,Характеристика_Key,Упаковка_Key'
+/** Минимум для цены: без измерений характеристики и упаковки (по ответу 1С они не используются). */
+export const PRICE_SELECT_MIN = 'Period,Номенклатура_Key,ВидЦены_Key,Цена,Валюта_Key'
 
 /** Копия строки цены только с нужными полями: сырые строки OData без `$select` в разы тяжелее. */
 export function slimPriceRow(r: PriceRow): PriceRow {
