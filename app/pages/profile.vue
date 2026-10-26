@@ -51,9 +51,11 @@ async function requestCallback() {
             </template>
             <dl v-if="data.contract" class="grid grid-cols-2 gap-2 text-sm">
               <dt>Номер</dt><dd>{{ data.contract.number }} от {{ date(data.contract.date) }}</dd>
-              <dt>Отсрочка</dt><dd>{{ data.contract.paymentDelayDays }} дн.</dd>
-              <dt>Кредитный лимит</dt><dd>{{ money(data.contract.creditLimit, data.contract.currency) }}</dd>
-              <dt>Задолженность</dt><dd>{{ money(data.contract.debt, data.contract.currency) }}</dd>
+              <!-- Отсрочку и задолженность 1С по OData пока не отдаёт (приходят нулями): ноль не показываем,
+                   иначе клиент читает «отсрочки нет, долга нет» как факт. -->
+              <template v-if="data.contract.paymentDelayDays > 0"><dt>Отсрочка</dt><dd>{{ data.contract.paymentDelayDays }} дн.</dd></template>
+              <template v-if="data.contract.creditLimit > 0"><dt>Кредитный лимит</dt><dd>{{ money(data.contract.creditLimit, data.contract.currency) }}</dd></template>
+              <template v-if="data.contract.debt > 0"><dt>Задолженность</dt><dd>{{ money(data.contract.debt, data.contract.currency) }}</dd></template>
             </dl>
             <p v-else class="text-sm">
               Данные договора сейчас недоступны.

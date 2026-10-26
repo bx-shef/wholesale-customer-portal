@@ -6,6 +6,8 @@ import { ru } from '@bitrix24/b24ui-nuxt/locale'
 // (как в bx-shef/skills-site, где его зовёт шапка). Без вызова тёмная тема не включалась.
 useColorMode()
 const { open: aiOpen } = useAiChat()
+// Помощник выключен на сервере (`AI_ASSISTANT`) — панели нет вовсе.
+const { data: me } = useNuxtData<{ ai?: boolean }>('me')
 const online = useOnline()
 onMounted(registerServiceWorker)
 
@@ -43,7 +45,7 @@ useSeoMeta({
         </NuxtLayout>
       </ClientDataGate>
     </div>
-    <ClientOnly>
+    <ClientOnly v-if="me?.ai">
       <AiChatPanel />
     </ClientOnly>
   </B24App>
