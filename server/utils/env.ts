@@ -31,6 +31,8 @@ export interface ServerEnv {
   onecOdataOrders: boolean
   /** OData: рейсы из «Заданий на перевозку» (`ONEC_ODATA_TRIPS=true`); иначе поток рейсов пропускается. */
   onecOdataTrips: boolean
+  /** OData: картинки товаров (`ONEC_ODATA_IMAGES=true`); 1С отдаёт файлы пустыми — выключено до ответа 1С. */
+  onecOdataImages: boolean
   /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
   onecMode: 'http' | 'odata'
   /** Виды цен по наименованию для OData, через запятую; пусто — все. */
@@ -73,6 +75,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
     // Рейсы: документ «Задание на перевозку» выпал из публикации OData — включать, когда вернут.
     onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() === 'true',
+    onecOdataImages: get('ONEC_ODATA_IMAGES').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecClientTtlMin: (n => (Number.isInteger(n) && n >= 1 && n <= 1440 ? n : 15))(Number(get('ONEC_CLIENT_TTL_MIN') || 15)),

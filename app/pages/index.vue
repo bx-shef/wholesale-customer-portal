@@ -1,11 +1,13 @@
 <!-- Каталог: поиск, фильтры в шторке, подгрузка при прокрутке, цены договора клиента. Состояние — в адресе. -->
 <script setup lang="ts">
 import ProductIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
+import { normalizeQty } from '~~/shared/cart'
 import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
 
 useHead({ title: 'Каталог' })
 
 const PAGE = 30
+const cart = useCart()
 const route = useRoute()
 const router = useRouter()
 const headers = useRequestHeaders(['cookie'])
@@ -163,14 +165,16 @@ function reset() {
 
         <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <li v-for="it in items" :key="it.guid">
-            <NuxtLink :to="`/product/${it.guid}`" class="block h-full">
-              <B24Card class="h-full">
-                <div class="flex gap-3">
-                  <img v-if="it.image" :src="it.image" alt="" onerror="this.remove()" loading="lazy" class="size-16 shrink-0 rounded object-contain bg-white">
-                  <div class="flex min-w-0 flex-1 flex-col gap-1">
-                  <p class="font-medium leading-snug">
+            <!-- Карточка — не ссылка целиком: внутри кнопки корзины, а кнопка в ссылке — невалидная разметка. -->
+            <B24Card class="h-full">
+              <div class="flex gap-3">
+                <NuxtLink :to="`/product/${it.guid}`" class="shrink-0">
+                  <img v-if="it.image" :src="it.image" alt="" onerror="this.remove()" loading="lazy" class="size-16 rounded object-contain bg-white">
+                </NuxtLink>
+                <div class="flex min-w-0 flex-1 flex-col gap-1">
+                  <NuxtLink :to="`/product/${it.guid}`" class="font-medium leading-snug hover:underline">
                     {{ it.name }}
-                  </p>
+                  </NuxtLink>
                   <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
                     {{ it.sku }} · {{ it.brand }}
                   </p>
@@ -178,10 +182,13 @@ function reset() {
                     <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }}</span></span>
                     <StockBadge :available="it.available" :unit="it.unit" />
                   </div>
+                  <div v-if="it.price" class="flex items-center gap-2 pt-1">
+                    <B24Button v-if="!cart.qtyOf(it.guid)" color="air-primary" size="sm" label="В корзину" @click="cart.setQty(it.guid, normalizeQty(it.minQty, it.packQty, it.minQty))" />
+                    <QtyStepper v-else :qty="cart.qtyOf(it.guid)" :pack-qty="it.packQty" :min-qty="it.minQty" :unit="it.unit" @update:qty="v => cart.setQty(it.guid, v)" />
                   </div>
                 </div>
-              </B24Card>
-            </NuxtLink>
+              </div>
+            </B24Card>
           </li>
         </ul>
 
