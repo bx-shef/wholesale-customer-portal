@@ -82,9 +82,16 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
       <template #default="{ collapsed }">
         <B24NavigationMenu :collapsed="collapsed" :items="sections" orientation="vertical" />
         <div v-if="!collapsed && sectionItems.length" class="flex flex-col gap-2 border-t border-(--ui-color-divider-default) pt-3">
-          <span class="px-2 text-xs font-semibold uppercase text-(--ui-color-design-plain-content)">Разделы каталога</span>
-          <B24Switch :model-value="catalogFilters.inStock" label="Только в наличии" class="px-2" @update:model-value="v => setInStock(!!v)" />
-          <B24NavigationMenu :items="sectionItems" orientation="vertical" />
+          <div class="flex items-center justify-between gap-2 px-2.5">
+            <span class="text-xs font-semibold uppercase text-(--ui-color-design-plain-content)">Разделы</span>
+            <B24Switch :model-value="catalogFilters.inStock" size="xs" label="В наличии" @update:model-value="v => setInStock(!!v)" />
+          </div>
+          <!-- Длинные названия разделов 1С переносим, а не обрезаем: иначе «Материалы для внутрен…» не прочитать. -->
+          <B24NavigationMenu
+            :items="sectionItems"
+            orientation="vertical"
+            :ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
+          />
         </div>
         <B24NavigationMenu :collapsed="collapsed" :items="actions" orientation="vertical" class="mt-auto" />
       </template>

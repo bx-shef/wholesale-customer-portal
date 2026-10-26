@@ -23,7 +23,7 @@ import { GUID_RE } from './catalogView'
 import { chooseContract, type ClientStore } from './clients'
 import type { B24Orders } from '../services/b24Orders'
 
-export type LineProblem = 'not_found' | 'no_price' | 'bad_qty'
+export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock'
 
 export interface QuoteLine {
   guid: string
@@ -91,7 +91,8 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
       available: item.available, qty: input.qty, suggestedQty: normalizeQty(input.qty, item.packQty, item.minQty),
       price: p?.price ?? null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
       total: p ? lineTotal(p.price, input.qty) : 0,
-      problem: !valid ? 'bad_qty' : p ? null : 'no_price',
+      // Нет на складе — не продаём (решение владельца 2026-10-26); больше остатка — можно, менеджер уточнит.
+      problem: item.available <= 0 ? 'out_of_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
     }
   })
   const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))

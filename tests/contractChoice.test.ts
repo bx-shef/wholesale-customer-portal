@@ -94,6 +94,7 @@ describe('заявка по выбранному соглашению', () => {
     const d = db()
     const store = createCatalogStore(d)
     store.saveCatalog([], [item(1)])
+    store.saveStock([{ itemGuid: g(1), warehouseGuid: g(500), warehouseName: 'Склад', available: 100, changedAt: at }])
     const clients = createClientStore(d)
     clients.save([client()])
     return {
