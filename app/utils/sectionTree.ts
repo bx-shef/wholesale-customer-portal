@@ -28,6 +28,19 @@ export function sectionTree(sections: { guid: string, parentGuid: string | null,
   return roots
 }
 
+/**
+ * Оставить только ветки, где есть хоть один раздел из `keep` (раздел или его потомок).
+ * Так при «В наличии» папка без товаров в наличии не показывается.
+ */
+export function pruneTree(roots: SectionNode[], keep: Iterable<string>): SectionNode[] {
+  const want = new Set([...keep].map(g => g.toLowerCase()))
+  const walk = (list: SectionNode[]): SectionNode[] => list.flatMap((n) => {
+    const children = walk(n.children)
+    return children.length || want.has(n.guid.toLowerCase()) ? [{ ...n, children }] : []
+  })
+  return walk(roots)
+}
+
 /** Цепочка разделов от корня до выбранного — их держим раскрытыми в меню. */
 export function sectionPath(roots: SectionNode[], guid: string): string[] {
   const want = guid.toLowerCase()
