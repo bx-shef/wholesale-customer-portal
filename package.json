@@ -29,7 +29,7 @@
     "@bitrix24/b24ui-nuxt": "^2.15.0",
     "@nuxt/content": "^3.16.2",
     "@nuxtjs/mcp-toolkit": "^0.24.1",
-    "ai": "^7.0.140",
+    "ai": "^7.0.152",
     "nuxt": "^4.6.2",
     "tailwindcss": "^4.3.3",
     "zod": "^4.6.7"
