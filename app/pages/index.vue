@@ -182,7 +182,7 @@ function reset() {
                     <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }}</span></span>
                     <StockBadge :available="it.available" :unit="it.unit" />
                   </div>
-                  <div v-if="it.price" class="flex items-center gap-2 pt-1">
+                  <div v-if="it.price && it.available > 0" class="flex items-center gap-2 pt-1">
                     <B24Button v-if="!cart.qtyOf(it.guid)" color="air-primary" size="sm" label="В корзину" @click="cart.setQty(it.guid, normalizeQty(it.minQty, it.packQty, it.minQty))" />
                     <QtyStepper v-else :qty="cart.qtyOf(it.guid)" :pack-qty="it.packQty" :min-qty="it.minQty" :unit="it.unit" @update:qty="v => cart.setQty(it.guid, v)" />
                   </div>

@@ -121,7 +121,8 @@ describe('заявка', () => {
     db = new DatabaseSync(':memory:')
     migrate(db)
     const store = createCatalogStore(db)
-    store.saveCatalog([], [item(1, { packQty: 5, minQty: 5 }), item(2)])
+    store.saveCatalog([], [item(1, { packQty: 5, minQty: 5 }), item(2), item(3)])
+    store.saveStock([1, 2].map(n => ({ itemGuid: g(n), warehouseGuid: g(500), warehouseName: 'Склад', available: 100, changedAt: at })))
     const clients = createClientStore(db)
     clients.save([client()])
     deps = {
@@ -142,6 +143,12 @@ describe('заявка', () => {
     expect(q.ok).toBe(false)
     const good = await quoteCart([{ guid: g(1), qty: 10 }, { guid: g(2), qty: 3 }], deps.store, ok, deps.prices)
     expect(good).toMatchObject({ ok: true, total: 55, currency: 'BYN' })
+  })
+
+  it('товара нет в наличии — строка с проблемой, заявку не пускаем', async () => {
+    const q = await quoteCart([{ guid: g(2), qty: 1 }, { guid: g(3), qty: 1 }], deps.store, ok, deps.prices)
+    expect(q.lines.map(l => l.problem)).toEqual([null, 'out_of_stock'])
+    expect(q.ok).toBe(false)
   })
 
   it('без цены договора заявка не уходит', async () => {

@@ -7,7 +7,7 @@ import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Корзина' })
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -84,6 +84,7 @@ const problemText: Record<NonNullable<QuoteLine['problem']>, string> = {
   not_found: 'Товара больше нет в каталоге — удалите его из корзины.',
   no_price: 'Нет цены по вашему договору — уточните у менеджера.',
   bad_qty: 'Количество должно быть кратно упаковке.',
+  out_of_stock: 'Нет в наличии — удалите товар из корзины.',
 }
 
 async function submit() {

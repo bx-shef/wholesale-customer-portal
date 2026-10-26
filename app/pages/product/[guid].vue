@@ -48,7 +48,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
                 <span v-else class="text-base font-normal">{{ missingPriceText(data?.priceStatus ?? 'ok') }}</span>
               </p>
               <StockBadge :available="item.available" :unit="item.unit" class="self-start" />
-              <div v-if="item.price" class="flex flex-wrap items-center gap-3 pt-2">
+              <div v-if="item.price && item.available > 0" class="flex flex-wrap items-center gap-3 pt-2">
                 <B24Button v-if="!inCart" color="air-primary" label="В корзину" class="min-h-11" @click="cart.setQty(item.guid, normalizeQty(item.minQty, item.packQty, item.minQty))" />
                 <template v-else>
                   <QtyStepper :qty="inCart" :pack-qty="item.packQty" :min-qty="item.minQty" :unit="item.unit" @update:qty="v => cart.setQty(item!.guid, v)" />
