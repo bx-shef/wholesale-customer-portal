@@ -198,10 +198,10 @@ function reset() {
       <template #body>
         <div class="mx-auto flex w-full max-w-xl flex-col gap-4 pb-4">
           <B24FormField label="Раздел">
-            <B24Select :model-value="filters.section" :items="sectionItems" class="w-full" @update:model-value="v => setFilters({ section: String(v ?? '') })" />
+            <B24SelectMenu :model-value="filters.section" :items="sectionItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ section: String(v ?? '') })" />
           </B24FormField>
           <B24FormField label="Бренд">
-            <B24Select :model-value="filters.brand" :items="brandItems" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
+            <B24SelectMenu :model-value="filters.brand" :items="brandItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
           </B24FormField>
           <B24FormField label="Сортировка">
             <B24Select :model-value="filters.sort" :items="sortItems" class="w-full" @update:model-value="v => setFilters({ sort: parseSort(v) })" />
