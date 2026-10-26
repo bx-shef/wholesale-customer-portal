@@ -31,10 +31,14 @@ export interface ServerEnv {
   onecOdataOrders: boolean
   /** OData: рейсы из «Заданий на перевозку» (`ONEC_ODATA_TRIPS=true`); иначе поток рейсов пропускается. */
   onecOdataTrips: boolean
+  /** OData: картинки товаров (`ONEC_ODATA_IMAGES=true`); 1С отдаёт файлы пустыми — выключено до ответа 1С. */
+  onecOdataImages: boolean
   /** Транспорт 1С: `http` — сервис по контракту, `odata` — стандартный OData (docs/onec-odata.md). */
   onecMode: 'http' | 'odata'
   /** Виды цен по наименованию для OData, через запятую; пусто — все. */
   onecPriceTypes: string[]
+  /** ИИ-помощник включён (`AI_ASSISTANT=true`); по умолчанию выключен — решение владельца 2026-10-26. */
+  aiAssistant: boolean
   deepseekApiKey: string
   deepseekModel: string
   sessionSecret: string
@@ -71,10 +75,12 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
     // Рейсы: документ «Задание на перевозку» выпал из публикации OData — включать, когда вернут.
     onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() === 'true',
+    onecOdataImages: get('ONEC_ODATA_IMAGES').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),
     onecClientTtlMin: (n => (Number.isInteger(n) && n >= 1 && n <= 1440 ? n : 15))(Number(get('ONEC_CLIENT_TTL_MIN') || 15)),
     onecMockClients: get('ONEC_MOCK_CLIENTS').split(',').map(s => s.trim().toLowerCase()).filter(s => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
+    aiAssistant: get('AI_ASSISTANT').trim().toLowerCase() === 'true',
     deepseekApiKey: get('DEEPSEEK_API_KEY'),
     deepseekModel: get('DEEPSEEK_MODEL') || 'deepseek-chat',
     sessionSecret: get('SESSION_SECRET'),

@@ -10,6 +10,7 @@ const daily = createRateLimiter(AI_DAILY_LIMIT, 24 * 60 * 60_000)
 export default defineEventHandler(async (event) => {
   const ctx = await catalogContext(event)
   const env = readServerEnv()
+  if (!env.aiAssistant) throw createError({ statusCode: 404, message: 'Помощник выключен' })
   if (!env.deepseekApiKey) throw createError({ statusCode: 503, message: 'Помощник не настроен на сервере' })
   const body = await readBody(event)
   const history = sanitizeHistory(body?.messages)

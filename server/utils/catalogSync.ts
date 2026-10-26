@@ -51,9 +51,17 @@ export function syncCatalog(): Promise<SyncRun> {
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:catalog] ${run.error}`)
     // Картинки — после каталога и не мешая ему: сбой картинок каталог не роняет.
-    await syncImages().catch(e => console.error(`[sync:images] ${(e as Error).message}`))
+    if (imagesEnabled(readServerEnv())) await syncImages().catch(e => console.error(`[sync:images] ${(e as Error).message}`))
     return run
   })
+}
+
+/**
+ * Докачивать ли картинки после каталога: по OData — только с `ONEC_ODATA_IMAGES=true`.
+ * На тестовой 1С файлы приходят пустыми (2026-10-26): без флага было бы 300 пустых запросов в сутки.
+ */
+export function imagesEnabled(env: { onecMock: boolean, onecMode: string, onecOdataImages: boolean }): boolean {
+  return env.onecMock || env.onecMode !== 'odata' || env.onecOdataImages
 }
 
 /** Докачать из 1С картинки, которых ещё нет на томе (§2.8); за прогон — не больше IMAGES_PER_RUN. */

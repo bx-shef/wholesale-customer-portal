@@ -8,9 +8,7 @@ import type { NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
 import ProductsCubeIcon from '@bitrix24/b24icons-vue/outline/ProductsCubeIcon'
 import ShoppingCartIcon from '@bitrix24/b24icons-vue/outline/ShoppingCartIcon'
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
-import PersonIcon from '@bitrix24/b24icons-vue/outline/PersonIcon'
 import QuestionIcon from '@bitrix24/b24icons-vue/outline/QuestionIcon'
-import CopilotIcon from '@bitrix24/b24icons-vue/outline/CopilotIcon'
 import LogOutIcon from '@bitrix24/b24icons-vue/outline/LogOutIcon'
 import HamburgerMenuIcon from '@bitrix24/b24icons-vue/outline/HamburgerMenuIcon'
 
@@ -19,6 +17,7 @@ const headers = useRequestHeaders(['cookie'])
 const { data: me } = await useFetch('/api/auth/me', { headers, key: 'me' })
 const cart = useCart()
 const ai = useAiChat()
+const router = useRouter()
 const open = ref(false)
 const { logout, logoutError } = useLogout()
 
@@ -33,11 +32,33 @@ const sections = computed<NavigationMenuItem[]>(() => [
   // поэтому разметка совпадает при гидрации.
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
   { label: 'Заявки', icon: DeliveryIcon, to: '/orders', onSelect: close },
-  { label: 'Профиль', icon: PersonIcon, to: '/profile', onSelect: close },
   { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
 ])
+// Разделы каталога деревом и «Только в наличии» — в меню. Фильтры живут в адресе каталога:
+// вне каталога переход открывает его с чистыми фильтрами.
+const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
+watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
+const catalogFilters = computed(() => filtersFromQuery(route.path === '/' ? route.query : {}))
+const tree = computed(() => sectionTree(filterOptions.value?.sections ?? []))
+const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
+function sectionLink(guid: string) {
+  return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid }) }
+}
+function toItem(n: SectionNode): NavigationMenuItem {
+  const active = route.path === '/' && n.guid.toLowerCase() === catalogFilters.value.section.toLowerCase()
+  if (!n.children.length) return { label: n.name, to: sectionLink(n.guid), active, onSelect: close }
+  return {
+    label: n.name,
+    defaultOpen: openPath.value.has(n.guid.toLowerCase()),
+    children: [{ label: 'Все товары раздела', to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
+  }
+}
+const sectionItems = computed<NavigationMenuItem[]>(() => tree.value.map(toItem))
+function setInStock(v: boolean) {
+  router.push({ path: '/', query: filtersToQuery({ ...catalogFilters.value, inStock: v }) })
+}
+
 const actions = computed<NavigationMenuItem[]>(() => [
-  { label: 'ИИ-помощник', icon: CopilotIcon, active: ai.open.value, onSelect: () => { close(); ai.toggle() } },
   { label: 'Выйти', icon: LogOutIcon, onSelect: () => { close(); logout() } },
 ])
 
@@ -56,19 +77,30 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
-        <span v-if="!collapsed" class="flex min-w-0 items-center gap-2">
-          <img src="/logo.png" alt="Алгена" class="h-7 w-auto shrink-0">
-          <span class="font-semibold leading-tight">Личный кабинет</span>
-        </span>
+        <img v-if="!collapsed" src="/logo.png" alt="Алгена — личный кабинет" class="h-7 w-auto shrink-0">
       </template>
       <template #default="{ collapsed }">
         <B24NavigationMenu :collapsed="collapsed" :items="sections" orientation="vertical" />
+        <div v-if="!collapsed && sectionItems.length" class="flex flex-col gap-2 border-t border-(--ui-color-divider-default) pt-3">
+          <span class="px-2 text-xs font-semibold uppercase text-(--ui-color-design-plain-content)">Разделы каталога</span>
+          <B24Switch :model-value="catalogFilters.inStock" label="Только в наличии" class="px-2" @update:model-value="v => setInStock(!!v)" />
+          <B24NavigationMenu :items="sectionItems" orientation="vertical" />
+        </div>
         <B24NavigationMenu :collapsed="collapsed" :items="actions" orientation="vertical" class="mt-auto" />
       </template>
       <template #footer="{ collapsed }">
-        <span v-if="!collapsed" class="mb-2 truncate px-2 text-sm text-(--ui-color-design-plain-content)" :title="me?.company.title">
-          {{ me?.company.title }}
-        </span>
+        <!-- Компания клиента — вход в профиль, как пользователь внизу меню в templates-dashboard. -->
+        <B24Button
+          to="/profile"
+          color="air-tertiary"
+          :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
+          :title="me?.company.title"
+          :avatar="{ text: (me?.company.title || '?').slice(0, 1) }"
+          :active="route.path === '/profile'"
+          block
+          class="mb-1 justify-start truncate"
+          @click="close"
+        />
       </template>
     </B24DashboardSidebar>
     <slot />
