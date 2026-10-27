@@ -111,7 +111,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
           color="air-tertiary"
           :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
           :title="me?.company.title"
-          :avatar="{ text: (me?.company.title || '?').slice(0, 1) }"
+          :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-(--ui-color-accent-main-primary) text-white font-semibold' }"
           :active="route.path === '/profile'"
           block
           class="mb-1 justify-start truncate"
