@@ -110,3 +110,24 @@ describe('рейс заказа из статусов 1С', () => {
     expect(applyStatus).not.toHaveBeenCalled()
   })
 })
+
+describe('график доставки из env (табличка логиста)', () => {
+  const ENV = 'Пн: Ивацевичи, Береза; Вт: Пинск, Кобрин; Чт: Кобрин, Ивацевичи; Хз: Мир'
+  it('город — свои дни; ё/е и регистр не важны; кривой день — предупреждение', async () => {
+    const { parseScheduleEnv, nextDelivery } = await import('../shared/delivery')
+    const { schedules, warnings } = parseScheduleEnv(ENV)
+    expect(schedules.find(s => s.region === 'Кобрин')!.weekdays).toEqual([2, 4])
+    expect(warnings.length).toBe(1)
+    // Пятница 2026-10-30, 10:00 по Минску → ближайший рейс в Берёзу — понедельник 2 ноября.
+    const now = new Date('2026-10-30T07:00:00Z')
+    expect(nextDelivery(schedules, ['БЕРЁЗА'], now)?.date).toBe('2026-11-02')
+    // Город не в графике, регион 1С тоже — рейса нет.
+    expect(nextDelivery(schedules, ['Минск', null], now)).toBeNull()
+    // Понедельник 2026-11-02: сегодняшний рейс уже не успеть (заявка — до конца прошлого дня), следующий — чт.
+    expect(nextDelivery(schedules, 'Ивацевичи', new Date('2026-11-02T06:00:00Z'))?.date).toBe('2026-11-05')
+  })
+  it('без окна прибытия formatSlot показывает только день', async () => {
+    const { formatSlot } = await import('../shared/delivery')
+    expect(formatSlot({ arrivalFrom: '2026-11-01T21:00:00.000Z', arrivalTo: '2026-11-01T21:00:00.000Z' })).not.toMatch(/\d{2}:\d{2}/)
+  })
+})

@@ -54,6 +54,8 @@ export interface ServerEnv {
   syncEvery: Record<AutoFlow, number>
   /** Разделы 1С, скрытые от клиентов вместе с товарами (`CATALOG_HIDDEN_SECTIONS`, названия через запятую). */
   catalogHiddenSections: string[]
+  /** График доставки по городам (`DELIVERY_SCHEDULE`, «Пн: Город, Город; Вт: …»); пусто — график из 1С. */
+  deliverySchedule: string
   /** Характеристики, которые клиенту не показываем (`CATALOG_HIDDEN_PROPERTIES`, названия через запятую). */
   catalogHiddenProperties: string[]
   /** Картинок за прогон потока `images` (`SYNC_IMAGES_BATCH`, 1–5000, по умолчанию 1000). */
@@ -90,6 +92,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     commitSha: get('COMMIT_SHA'),
     syncEvery: everyFromEnv(get),
     catalogHiddenProperties: get('CATALOG_HIDDEN_PROPERTIES').split(',').map(s => s.trim()).filter(Boolean),
+    deliverySchedule: get('DELIVERY_SCHEDULE'),
     catalogHiddenSections: get('CATALOG_HIDDEN_SECTIONS').split(',').map(s => s.trim()).filter(Boolean),
     imagesBatch: (n => (Number.isInteger(n) && n >= 1 && n <= 5000 ? n : 1000))(Number(get('SYNC_IMAGES_BATCH') || 1000)),
     dataDir: get('DATA_DIR') || '.data',

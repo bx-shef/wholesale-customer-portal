@@ -25,8 +25,8 @@ export default defineEventHandler(async (event) => {
       guid: a.guid,
       label: addressLine(a.city, a.address),
       city: a.city,
-      // График — по бизнес-региону клиента (1С), а не по городу адреса.
-      slot: schedules ? nextDelivery(schedules, client.regionGuid, now) : null,
+      // График — по городу адреса (env, табличка логиста) или по бизнес-региону клиента (1С).
+      slot: schedules ? nextDelivery(schedules, [a.city, client.regionGuid], now) : null,
       slotStatus: schedules ? 'ok' as const : 'unavailable' as const,
     })),
   }

@@ -363,7 +363,7 @@ export async function submitOrder(
   // Рейс — подсказка клиенту и менеджеру, а не условие: сбой «Рейсов» заявку не останавливает.
   let slot: DeliverySlot | null = null
   try {
-    slot = nextDelivery(await deps.schedules(), client.regionGuid, now)
+    slot = nextDelivery(await deps.schedules(), [address.city, client.regionGuid], now)
   }
   catch (e) {
     console.error(`[orders] schedules: ${(e as Error).name}`)

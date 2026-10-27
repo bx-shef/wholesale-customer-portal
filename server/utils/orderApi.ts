@@ -1,6 +1,6 @@
 // Обвязка маршрутов корзины и заявок: сессия обязательна, компания и договор — только из сессии.
 import type { H3Event } from 'h3'
-import type { TripSchedule } from '../../shared/delivery'
+import { parseScheduleEnv, type TripSchedule } from '../../shared/delivery'
 import { createB24Orders, type B24Orders } from '../services/b24Orders'
 import { loadAppAuth } from './b24AppAuth'
 import { createClientStore, type ClientStore } from './clients'
@@ -58,6 +58,9 @@ export function useB24Orders(): B24Orders {
 
 /** График доставки — из базы ЛК (его привозит из 1С `sync:schedule`): к 1С и CRM не ходим. */
 export function cachedSchedules(): Promise<TripSchedule[]> {
+  // График из env (`DELIVERY_SCHEDULE`, табличка логиста) главнее графика из 1С: в 1С его нет (#45).
+  const env = readServerEnv().deliverySchedule
+  if (env) return Promise.resolve(parseScheduleEnv(env).schedules)
   return Promise.resolve(useDelivery().schedules())
 }
 
