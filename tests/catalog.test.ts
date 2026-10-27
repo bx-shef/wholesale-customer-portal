@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
-import { createCatalogStore } from '../server/utils/catalog'
+import { createCatalogStore, hiddenSectionGuids } from '../server/utils/catalog'
 import { createPriceStore } from '../server/utils/prices'
 import { createClientStore } from '../server/utils/clients'
 import { catalogItem, catalogPage, COMPANY_NO_GUID_TTL_MS, createCompanyGuidResolver, parseCatalogQuery, resolvePricing } from '../server/utils/catalogView'
@@ -340,5 +340,27 @@ describe('данные мока (#86)', () => {
       bySection.set(i.sectionGuid, set)
     }
     for (const sets of bySection.values()) expect(sets.size).toBeGreaterThan(1)
+  })
+})
+
+describe('скрытые разделы (CATALOG_HIDDEN_SECTIONS)', () => {
+  it('раздел по названию без учёта регистра — скрыт вместе с подразделами и товарами', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    let names: string[] = ['не используются']
+    const store = createCatalogStore(db, { hiddenSections: () => names })
+    store.saveCatalog(
+      [{ guid: g(900), parentGuid: null, name: 'Крепёж' }, { guid: g(910), parentGuid: null, name: 'Не используются' }, { guid: g(911), parentGuid: g(910), name: 'Старое' }],
+      [item(1), item(2, { sectionGuid: g(911), brand: 'Скрытый' })],
+    )
+    expect(store.sections().map(s => s.name)).toEqual(['Крепёж'])
+    expect(store.search({}).items.map(i => i.guid)).toEqual([g(1)])
+    expect(store.item(g(2))).toBeNull()
+    expect(store.brands()).not.toContain('Скрытый')
+    expect(store.itemSections()).toEqual([g(900)])
+    // Список пуст — всё видно.
+    names = []
+    expect(store.search({}).total).toBe(2)
+    expect(hiddenSectionGuids([{ guid: 'A', parentGuid: null, name: ' УСЛУГИ ' }], ['услуги'])).toEqual(new Set(['a']))
   })
 })

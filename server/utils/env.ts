@@ -56,6 +56,8 @@ export interface ServerEnv {
   trustProxy: boolean
   /** Частота автосинхронизации по потокам, минут (`SYNC_*_EVERY_MIN`, 0 — только вручную). */
   syncEvery: Record<AutoFlow, number>
+  /** Разделы 1С, скрытые от клиентов вместе с товарами (`CATALOG_HIDDEN_SECTIONS`, названия через запятую). */
+  catalogHiddenSections: string[]
 }
 
 export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -90,6 +92,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     publicUrl: get('PUBLIC_URL').replace(/\/+$/, ''),
     commitSha: get('COMMIT_SHA'),
     syncEvery: everyFromEnv(get),
+    catalogHiddenSections: get('CATALOG_HIDDEN_SECTIONS').split(',').map(s => s.trim()).filter(Boolean),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',
   }
