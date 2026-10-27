@@ -29,7 +29,7 @@ export interface ServerEnv {
   onecStockWarehouses: string[]
   /** OData: заказы ЛК → документы 1С и их статусы (`ONEC_ODATA_ORDERS=true`); иначе поток заказов пропускается. */
   onecOdataOrders: boolean
-  /** OData: рейсы из «Заданий на перевозку» (`ONEC_ODATA_TRIPS=true`); иначе поток рейсов пропускается. */
+  /** OData: рейсы из «Заданий на перевозку» — включены по умолчанию (документ опубликован, 2026-10-27); `ONEC_ODATA_TRIPS=false` — выключить. */
   onecOdataTrips: boolean
   /** OData: картинки товаров (`ONEC_ODATA_IMAGES=true`); 1С отдаёт файлы пустыми — выключено до ответа 1С. */
   onecOdataImages: boolean
@@ -78,7 +78,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     // Заказы ЛК пишутся в 1С: включаются отдельно, после проверки стендом на тестовой базе.
     onecOdataOrders: get('ONEC_ODATA_ORDERS').trim().toLowerCase() === 'true',
     // Рейсы: документ «Задание на перевозку» выпал из публикации OData — включать, когда вернут.
-    onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() === 'true',
+    onecOdataTrips: get('ONEC_ODATA_TRIPS').trim().toLowerCase() !== 'false',
     onecOdataImages: get('ONEC_ODATA_IMAGES').trim().toLowerCase() === 'true',
     onecPriceTypes: get('ONEC_PRICE_TYPES').split(',').map(s => s.trim()).filter(Boolean),
     onecStockWarehouses: get('ONEC_STOCK_WAREHOUSES').split(',').map(s => s.trim()).filter(Boolean),

@@ -33,7 +33,7 @@ export const ODATA_UNSUPPORTED_FLOWS = ['schedule'] as const
 
 /**
  * Каких потоков ждать не надо при этом окружении: в режиме `odata` — несделанных; заказов — пока не включён
- * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — пока не включён `ONEC_ODATA_TRIPS` (документ
+ * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — при `ONEC_ODATA_TRIPS=false` (документ
  * выпал из публикации OData). График доставки в 1С не ведётся (Excel, #45).
  */
 export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataOrders: boolean, onecOdataTrips: boolean, onecOdataImages?: boolean }): readonly string[] {
