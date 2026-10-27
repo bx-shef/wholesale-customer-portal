@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FILTERS, filtersToQuery, parseSort, SORT_ITEMS } from '../app/utils/catalogQuery'
+import { DEFAULT_FILTERS, filtersFromQuery, filtersToQuery, parseSort, SORT_ITEMS } from '../app/utils/catalogQuery'
+import { parseCatalogQuery } from '../server/utils/catalogView'
 
 describe('сортировка каталога', () => {
   it('пять вариантов, по названию — первым, цена — в обе стороны (#86)', () => {
@@ -21,5 +22,13 @@ describe('сортировка каталога', () => {
     const page = readFileSync(join(__dirname, '../app/pages/index.vue'), 'utf8')
     expect(page).toContain('JSON.stringify(filtersToQuery(f))')
     expect(page).toContain('label="Сортировка"')
+  })
+  it('бренды: несколько через повтор параметра, туда и обратно', () => {
+    const f = filtersFromQuery({ brand: ['ЭРА', 'Ceresit', 'ЭРА', ''] })
+    expect(f.brand).toEqual(['ЭРА', 'Ceresit'])
+    expect(filtersToQuery(f).brand).toEqual(['ЭРА', 'Ceresit'])
+    expect(filtersFromQuery({ brand: 'ЭРА' }).brand).toEqual(['ЭРА'])
+    expect(parseCatalogQuery({ brand: ['ЭРА', 'Ceresit'] }).brand).toEqual(['ЭРА', 'Ceresit'])
+    expect(parseCatalogQuery({}).brand).toBeUndefined()
   })
 })

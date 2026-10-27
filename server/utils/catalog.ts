@@ -38,7 +38,7 @@ export type CatalogSort = typeof SORTS[number]
 export interface CatalogQuery {
   q?: string
   section?: string
-  brand?: string
+  brand?: string[]
   inStock?: boolean
   sort?: CatalogSort
   /** Вид цен соглашения клиента — для сортировки по цене (#86); нет — сортировка по названию. */
@@ -184,9 +184,9 @@ export function createCatalogStore(db: DatabaseSync) {
         where.push(`i.section_guid IN (${ids.map(() => '?').join(',')})`)
         params.push(...ids)
       }
-      if (query.brand) {
-        where.push('i.brand = ?')
-        params.push(query.brand)
+      if (query.brand?.length) {
+        where.push(`i.brand IN (${query.brand.map(() => '?').join(',')})`)
+        params.push(...query.brand)
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''

@@ -118,17 +118,28 @@ onMounted(() => {
   })
 })
 
+// Фильтры: на телефоне — шторка снизу, на компьютере — окно. Раздел и «в наличии» — в левом меню.
 const filtersOpen = ref(false)
-// Пункт «Все» — не пустая строка: выпадающий список с поиском пустое значение не принимает.
-const ALL = '__all'
-const pick = (v: unknown) => (v == null || v === ALL ? '' : String(v))
-const sectionItems = computed(() => [{ label: 'Все разделы', value: ALL }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
+const desktop = ref(false)
+onMounted(() => {
+  const mq = window.matchMedia('(min-width: 768px)')
+  desktop.value = mq.matches
+  mq.addEventListener('change', e => { desktop.value = e.matches })
+})
+const FilterPanel = computed(() => resolveComponent(desktop.value ? 'B24Modal' : 'B24Drawer'))
+const panelProps = computed(() => (desktop.value ? {} : { direction: 'bottom', handle: true }))
 const sortItems = SORT_ITEMS
-const brandItems = computed(() => [{ label: 'Все бренды', value: ALL }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
+const brandItems = computed(() => (options.value?.brands ?? []).map(b => ({ label: b, value: b })))
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
-const activeCount = computed(() => [filters.value.section, filters.value.brand, filters.value.inStock].filter(Boolean).length)
+const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
+const brandsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
 
+/** «Сбросить» в фильтрах — только то, что в них: бренды и сортировка. Раздел и наличие задаёт меню. */
 function reset() {
+  setFilters({ brand: [], sort: 'name' })
+}
+/** Пустой результат — сбросить всё: поиск, раздел, наличие, бренды. */
+function resetAll() {
   search.value = ''
   router.push({ query: {} })
 }
@@ -144,9 +155,9 @@ function reset() {
           <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
         </div>
 
-        <div v-if="activeCount" class="flex flex-wrap gap-2">
+        <div v-if="sectionName || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
           <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '' })" />
-          <B24Button v-if="filters.brand" size="sm" color="air-secondary-accent" :label="`${filters.brand} ✕`" :aria-label="`Убрать фильтр: ${filters.brand}`" @click="setFilters({ brand: '' })" />
+          <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
           <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
         </div>
 
@@ -162,8 +173,8 @@ function reset() {
           v-if="status === 'success' && !loadingMore && items.length === 0"
           :icon="ProductIcon"
           title="Ничего не нашлось"
-          :description="filters.q || activeCount ? 'Измените запрос или сбросьте фильтры.' : 'Каталог ещё загружается из учётной системы. Обновите страницу через пару минут.'"
-          :actions="filters.q || activeCount ? [{ label: 'Сбросить', onClick: reset }] : []"
+          :description="filters.q || activeCount || filters.section || filters.inStock ? 'Измените запрос или сбросьте фильтры.' : 'Каталог ещё загружается из учётной системы. Обновите страницу через пару минут.'"
+          :actions="filters.q || activeCount || filters.section || filters.inStock ? [{ label: 'Сбросить', onClick: resetAll }] : []"
         />
 
         <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -204,25 +215,30 @@ function reset() {
         <BuildLoader v-else-if="loading" compact title="Загружаем ещё товары…" />
       </B24Container>
 
-    <B24Drawer v-model:open="filtersOpen" title="Фильтры" direction="bottom" handle>
+    <component :is="FilterPanel" v-model:open="filtersOpen" title="Фильтры" v-bind="panelProps">
       <template #body>
         <div class="mx-auto flex w-full max-w-xl flex-col gap-4 pb-4">
-          <B24FormField label="Раздел">
-            <B24SelectMenu :model-value="filters.section || ALL" :items="sectionItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ section: pick(v) })" />
-          </B24FormField>
-          <B24FormField label="Бренд">
-            <B24SelectMenu :model-value="filters.brand || ALL" :items="brandItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ brand: pick(v) })" />
+          <B24FormField label="Бренды" description="Можно выбрать несколько">
+            <B24SelectMenu
+              :model-value="filters.brand"
+              :items="brandItems"
+              value-key="value"
+              multiple
+              placeholder="Все бренды"
+              :search-input="{ placeholder: 'Найти бренд…' }"
+              class="w-full"
+              @update:model-value="v => setFilters({ brand: brandsOf(v) })"
+            />
           </B24FormField>
           <B24FormField label="Сортировка">
             <B24Select :model-value="filters.sort" :items="sortItems" class="w-full" @update:model-value="v => setFilters({ sort: parseSort(v) })" />
           </B24FormField>
-          <B24Switch :model-value="filters.inStock" label="Только в наличии" @update:model-value="v => setFilters({ inStock: !!v })" />
           <div class="flex gap-2">
             <B24Button color="air-tertiary" label="Сбросить" class="flex-1 justify-center" @click="reset" />
             <B24Button color="air-primary" :label="`Показать ${total}`" class="flex-1 justify-center" @click="filtersOpen = false" />
           </div>
         </div>
       </template>
-    </B24Drawer>
+    </component>
   </AppPage>
 </template>

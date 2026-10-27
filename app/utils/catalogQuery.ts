@@ -2,13 +2,16 @@
 export interface CatalogFilters {
   q: string
   section: string
-  brand: string
+  /** Бренды — несколько: товар любого из них. */
+  brand: string[]
   inStock: boolean
   sort: 'name' | 'sku' | 'available' | 'price' | 'price_desc'
 }
 
-export const DEFAULT_FILTERS: CatalogFilters = { q: '', section: '', brand: '', inStock: false, sort: 'name' }
+export const DEFAULT_FILTERS: CatalogFilters = { q: '', section: '', brand: [], inStock: false, sort: 'name' }
 
+const BRANDS_MAX = 20
+const many = (v: unknown) => [...new Set((Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string' && x !== ''))].slice(0, BRANDS_MAX)
 const one = (v: unknown) => (typeof v === 'string' ? v : Array.isArray(v) && typeof v[0] === 'string' ? v[0] : '')
 
 export function filtersFromQuery(query: Record<string, unknown>): CatalogFilters {
@@ -16,18 +19,18 @@ export function filtersFromQuery(query: Record<string, unknown>): CatalogFilters
   return {
     q: one(query.q),
     section: one(query.section),
-    brand: one(query.brand),
+    brand: many(query.brand),
     inStock: one(query.inStock) === '1',
     sort: parseSort(sort),
   }
 }
 
 /** В адрес — только отличия от умолчаний, чтобы чистый каталог оставался голым `/`. */
-export function filtersToQuery(f: CatalogFilters): Record<string, string> {
-  const out: Record<string, string> = {}
+export function filtersToQuery(f: CatalogFilters): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {}
   if (f.q.trim()) out.q = f.q.trim()
   if (f.section) out.section = f.section
-  if (f.brand) out.brand = f.brand
+  if (f.brand.length) out.brand = f.brand
   if (f.inStock) out.inStock = '1'
   if (f.sort !== 'name') out.sort = f.sort
   return out
