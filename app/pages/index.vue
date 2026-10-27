@@ -138,6 +138,16 @@ const FilterPanel = computed(() => (desktop.value ? ModalPanel : DrawerPanel))
 const panelProps = computed(() => (desktop.value ? {} : { direction: 'bottom', handle: true }))
 const sortItems = SORT_ITEMS
 const brandItems = computed(() => (options.value?.brands ?? []).map(b => b.trim()).filter(Boolean).map(b => ({ label: b, value: b })))
+// Хлебные крошки выбранного раздела: Каталог › группа › раздел — как в карточке товара.
+const crumbs = computed(() => {
+  if (!filters.value.section) return []
+  const trail = sectionTrail(options.value?.sections ?? [], filters.value.section)
+  return [
+    // «Каталог» снимает только раздел: бренды, сортировка и «в наличии» остаются.
+    { label: 'Каталог', to: { path: '/', query: filtersToQuery({ ...filters.value, section: '', sub: [] }) } },
+    ...trail.map((s, i) => ({ label: s.name, to: i === trail.length - 1 ? undefined : { path: '/', query: filtersToQuery({ ...filters.value, section: s.guid, sub: [] }) } })),
+  ]
+})
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
 const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
 // Третий уровень: подразделы выбранного раздела кнопками; можно выбрать несколько.
@@ -176,6 +186,8 @@ function resetAll() {
           <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
         </div>
 
+        <B24Breadcrumb v-if="crumbs.length > 1" :items="crumbs" :b24ui="{ list: 'flex-wrap', linkLabel: 'whitespace-normal' }" />
+
         <div v-if="subSections.length" class="flex flex-wrap gap-2" role="group" aria-label="Подразделы">
           <B24Button
             v-for="s in subSections"
@@ -188,8 +200,8 @@ function resetAll() {
           />
         </div>
 
-        <div v-if="sectionName || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
-          <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '', sub: [] })" />
+        <div v-if="(sectionName && crumbs.length <= 1) || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
+          <B24Button v-if="sectionName && crumbs.length <= 1" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '', sub: [] })" />
           <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
           <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
         </div>
