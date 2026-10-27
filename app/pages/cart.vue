@@ -5,6 +5,8 @@ import { COMMENT_MAX, maxOrderQty } from '~~/shared/cart'
 import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
+// Длинное соглашение или адрес не вылезает за край: переносится, как и пункты списка (владелец 2026-10-27).
+const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', value: 'whitespace-normal break-words text-start', viewport: 'w-[min(32rem,calc(100vw-2rem))]', item: 'h-auto min-h-9 py-1.5 whitespace-normal', itemLabel: 'whitespace-normal break-words' }
 useHead({ title: 'Корзина' })
 const stockMode = useStockMode()
 
@@ -132,8 +134,8 @@ async function submit() {
 </script>
 
 <template>
-  <AppPage id="cart" title="Корзина">
-      <B24Container class="pt-4 pb-28 md:pb-4 flex flex-col gap-3 max-w-2xl">
+  <AppPage id="cart" title="Корзина" :bottom-bar="cart.lines.value.length > 0">
+      <B24Container class="pt-4 pb-4 flex flex-col gap-3 max-w-2xl">
         <B24Alert v-if="sent" color="air-primary-success" :title="`Заявка №${sent.orderId} отправлена`" :description="sent.deliveryFrom && sent.deliveryTo ? `Машина приедет: ${formatSlot({ arrivalFrom: sent.deliveryFrom, arrivalTo: sent.deliveryTo })}. Менеджер подтвердит заявку, статус — в разделе «Заявки».` : 'Менеджер подтвердит заявку и согласует дату доставки. Статус — в разделе «Заявки».'" />
 
         <!-- Пока корзина не прочитана с устройства, «пусто» не показываем: иначе оно мелькает (#77). -->
@@ -183,11 +185,11 @@ async function submit() {
           <B24Card>
             <div class="flex flex-col gap-3">
               <B24FormField v-if="contractItems.length > 1" label="Соглашение" description="Цены и заявка — по выбранному соглашению.">
-                <B24Select v-model="contractGuid" :items="contractItems" class="w-full" />
+                <B24Select v-model="contractGuid" :items="contractItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
               </B24FormField>
               <B24Alert v-if="contractError" color="air-primary-alert" :title="contractError" />
               <B24FormField label="Адрес доставки">
-                <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full" />
+                <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
                 <p v-else class="text-sm">
                   Адрес доставки не найден в учётной системе — обратитесь к менеджеру.
                 </p>

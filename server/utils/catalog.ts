@@ -5,6 +5,7 @@
  *
  * GUID 1С храним в нижнем регистре: контракт допускает любой регистр, а ключи должны совпадать.
  */
+import { compareValues, type PropFilters } from '../../shared/propFilter'
 import type { DatabaseSync } from 'node:sqlite'
 import type { ImageRefT, ItemT, SectionT, StockT } from '../../shared/onec/schemas'
 import { imageUrl, refFromUrl } from './imageStore'
@@ -41,6 +42,8 @@ export interface CatalogQuery {
   /** Выбранные подразделы раздела: товары любого из них (с вложенными). */
   sub?: string[]
   brand?: string[]
+  /** Характеристики: название → значения (`shared/propFilter.ts`). */
+  props?: PropFilters
   inStock?: boolean
   sort?: CatalogSort
   /** Вид цен соглашения клиента — для сортировки по цене (#86); нет — сортировка по названию. */
@@ -58,6 +61,11 @@ const ANALOGS_STORED_MAX = 50
 const SEARCH_WORDS_MAX = 5
 /** Раздел с подразделами: больше — это уже весь каталог, и `IN (…)` упёрся бы в предел SQLite. */
 const SECTION_TREE_MAX = 1000
+/** Значений одной характеристики в фильтре: больше — это уже поиск, а не выбор. */
+const FACET_VALUES_MAX = 100
+const FACET_TTL_MS = 5 * 60_000
+
+export interface Facet { name: string, values: Array<{ value: string, count: number }> }
 const SEARCH_MAX = 100
 
 const lower = (s: string) => s.toLowerCase()
@@ -92,7 +100,7 @@ export function visibleProperties(props: Record<string, string>, hidden: readonl
   return drop.size ? Object.fromEntries(Object.entries(props).filter(([k]) => !drop.has(k.trim().toLowerCase()))) : props
 }
 
-export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[], hiddenProperties?: () => readonly string[] } = {}) {
+export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[], hiddenProperties?: () => readonly string[], filterProperties?: () => readonly string[] } = {}) {
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)
   const upsertItem = db.prepare(`INSERT INTO catalog_item
@@ -135,6 +143,44 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
   function allSections(): { guid: string, parentGuid: string | null, name: string }[] {
     return db.prepare('SELECT guid, parent_guid AS parentGuid, name FROM catalog_section ORDER BY name').all() as never
   }
+  /** Названия характеристик фильтра в нижнем регистре, по порядку, без скрытых. */
+  function filterNames(): Set<string> {
+    const hidden = new Set((opts.hiddenProperties?.() ?? []).map(h => h.trim().toLowerCase()))
+    return new Set((opts.filterProperties?.() ?? []).map(n => n.trim().toLowerCase()).filter(n => n && !hidden.has(n)))
+  }
+
+  function computeFacets(section?: string): Facet[] {
+    const allowed = filterNames()
+    if (!allowed.size) return []
+    const where: string[] = []
+    const params: string[] = []
+    if (section) {
+      const ids = sectionWithChildren(section)
+      where.push(`i.section_guid IN (${ids.map(() => '?').join(',')})`)
+      params.push(...ids)
+    }
+    const nh = notHidden('i.')
+    if (nh.sql) {
+      where.push(nh.sql.replace(/^AND /, ''))
+      params.push(...nh.params)
+    }
+    const rows = db.prepare(`SELECT j.key AS name, j.value AS value, COUNT(*) AS n FROM catalog_item i, json_each(i.properties) j
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''} GROUP BY j.key, j.value`).all(...params) as Array<{ name: string, value: unknown, n: number }>
+    const byName = new Map<string, Array<{ value: string, count: number }>>()
+    for (const r of rows) {
+      if (!allowed.has(r.name.trim().toLowerCase()) || typeof r.value !== 'string' || !r.value.trim()) continue
+      const list = byName.get(r.name) ?? []
+      list.push({ value: r.value, count: Number(r.n) })
+      byName.set(r.name, list)
+    }
+    const order = [...allowed]
+    return [...byName].filter(([, v]) => v.length > 1)
+      .sort(([a], [b]) => order.indexOf(a.trim().toLowerCase()) - order.indexOf(b.trim().toLowerCase()))
+      .map(([name, values]) => ({ name, values: values.sort((a, b) => compareValues(a.value, b.value)).slice(0, FACET_VALUES_MAX) }))
+  }
+
+  const facetCache = new Map<string, { at: number, facets: Facet[] }>()
+
   function hiddenNow(): Set<string> {
     const names = opts.hiddenSections?.() ?? []
     return names.length ? hiddenSectionGuids(allSections(), names) : new Set()
@@ -224,6 +270,20 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
 
     sectionWithChildren,
 
+    /**
+     * Характеристики для фильтра в разделе (или во всём каталоге): только из списка
+     * `CATALOG_FILTER_PROPERTIES`, не скрытые, и где выбрать есть из чего — два значения и больше.
+     */
+    facets(section?: string): Facet[] {
+      // Подсчёт идёт по всем товарам раздела — держим 5 минут: остатки и каталог меняются реже.
+      const key = section?.toLowerCase() ?? ''
+      const hit = facetCache.get(key)
+      if (hit && Date.now() - hit.at < FACET_TTL_MS) return hit.facets
+      const facets = computeFacets(section)
+      facetCache.set(key, { at: Date.now(), facets })
+      return facets
+    },
+
     search(query: CatalogQuery): { items: CatalogItem[], total: number } {
       const where: string[] = []
       const params: (string | number)[] = []
@@ -244,6 +304,13 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
       if (query.brand?.length) {
         where.push(`i.brand IN (${query.brand.map(() => '?').join(',')})`)
         params.push(...query.brand)
+      }
+      // Характеристики: только из списка фильтра и не скрытые — по адресу чужую выборку не построить.
+      const allowed = filterNames()
+      for (const [name, values] of Object.entries(query.props ?? {})) {
+        if (!allowed.has(name.trim().toLowerCase()) || !values.length) continue
+        where.push(`EXISTS (SELECT 1 FROM json_each(i.properties) j WHERE j.key = ? AND j.value IN (${values.map(() => '?').join(',')}))`)
+        params.push(name, ...values)
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
       const nh = notHidden('i.')

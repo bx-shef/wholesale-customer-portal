@@ -4,6 +4,7 @@
  *
  * Граница данных: GUID клиента в 1С берётся только по компании из сессии; из запроса — никогда.
  */
+import { parseProps } from '../../shared/propFilter'
 import type { PriceT } from '../../shared/onec/schemas'
 import type { CatalogItem, CatalogItemDetails, CatalogQuery, CatalogStore } from './catalog'
 import { SORTS } from './catalog'
@@ -73,6 +74,7 @@ export function parseCatalogQuery(q: Record<string, unknown>): CatalogQuery {
     section: section && GUID_RE.test(section) ? section : undefined,
     sub: guids(q.sub),
     brand: brands(q.brand),
+    props: ((p: ReturnType<typeof parseProps>) => (Object.keys(p).length ? p : undefined))(parseProps(q.prop)),
     inStock: str(q.inStock) === '1',
     sort: (SORTS as readonly string[]).includes(sort ?? '') ? sort as CatalogQuery['sort'] : undefined,
     offset: int(q.offset, 0),

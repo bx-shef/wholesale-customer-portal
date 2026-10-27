@@ -3,6 +3,7 @@
 import ProductIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
 import { canOrder, maxOrderQty, normalizeQty } from '~~/shared/cart'
 import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
+import { propCount } from '~~/shared/propFilter'
 const stockMode = useStockMode()
 
 useHead({ title: 'Каталог' })
@@ -19,6 +20,17 @@ const { error: meError } = await useFetch('/api/auth/me', { headers, key: 'me' }
 if (meError.value?.statusCode === 401) await navigateTo('/login')
 
 const { data: options } = await useFetch('/api/catalog/filters', { headers })
+// Характеристики для фильтра — по выбранному разделу: у красок блеск и объём, у крепежа — длина.
+const { data: facetData } = useLazyFetch<{ facets: Array<{ name: string, values: Array<{ value: string, count: number }> }> }>('/api/catalog/facets', {
+  headers, server: false, query: computed(() => (filters.value.section ? { section: filters.value.section } : {})),
+})
+const facets = computed(() => facetData.value?.facets ?? [])
+const facetItems = (f: { values: Array<{ value: string, count: number }> }) => f.values.map(v => ({ label: `${v.value} (${v.count})`, value: v.value }))
+function setProp(name: string, v: unknown) {
+  const list = Array.isArray(v) ? v.map(String) : []
+  const props = Object.fromEntries(Object.entries(filters.value.props).filter(([k]) => k !== name))
+  setFilters({ props: list.length ? { ...props, [name]: list } : props })
+}
 
 // Адрес — источник правды: «назад» и ссылка с фильтрами работают без отдельной синхронизации.
 const filters = computed(() => filtersFromQuery(route.query))
@@ -142,14 +154,14 @@ const panelProps = computed(() => (desktop.value ? {} : { direction: 'bottom', h
 const sortItems = SORT_ITEMS
 const brandItems = computed(() => (options.value?.brands ?? []).map(b => b.trim()).filter(Boolean).map(b => ({ label: b, value: b })))
 // Хлебные крошки раздела: каждое звено — меню соседних разделов (SectionCrumbs).
-const crumbLink = (guid: string) => ({ path: '/', query: filtersToQuery({ ...filters.value, section: guid, sub: [] }) })
+const crumbLink = (guid: string) => ({ path: '/', query: filtersToQuery({ ...filters.value, section: guid, sub: [], props: {} }) })
 const crumbVisible = computed(() => {
   const keep = new Set((filters.value.inStock ? options.value?.stockSections : options.value?.itemSections)?.map(g => g.toLowerCase()) ?? [])
   const all = options.value?.sections ?? []
   const has = (g: string): boolean => keep.has(g) || all.some(s => s.parentGuid?.toLowerCase() === g && has(s.guid.toLowerCase()))
   return (g: string) => has(g.toLowerCase())
 })
-const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
+const activeCount = computed(() => filters.value.brand.length + propCount(filters.value.props) + (filters.value.sort !== 'name' ? 1 : 0))
 // Третий уровень: подразделы выбранного раздела кнопками; можно выбрать несколько.
 const subSections = computed(() => {
   const sec = filters.value.section.toLowerCase()
@@ -167,7 +179,7 @@ const brandsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
 
 /** «Сбросить» в фильтрах — только то, что в них: бренды и сортировка. Раздел и наличие задаёт меню. */
 function reset() {
-  setFilters({ brand: [], sort: 'name' })
+  setFilters({ brand: [], props: {}, sort: 'name' })
 }
 /** Пустой результат — сбросить всё: поиск, раздел, наличие, бренды. */
 function resetAll() {
@@ -200,7 +212,10 @@ function resetAll() {
           />
         </div>
 
-        <div v-if="filters.brand.length" class="flex flex-wrap gap-2">
+        <div v-if="filters.brand.length || propCount(filters.props)" class="flex flex-wrap gap-2">
+          <template v-for="(vals, name) in filters.props" :key="name">
+            <B24Button v-for="v in vals" :key="`${name}-${v}`" size="sm" color="air-secondary-accent" :label="`${name}: ${v} ✕`" :aria-label="`Убрать фильтр: ${name} ${v}`" @click="setProp(String(name), vals.filter(x => x !== v))" />
+          </template>
           <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
                   </div>
 
@@ -271,6 +286,18 @@ function resetAll() {
               :search-input="{ placeholder: 'Найти бренд…' }"
               class="w-full"
               @update:model-value="v => setFilters({ brand: brandsOf(v) })"
+            />
+          </B24FormField>
+          <B24FormField v-for="f in facets" :key="f.name" :label="f.name">
+            <B24SelectMenu
+              :model-value="filters.props[f.name] ?? []"
+              :items="facetItems(f)"
+              value-key="value"
+              multiple
+              :placeholder="`Любой`"
+              :search-input="f.values.length > 8 ? { placeholder: 'Найти…' } : false"
+              class="w-full"
+              @update:model-value="v => setProp(f.name, v)"
             />
           </B24FormField>
           <B24FormField label="Сортировка">

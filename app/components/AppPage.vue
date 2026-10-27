@@ -2,7 +2,8 @@
 <script setup lang="ts">
 import ArrowLeftLIcon from '@bitrix24/b24icons-vue/outline/ArrowLeftLIcon'
 
-defineProps<{ id: string, title: string, back?: string }>()
+/** `bottomBar` — внизу экрана телефона плавающая панель (корзина): подвал поднимаем над ней. */
+defineProps<{ id: string, title: string, back?: string, bottomBar?: boolean }>()
 </script>
 
 <template>
@@ -26,7 +27,7 @@ defineProps<{ id: string, title: string, back?: string }>()
         <div class="flex-1">
           <slot />
         </div>
-        <AppFooter />
+        <AppFooter :class="bottomBar ? 'pb-28 md:pb-6' : ''" />
       </div>
     </template>
   </B24DashboardPanel>

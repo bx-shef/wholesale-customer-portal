@@ -63,7 +63,7 @@ const tree = computed(() => {
 })
 const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
 function sectionLink(guid: string) {
-  return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid, sub: [] }) }
+  return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid, sub: [], props: {} }) }
 }
 // В меню — два уровня: группа и раздел. Третий уровень — кнопками над списком товаров (страница каталога).
 function toItem(n: SectionNode, depth = 1): NavigationMenuItem {
