@@ -21,7 +21,7 @@ import { MINSK_OFFSET_MIN, nextDelivery, type TripSchedule } from '../../shared/
 import type { DealStage, B24Orders } from '../services/b24Orders'
 import { OnecError } from '../services/onec'
 import type { ClientStore } from './clients'
-import { dealClientName, sendToCrm, type OrderItem, type OrderStore } from './orders'
+import { cityInText, dealClientName, sendToCrm, type OrderItem, type OrderStore } from './orders'
 
 export interface OrderSyncDeps {
   orders: OrderStore
@@ -143,15 +143,20 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
         // Дата — на момент подтверждения: менеджер мог подтвердить уже после отсечки.
         if (schedules === undefined) schedules = await deps.schedules().catch(() => null)
         const client = deps.clients.get(row.client_guid)
-        const city = client?.addresses.find(a => a.guid === row.address_guid)?.city
-        const slot = schedules ? nextDelivery(schedules, [city, client?.regionGuid], now) : null
+        // Новый адрес (#124): в 1С его нет — заказ на запасной адрес партнёра, текст — в «Адрес доставки».
+        const isNew = row.address_guid === ''
+        const city = isNew ? (schedules ? cityInText(schedules, row.address_text) : null) : client?.addresses.find(a => a.guid === row.address_guid)?.city
+        const slot = schedules ? nextDelivery(schedules, isNew ? [city] : [city, client?.regionGuid], now) : null
+        const addressGuid = isNew ? client?.addresses[0]?.guid : row.address_guid
+        if (!addressGuid) throw new OnecError('contract', 'new delivery address: client has no address in 1C to fall back on')
         const from = slot?.arrivalFrom ?? null
         const items = JSON.parse(row.items) as OrderItem[]
         const created = await deps.createOnecOrder({
           externalId: String(row.deal_id),
           clientGuid: row.client_guid,
           contractGuid: row.contract_guid,
-          deliveryAddressGuid: row.address_guid,
+          deliveryAddressGuid: addressGuid,
+          ...(isNew ? { deliveryAddressText: row.address_text } : {}),
           deliveryDate: deliveryDateFor(from, now),
           comment: row.comment,
           items: items.map(i => ({ itemGuid: i.guid, qty: i.qty, price: i.price })),

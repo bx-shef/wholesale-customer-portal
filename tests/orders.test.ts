@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createCatalogStore } from '../server/utils/catalog'
 import { createClientStore } from '../server/utils/clients'
-import { createOrderStore, parseCartLines, quoteCart, SENDING_STALE_MS, submitOrder, type SubmitDeps } from '../server/utils/orders'
+import { cityInText, cleanNewAddress, createOrderStore, parseCartLines, quoteCart, SENDING_STALE_MS, submitOrder, type SubmitDeps } from '../server/utils/orders'
 import { createB24Orders, DEAL_ORIGINATOR } from '../server/services/b24Orders'
 import { createRateLimiter } from '../server/utils/rateLimit'
 import { formatSlot, nextDelivery, parseDates, parseTime, parseWeekdays, type TripSchedule } from '../shared/delivery'
@@ -159,6 +159,21 @@ describe('заявка', () => {
     expect((await quoteCart([{ guid: g(1), qty: 110 }], deps.store, ok, deps.prices, 'over')).lines[0]!.problem).toBeNull()
     expect((await quoteCart([{ guid: g(3), qty: 1 }], deps.store, ok, deps.prices, 'over')).lines[0]!.problem).toBe('out_of_stock')
     expect((await quoteCart([{ guid: g(3), qty: 1 }], deps.store, ok, deps.prices, 'any')).lines[0]!.problem).not.toBe('out_of_stock')
+  })
+
+  it('новый адрес доставки (#124): заявка уходит, в сделке — пометка для менеджера; короткий — отказ', async () => {
+    const r = await submitOrder(session, ok, input({ addressGuid: '', newAddress: '  г. Брест,   ул. Новая, 5 ' }), deps)
+    expect(r).toMatchObject({ ok: true })
+    expect(deps.b24.createDeal.mock.calls[0]![0].comments).toContain('Новый адрес доставки (нет в 1С, внесите его в карточку партнёра): г. Брест, ул. Новая, 5')
+    const bad = await submitOrder(session, ok, input({ requestId: '00000000-0000-4000-8000-000000000999', addressGuid: '', newAddress: 'Бр' }), deps)
+    expect(bad).toMatchObject({ ok: false, status: 400, error: 'bad_address' })
+  })
+
+  it('город нового адреса находится в графике целым словом', () => {
+    const sch = [{ region: 'Брест', weekdays: [1], cutoffDaysBefore: 1, cutoffMinutes: 1439, arrivalFromMinutes: 0, arrivalToMinutes: 0, exceptions: [] }]
+    expect(cityInText(sch, 'г. Брест, ул. Новая, 5')).toBe('Брест')
+    expect(cityInText(sch, 'Брестская обл., Дрогичин')).toBeNull()
+    expect(cleanNewAddress('ab')).toBeNull()
   })
 
   it('без цены договора заявка не уходит', async () => {

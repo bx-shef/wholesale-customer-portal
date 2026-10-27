@@ -92,7 +92,7 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
     ХозяйственнаяОперация: a.ХозяйственнаяОперация || DEFAULT_OPERATION,
     ЦенаВключаетНДС: a.ЦенаВключаетНДС ?? true,
     ДатаОтгрузки: shipment,
-    АдресДоставки: refs.address,
+    АдресДоставки: o.deliveryAddressText || refs.address,
     Комментарий: o.comment ?? '',
     НомерПоДаннымКлиента: orderMarker(o.externalId),
     Товары: o.items.map((it, i) => ({
