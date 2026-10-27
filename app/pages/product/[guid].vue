@@ -20,6 +20,12 @@ const holding = useMinLoading(() => !item.value && status.value !== 'error')
 const cart = useCart()
 const ai = useAiChat()
 const { data: me } = useNuxtData<{ ai?: boolean }>('me')
+// Хлебные крошки: Каталог › раздел › подраздел — разделы уже загружены меню (ключ catalog-filters).
+const { data: filterOptions } = useNuxtData<{ sections: { guid: string, parentGuid: string | null, name: string }[] }>('catalog-filters')
+const crumbs = computed(() => [
+  { label: 'Каталог', to: '/' },
+  ...(item.value ? sectionTrail(filterOptions.value?.sections ?? [], item.value.sectionGuid) : []).map(s => ({ label: s.name, to: { path: '/', query: { section: s.guid } } })),
+])
 const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
 </script>
 
@@ -30,6 +36,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
         <B24Alert v-else-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить товар. Обновите страницу." />
         <BuildLoader v-else-if="holding && status !== 'error'" title="Загружаем товар, цену и остатки…" />
         <template v-else-if="item">
+          <B24Breadcrumb :items="crumbs" :b24ui="{ list: 'flex-wrap', linkLabel: 'whitespace-normal' }" />
           <B24Card>
             <div class="flex flex-col gap-2">
               <div v-if="item.images.length" class="flex gap-2 overflow-x-auto">
