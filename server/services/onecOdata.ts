@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto'
 import type { z } from 'zod'
 import { CatalogPage, ImageFile, PAGE_SIZE_MAX, Price, Stock, type ImageFileT, type ItemT, type PriceT, type SectionT, type StockT } from '../../shared/onec/schemas'
 import { OnecError, onecAuthHeader, type OnecAuth } from './onec'
+import { sniffImage } from '../utils/imageStore'
 
 /** Пустая ссылка 1С: поле `_Key` без значения. */
 export const EMPTY_REF = '00000000-0000-0000-0000-000000000000'
@@ -337,12 +338,14 @@ export class ODataClient {
     }, IMAGE_MAX_RESPONSE)
     const row = rows[0]
     if (!row) throw new OnecError('http', `1C OData ${set}: not found`, 404)
-    const contentType = IMAGE_EXT[(row.Расширение ?? '').toLowerCase().replace(/^\./, '')]
-    if (!contentType) throw new OnecError('contract', `1C OData ${set}: not an image (${(row.Расширение ?? '').slice(0, 10)})`)
     let data = (row.ФайлХранилище_Base64Data ?? '').replace(/\s+/g, '')
     // Хранилище справочника пусто — данные файла в регистре «ДвоичныеДанныеФайлов» (так в БСП;
     // опубликован 2026-10-27). Измерение «Файл» составного типа — отбор через cast.
     if (!data) data = await this.fileBinary(set, id)
+    // Тип — по содержимому: в 1С расширение бывает пустым или не тем (png с расширением jpg,
+    // замер 2026-10-27: 25 из 300). Не картинка ни по содержимому, ни по расширению — отказ.
+    const contentType = sniffImage(Buffer.from(data.slice(0, 24), 'base64')) ?? IMAGE_EXT[(row.Расширение ?? '').toLowerCase().replace(/^\./, '')]
+    if (!contentType) throw new OnecError('contract', `1C OData ${set}: not an image (${(row.Расширение ?? '').slice(0, 10)})`)
     const parsed = ImageFile.safeParse({ id, hash: id.replaceAll('-', ''), contentType, data })
     if (!parsed.success) throw new OnecError('contract', `1C OData ${set}: image breaks contract at ${parsed.error.issues[0]?.path.join('.')}`)
     return parsed.data
