@@ -168,6 +168,7 @@ export interface OrderListRow {
   shipmentDate: string | null
   /** Задание на перевозку 1С, в которое попал заказ. */
   tripGuid: string | null
+  deliveryConfirmed: number
   items: OrderItem[]
 }
 
@@ -216,8 +217,9 @@ export function createOrderStore(db: DatabaseSync) {
   const byOnec = db.prepare('SELECT * FROM order_request WHERE onec_order_guid = ?')
   const applyOnec = db.prepare('UPDATE order_request SET status = ?, shipment_date = ?, onec_number = ?, updated_at = ? WHERE id = ?')
   const setTrip = db.prepare('UPDATE order_request SET trip_guid = ? WHERE id = ? AND trip_guid IS NOT ?')
+  const setConfirmed = db.prepare('UPDATE order_request SET delivery_confirmed = ? WHERE id = ?')
   const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
-      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, trip_guid AS tripGuid, items
+      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, trip_guid AS tripGuid, delivery_confirmed AS deliveryConfirmed, items
     FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
 
   return {
@@ -279,6 +281,10 @@ export function createOrderStore(db: DatabaseSync) {
     setTrip(id: number, tripGuid: string | null): boolean {
       const guid = tripGuid?.toLowerCase() ?? null
       return Number(setTrip.run(guid, id, guid).changes) > 0
+    },
+    /** Подтверждение доставки из 1С — и вперёд, и назад: снятый в 1С статус снимает и подсветку. */
+    setDeliveryConfirmed(id: number, confirmed: boolean) {
+      setConfirmed.run(confirmed ? 1 : 0, id)
     },
     applyStatus(id: number, status: string, shipmentDate: string | null, number: string, now: string) {
       applyOnec.run(status, shipmentDate, number, now, id)

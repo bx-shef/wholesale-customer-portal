@@ -151,6 +151,11 @@ export const OrderStatusRow = z.object({
   shipmentDate: DateOnly.nullable(),
   /** Задание на перевозку (§2.9), в которое попал заказ; `null` — ещё не запланирован. */
   tripGuid: Guid.nullable(),
+  /**
+   * Доставка подтверждена (решение клиента 2026-10-27): заказ «К выполнению», состояние «Готов к
+   * закрытию», расходный ордер «К отгрузке», задание на перевозку «Закрыто». Тогда клиенту — день приезда.
+   */
+  deliveryConfirmed: z.boolean().default(false),
   changedAt: DateTime,
 })
 

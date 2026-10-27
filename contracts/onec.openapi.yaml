@@ -1364,6 +1364,9 @@ components:
             - type: string
               pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
             - type: "null"
+        deliveryConfirmed:
+          default: false
+          type: boolean
         changedAt:
           type: string
           format: date-time
@@ -1375,6 +1378,7 @@ components:
         - status
         - shipmentDate
         - tripGuid
+        - deliveryConfirmed
         - changedAt
       additionalProperties: false
     OrderStatusPage:
@@ -1415,6 +1419,9 @@ components:
                   - type: string
                     pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
                   - type: "null"
+              deliveryConfirmed:
+                default: false
+                type: boolean
               changedAt:
                 type: string
                 format: date-time
@@ -1426,6 +1433,7 @@ components:
               - status
               - shipmentDate
               - tripGuid
+              - deliveryConfirmed
               - changedAt
             additionalProperties: false
         nextPage:

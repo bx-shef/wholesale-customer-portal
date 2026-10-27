@@ -202,6 +202,8 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE onec_client ADD COLUMN contracts TEXT;`,
   // ИИ-помощник убран из проекта (решение владельца 2026-10-27, #75): журнал диалогов больше не нужен.
   `DROP TABLE IF EXISTS ai_dialog;`,
+  // Доставка подтверждена в 1С по четырём статусам (решение клиента 2026-10-27): «точно приедет».
+  `ALTER TABLE order_request ADD COLUMN delivery_confirmed INTEGER NOT NULL DEFAULT 0;`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ODataClient } from '../server/services/onecOdata'
 import { addressGuid } from '../server/services/onecOdataClients'
-import { createOdataOrder, orderBody, orderMarker, orderStatusOf, orderStatusRow, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
+import { createOdataOrder, orderBody, orderMarker, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
 import { OrderRequest, OrderStatusRow } from '../shared/onec/schemas'
 
 const G = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -9,7 +9,7 @@ const PARTNER = G(1)
 const ADDR = addressGuid(PARTNER, G(60), 'Минск|ул. Ленина, 1')
 const req = (over: object = {}) => OrderRequest.parse({ externalId: '123', clientGuid: PARTNER, contractGuid: G(3), deliveryAddressGuid: ADDR, deliveryDate: '2026-10-25', comment: 'к обеду', items: [{ itemGuid: G(10), qty: 3, price: 12.5 }], ...over })
 
-function onec(over: { existing?: object[], agreementPartner?: string, agreementStatus?: string, items?: string[] } = {}) {
+function onec(over: { existing?: object[], agreementPartner?: string, agreementStatus?: string, items?: string[], extra?: Record<string, unknown[]> } = {}) {
   const calls: Array<{ method: string, url: string, body?: unknown, headers?: Record<string, string> }> = []
   const fetch: typeof globalThis.fetch = async (u, init) => {
     const url = decodeURIComponent(String(u))
@@ -25,6 +25,7 @@ function onec(over: { existing?: object[], agreementPartner?: string, agreementS
       Catalog_Партнеры: [{ Ref_Key: PARTNER, ЗонаДоставки_Key: G(51) }],
       Catalog_Партнеры_КонтактнаяИнформация: [{ Ref_Key: PARTNER, LineNumber: '1', Тип: 'Адрес', Вид_Key: G(60), Город: 'Минск', Представление: 'ул. Ленина, 1' }],
       Catalog_Номенклатура: (over.items ?? [G(10)]).map(g => ({ Ref_Key: g, СтавкаНДС_Key: G(90) })),
+      ...over.extra,
     }
     return Response.json({ value: data[set] ?? [] })
   }
@@ -128,7 +129,7 @@ describe('заказ по OData: статусы', () => {
   it('readOrderStatuses: окно по дате и маркер в фильтре', async () => {
     const t = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОтгрузке', ДатаОтгрузки: '2026-10-25T00:00:00' }] })
     const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
-    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25' }])
+    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25|0' }])
     expect(t.calls[0]!.url).toContain("Date ge datetime'2026-07-23T12:00:00' and startswith(НомерПоДаннымКлиента, 'ЛК-')")
   })
 })
@@ -162,5 +163,27 @@ describe('ODataClient.send', () => {
     expect(seen.init?.body).toBe('{"x":1}')
     await expect(mk(new Response('oops', { status: 200 })).send('POST', 'D', 'D')).rejects.toMatchObject({ kind: 'contract' })
     await expect(mk(new Response('{"odata.error":{"message":{"value":"нет  прав"}}}', { status: 403 })).send('POST', 'D', 'D')).rejects.toThrow('HTTP 403 — нет прав')
+  })
+})
+
+describe('«точно приедет»: четыре статуса (решение клиента 2026-10-27)', () => {
+  const extra = (over: { state?: string, issue?: string, trip?: string } = {}) => ({
+    InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77), Состояние: over.state ?? 'ГотовКЗакрытию' }],
+    Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям: [{ Ref_Key: G(80), Распоряжение: G(77) }],
+    Document_РасходныйОрдерНаТовары: [{ Ref_Key: G(80), Статус: over.issue ?? 'КОтгрузке', Posted: true, ЗаданиеНаПеревозку_Key: G(81) }],
+    Document_ЗаданиеНаПеревозку: [{ Ref_Key: G(81), Статус: over.trip ?? 'Закрыто' }],
+  })
+  it('все четыре — подтверждено; любое не то — нет', async () => {
+    expect([...await readDeliveryConfirmed(onec({ extra: extra() }).client, [G(77)])]).toEqual([G(77)])
+    for (const o of [{ state: 'ОжидаетсяОплата' }, { issue: 'КОтбору' }, { trip: 'Отправлено' }]) {
+      expect((await readDeliveryConfirmed(onec({ extra: extra(o) }).client, [G(77)])).size, JSON.stringify(o)).toBe(0)
+    }
+  })
+  it('в статусах — только для заказа «К выполнению»', async () => {
+    const doc = { Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true }
+    const yes = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОтгрузке' }], extra: extra() }).client, new Date('2026-10-21T09:00:00Z'))
+    expect(yes[0]!.row.deliveryConfirmed).toBe(true)
+    const no = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОбеспечению' }], extra: extra() }).client, new Date('2026-10-21T09:00:00Z'))
+    expect(no[0]!.row.deliveryConfirmed).toBe(false)
   })
 })
