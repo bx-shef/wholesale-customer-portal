@@ -7,6 +7,8 @@ import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
 useHead({ title: 'Каталог' })
 
 const PAGE = 30
+// Сервер ждёт наличие явно (inStock=1); в адресе страницы оно по умолчанию и не пишется.
+const apiQuery = (f: CatalogFilters) => ({ ...filtersToQuery(f), inStock: f.inStock ? '1' : '0' })
 const cart = useCart()
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +29,7 @@ function setFilters(patch: Partial<CatalogFilters>) {
 // каталог с загрузчиком, а не пустую вкладку, пока сервер ждёт 1С.
 const { data: first, error: firstError, status } = await useAsyncData(
   'catalog-first',
-  () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...filtersToQuery(filters.value), limit: PAGE } }),
+  () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...apiQuery(filters.value), limit: PAGE } }),
   { watch: [filters], server: false, lazy: true },
 )
 watch(firstError, (e) => {
@@ -57,7 +59,7 @@ async function loadMore() {
   moreFailed.value = false
   try {
     const page = await $fetch<CatalogPageView>('/api/catalog', {
-      query: { ...filtersToQuery(filters.value), offset: items.value.length, limit: PAGE },
+      query: { ...apiQuery(filters.value), offset: items.value.length, limit: PAGE },
     })
     if (gen === generation) extra.value = [...extra.value, ...page.items]
   }
@@ -90,12 +92,12 @@ let sentinelVisible = false
 const SAVED_KEY = 'wcp-catalog-filters'
 // «Только в наличии» — из той же cookie, что у переключателя в меню: иначе восстановленные фильтры
 // включали его, когда в меню он выключен.
-const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
+const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 onMounted(() => {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '{}') as Record<string, string>
     delete saved.inStock
-    if (inStockKept.value) saved.inStock = '1'
+    if (!inStockKept.value) saved.inStock = '0'
     if (Object.keys(route.query).length === 0 && Object.keys(saved).length > 0) router.replace({ query: saved })
   }
   catch { /* хранилище недоступно — каталог просто без сохранённых фильтров */ }
@@ -200,11 +202,10 @@ function resetAll() {
           />
         </div>
 
-        <div v-if="(sectionName && crumbs.length <= 1) || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
+        <div v-if="(sectionName && crumbs.length <= 1) || filters.brand.length" class="flex flex-wrap gap-2">
           <B24Button v-if="sectionName && crumbs.length <= 1" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '', sub: [] })" />
           <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
-          <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
-        </div>
+                  </div>
 
         <B24Alert v-if="priceStatus === 'unavailable'" color="air-primary-warning" title="Цены временно недоступны" description="Каталог и остатки показываем, цены появятся, как только ответит учётная система. Обновите страницу через минуту." />
         <B24Alert v-else-if="priceStatus === 'no-contract'" color="air-primary-warning" title="Цены пока не подключены" description="Ваша компания ещё не связана с договором в учётной системе. Обратитесь к менеджеру — после подключения цены появятся здесь." />

@@ -53,7 +53,7 @@ const SECTION_MENU_UI = {
 const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
 watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
 // «Только в наличии» помним и вне каталога и после перезагрузки (cookie — видна и серверу, гидрация совпадает): в карточке, корзине и профиле меню показывает то же.
-const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
+const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 watch(() => route.path === '/' ? filtersFromQuery(route.query).inStock : null, (v) => { if (v !== null) inStockKept.value = v }, { immediate: true })
 const catalogFilters = computed(() => route.path === '/' ? filtersFromQuery(route.query) : { ...filtersFromQuery({}), inStock: inStockKept.value })
 const tree = computed(() => {
@@ -110,7 +110,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
         <img v-if="!collapsed" src="/logo.png" alt="Алгена — личный кабинет" class="h-7 w-auto shrink-0">
         <!-- «В наличии» — в шапке меню: она не прокручивается вместе с длинным списком разделов. -->
-        <B24Switch v-if="!collapsed" :model-value="catalogFilters.inStock" size="xs" label="Только в наличии" class="basis-full ps-1" @update:model-value="v => setInStock(!!v)" />
+        <B24Switch v-if="!collapsed" :model-value="catalogFilters.inStock" size="xs" label="Только в наличии" class="basis-full ps-1 pb-2" @update:model-value="v => setInStock(!!v)" />
       </template>
       <template #default="{ collapsed }">
         <B24NavigationMenu :collapsed="collapsed" :items="sections" orientation="vertical" />

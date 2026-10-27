@@ -37,4 +37,10 @@ describe('сортировка каталога', () => {
     expect(filtersToQuery({ ...DEFAULT_FILTERS, section: G, sub: [G] }).sub).toEqual([G])
     expect(parseCatalogQuery({ sub: [G, 'x'] }).sub).toEqual([G])
   })
+  it('«Только в наличии» по умолчанию включено; в адресе — только выключение', () => {
+    expect(filtersFromQuery({}).inStock).toBe(true)
+    expect(filtersFromQuery({ inStock: '0' }).inStock).toBe(false)
+    expect(filtersToQuery(DEFAULT_FILTERS)).toEqual({})
+    expect(filtersToQuery({ ...DEFAULT_FILTERS, inStock: false }).inStock).toBe('0')
+  })
 })
