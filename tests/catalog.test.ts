@@ -448,3 +448,12 @@ describe('несколько значений в поле фильтра — к�
     expect(readFileSync('app/pages/index.vue', 'utf8').match(/selectedSummary\(asList\(modelValue\)\)/g)?.length).toBe(4)
   })
 })
+
+describe('короткие характеристики — галочками (владелец 2026-10-27)', () => {
+  it('до 12 значений — B24CheckboxGroup, больше — список с поиском', () => {
+    const src = readFileSync('app/pages/index.vue', 'utf8')
+    expect(src).toContain('const CHECKBOX_MAX = 12')
+    expect(src).toMatch(/<B24CheckboxGroup\s+v-if="f\.values\.length <= CHECKBOX_MAX"/)
+    expect(src).toMatch(/<B24SelectMenu\s+v-else/)
+  })
+})
