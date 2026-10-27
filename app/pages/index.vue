@@ -88,9 +88,14 @@ const sentinel = ref<HTMLElement>()
 let sentinelVisible = false
 // Поиск и фильтры запоминаются: вернулся в каталог из карточки или корзины — всё как было.
 const SAVED_KEY = 'wcp-catalog-filters'
+// «Только в наличии» — из той же cookie, что у переключателя в меню: иначе восстановленные фильтры
+// включали его, когда в меню он выключен.
+const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 onMounted(() => {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '{}') as Record<string, string>
+    delete saved.inStock
+    if (inStockKept.value) saved.inStock = '1'
     if (Object.keys(route.query).length === 0 && Object.keys(saved).length > 0) router.replace({ query: saved })
   }
   catch { /* хранилище недоступно — каталог просто без сохранённых фильтров */ }
@@ -126,10 +131,13 @@ onMounted(() => {
   desktop.value = mq.matches
   mq.addEventListener('change', e => { desktop.value = e.matches })
 })
-const FilterPanel = computed(() => resolveComponent(desktop.value ? 'B24Modal' : 'B24Drawer'))
+// resolveComponent — только в setup: внутри computed он не находит компонент, и окно не открывалось.
+const ModalPanel = resolveComponent('B24Modal')
+const DrawerPanel = resolveComponent('B24Drawer')
+const FilterPanel = computed(() => (desktop.value ? ModalPanel : DrawerPanel))
 const panelProps = computed(() => (desktop.value ? {} : { direction: 'bottom', handle: true }))
 const sortItems = SORT_ITEMS
-const brandItems = computed(() => (options.value?.brands ?? []).map(b => ({ label: b, value: b })))
+const brandItems = computed(() => (options.value?.brands ?? []).map(b => b.trim()).filter(Boolean).map(b => ({ label: b, value: b })))
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
 const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
 // Третий уровень: подразделы выбранного раздела кнопками; можно выбрать несколько.
