@@ -13,11 +13,12 @@ describe('подпись сделки', () => {
 })
 
 describe('профиль (#77)', () => {
-  it('блок компании и подсказка без телефона менеджера', async () => {
+  it('блок компании и позитивная подсказка про звонок', async () => {
     const { readFileSync } = await import('node:fs')
     const page = readFileSync(new URL('../app/pages/profile.vue', import.meta.url), 'utf8')
     expect(page).toContain('{{ data.company.title }}')
-    expect(page).toContain('Телефон менеджера не указан — закажите звонок')
+    expect(page).toContain('Закажите звонок — менеджер вам перезвонит.')
+    expect(page).not.toContain('не указан')
   })
 })
 

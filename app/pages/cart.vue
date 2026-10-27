@@ -198,7 +198,7 @@ async function submit() {
                   Расписание рейсов сейчас недоступно — дату доставки согласует менеджер.
                 </template>
                 <template v-else>
-                  В {{ address.city }} рейсов пока нет в расписании — дату согласует менеджер.
+                  Дату доставки согласует менеджер.
                 </template>
               </p>
               <B24FormField label="Комментарий" :hint="`${comment.length} / ${COMMENT_MAX}`">
