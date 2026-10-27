@@ -63,7 +63,7 @@ describe('раскладка: выход, гидрация, чат (панель
   it('свёрнутость меню не из localStorage (иначе расхождение гидрации)', () => {
     expect(src).not.toMatch(/storage="local"/)
   })
-  it('открытый чат сдвигает раскладку', () => {
-    expect(src).toContain("'md:pr-[440px]': ai.open.value")
+  it('ИИ-помощника в раскладке нет (убран, #75)', () => {
+    expect(src).not.toContain('useAiChat')
   })
 })

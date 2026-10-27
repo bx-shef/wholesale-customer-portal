@@ -1,6 +1,6 @@
 # Выкат ЛК
 
-> Last reviewed: 2026-10-23
+> Last reviewed: 2026-10-27
 
 Схема выката собрана из трёх рабочих примеров флота. Код выката пишем на этапе 0 (CI, образ, compose, `Makefile`) и этапе 7 (ВМ клиента); здесь — что берём и почему.
 
@@ -145,15 +145,12 @@ self.addEventListener('activate', (e) => e.waitUntil((async () => {
 | `ONEC_MODE`, `ONEC_LOGIN`, `ONEC_PASSWORD`, `ONEC_PRICE_TYPES`, `ONEC_STOCK_WAREHOUSES`, `ONEC_ODATA_ORDERS`, `ONEC_ODATA_TRIPS`, `ONEC_ODATA_IMAGES` | `ONEC_MODE=odata` — 1С по стандартному OData (`ONEC_URL` — адрес публикации; вход — `ONEC_LOGIN`/`ONEC_PASSWORD`; `ONEC_MOCK=true` перекрывает режим); виды цен и склады по наименованию (склады — и запасной склад заказа); `ONEC_ODATA_ORDERS=true` — заявки в заказы 1С, `ONEC_ODATA_TRIPS=true` — рейсы, `ONEC_ODATA_IMAGES=true` — картинки товаров (по умолчанию выключены: тестовая 1С отдаёт файлы пустыми) (все — только после проверки стендом; заказы — после #46, порядок — `docs/project-map.md`) — `docs/onec-odata.md` |
 | `SYNC_CATALOG_EVERY_MIN`, `SYNC_PRICES_EVERY_MIN`, `SYNC_STOCK_EVERY_MIN`, `SYNC_CLIENTS_EVERY_MIN`, `SYNC_ORDERS_EVERY_MIN`, `SYNC_SCHEDULE_EVERY_MIN`, `SYNC_TRIPS_EVERY_MIN`, `SYNC_IMAGES_EVERY_MIN` | Как часто поток обмена ходит в 1С сам, минут (по умолчанию 60/15/5/10/2/60/10/30; 0 — только вручную; до недели). Пауза всей автосинхронизации — кнопкой на «Состоянии системы», переживает выкат. `SYNC_IMAGES_BATCH` — картинок за прогон (по умолчанию 1000, до 5000); по OData поток картинок идёт только с `ONEC_ODATA_IMAGES=true` |
 | `ONEC_CLIENT_TTL_MIN` | Сколько минут данные клиента из 1С (соглашение, адреса, зона) свежи при входе; старше — ЛК грузит их заново по GUID клиента. 1–1440, по умолчанию 15 |
-| `AI_ASSISTANT` | `true` — показать ИИ-помощника (нужен и ключ DeepSeek); по умолчанию выключен, чат отвечает `404` |
-| `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | ИИ-помощник; без ключа чат отвечает `503`, ЛК работает |
 | `SESSION_SECRET` | Подпись сессий клиентов и HMAC логина в журнале, не короче 32 символов (`openssl rand -hex 32`). Смена разлогинивает всех и обнуляет счётчики попыток |
 | `MCP_ADMIN_TOKEN` | Bearer для `/mcp/admin` |
 | `DATA_DIR` | Каталог базы SQLite; в образе — `/data` (том `data` в compose) |
 | `ONEC_TEST_LOGIN`, `ONEC_TEST_PASSWORD` | Вход на стенд 1С `/api/onec-test` и страницу «Состояние системы» `/api/system`; пароль не задан — обе страницы отвечают 404 |
 | `TELEGRAM_ALERT_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID` | Оповещения о сбоях обмена (`docs/MONITORING.md`); нет одной из пары или неверный формат — канал выключен, видно на `/api/system` |
 | `PUBLIC_URL` | Адрес ЛК (`https://wsp.algena.by`) для ссылки на `/api/system` в сообщениях Telegram; необязателен |
-| `FEEDBACK_URL`, `FEEDBACK_TOKEN` | Приёмник оценок ИИ (skills-standard); пусто — канал выключен — *этап 5* |
 
 `make` запускает compose только с `.env` (без переменных оболочки) — приём invoice-from-tasks против соседних проектов на общем хосте. Копии `SESSION_SECRET` и `MCP_ADMIN_TOKEN` — вне сервера.
 

@@ -1,6 +1,6 @@
 # Техническое описание (полное)
 
-> Last reviewed: 2026-10-22
+> Last reviewed: 2026-10-27
 
 Дополняет [project.md](project.md): здесь — детали, по которым пишется код. Источник — документ «Личный кабинет клиента — описание проекта» (claude.ai).
 
@@ -107,7 +107,7 @@
 - Контрактные тесты: `tests/contract/onec.spec.ts` против мока (CI) и тестовой базы 1С (приёмка).
 - Управление: `POST /mock-1c/_admin/reset`, `POST /mock-1c/_admin/client`.
 
-## 7. ИИ-помощник (DeepSeek)
+## 7. ИИ-помощник (DeepSeek) — убран из проекта 2026-10-27 (#75), будет в другом проекте
 
 OpenAI-совместимый API, tool calling, стрим в чат; ключ только на сервере, маршрут `/api/ai/chat`. Готовая обвязка — skills-site (`server/api/assistant.post.ts`, `server/utils/chat-config.ts`) и ai-price-import (`server/agent/llmConfig.ts`).
 

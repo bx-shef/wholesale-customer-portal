@@ -146,6 +146,5 @@ export function pruneJournals(db: DatabaseSync, now = new Date(), days = LOGIN_J
   const before = new Date(now.getTime() - days * 86_400_000).toISOString()
   const a = db.prepare('DELETE FROM login_journal WHERE at < ?').run(before).changes
   const b = db.prepare('DELETE FROM sync_run WHERE started_at < ?').run(before).changes
-  const c = db.prepare('DELETE FROM ai_dialog WHERE created_at < ?').run(before).changes
-  return Number(a) + Number(b) + Number(c)
+  return Number(a) + Number(b)
 }

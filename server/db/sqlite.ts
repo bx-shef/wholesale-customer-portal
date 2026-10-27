@@ -200,6 +200,8 @@ export const MIGRATIONS: string[] = [
    ALTER TABLE onec_client ADD COLUMN seen_at TEXT;`,
   // Все действующие соглашения клиента (#46): клиент выбирает соглашение в корзине.
   `ALTER TABLE onec_client ADD COLUMN contracts TEXT;`,
+  // ИИ-помощник убран из проекта (решение владельца 2026-10-27, #75): журнал диалогов больше не нужен.
+  `DROP TABLE IF EXISTS ai_dialog;`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {
