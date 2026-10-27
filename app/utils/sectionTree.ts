@@ -71,3 +71,24 @@ export function sectionTrail(sections: { guid: string, parentGuid: string | null
   }
   return trail
 }
+
+/** Звено крошек: раздел и его соседи по родителю — для выпадающего меню переключения. */
+export interface CrumbLevel { guid: string, name: string, siblings: { guid: string, name: string }[] }
+
+/**
+ * Крошки с соседями: на каждом уровне — раздел и разделы того же родителя (по алфавиту).
+ * `visible` — какие разделы можно показывать (непустые, с наличием); сам раздел пути остаётся всегда.
+ */
+export function crumbLevels(sections: { guid: string, parentGuid: string | null, name: string }[], guid: string, visible?: (guid: string) => boolean): CrumbLevel[] {
+  const trail = sectionTrail(sections, guid)
+  return trail.map((t) => {
+    const self = sections.find(s => s.guid.toLowerCase() === t.guid.toLowerCase())
+    const parent = self?.parentGuid?.toLowerCase() ?? null
+    const siblings = sections
+      .filter(s => (s.parentGuid?.toLowerCase() ?? null) === parent)
+      .filter(s => s.guid.toLowerCase() === t.guid.toLowerCase() || !visible || visible(s.guid))
+      .map(s => ({ guid: s.guid, name: s.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    return { ...t, siblings }
+  })
+}
