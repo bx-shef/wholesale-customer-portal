@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
-import { createCatalogStore, hiddenSectionGuids } from '../server/utils/catalog'
+import { createCatalogStore, hiddenSectionGuids, visibleProperties } from '../server/utils/catalog'
 import { createPriceStore } from '../server/utils/prices'
 import { createClientStore } from '../server/utils/clients'
 import { catalogItem, catalogPage, COMPANY_NO_GUID_TTL_MS, createCompanyGuidResolver, parseCatalogQuery, resolvePricing } from '../server/utils/catalogView'
@@ -362,5 +362,9 @@ describe('скрытые разделы (CATALOG_HIDDEN_SECTIONS)', () => {
     names = []
     expect(store.search({}).total).toBe(2)
     expect(hiddenSectionGuids([{ guid: 'A', parentGuid: null, name: ' УСЛУГИ ' }], ['услуги'])).toEqual(new Set(['a']))
+  })
+  it('скрытые характеристики — по названию, без учёта регистра', () => {
+    expect(visibleProperties({ 'Цвет': 'Черный', 'ГруппаДляСтатистики': 'Прочие' }, [' группадлястатистики '])).toEqual({ 'Цвет': 'Черный' })
+    expect(visibleProperties({ 'Цвет': 'Черный' }, [])).toEqual({ 'Цвет': 'Черный' })
   })
 })

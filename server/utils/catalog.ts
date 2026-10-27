@@ -86,7 +86,13 @@ export function hiddenSectionGuids(sections: { guid: string, parentGuid: string 
   return hidden
 }
 
-export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[] } = {}) {
+/** Характеристики без скрытых (`CATALOG_HIDDEN_PROPERTIES`): по названию, без учёта регистра. */
+export function visibleProperties(props: Record<string, string>, hidden: readonly string[]): Record<string, string> {
+  const drop = new Set(hidden.map(h => h.trim().toLowerCase()).filter(Boolean))
+  return drop.size ? Object.fromEntries(Object.entries(props).filter(([k]) => !drop.has(k.trim().toLowerCase()))) : props
+}
+
+export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[], hiddenProperties?: () => readonly string[] } = {}) {
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)
   const upsertItem = db.prepare(`INSERT INTO catalog_item
@@ -269,7 +275,7 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
         : []
       const stock = db.prepare('SELECT warehouse_guid AS warehouseGuid, warehouse_name AS warehouseName, available FROM stock WHERE item_guid = ? ORDER BY warehouse_name')
         .all(row.guid) as never
-      return { ...row, properties: JSON.parse(row.properties), images: JSON.parse(row.images), analogs, stock }
+      return { ...row, properties: visibleProperties(JSON.parse(row.properties), opts.hiddenProperties?.() ?? []), images: JSON.parse(row.images), analogs, stock }
     },
   }
 }
