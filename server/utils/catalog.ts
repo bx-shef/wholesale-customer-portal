@@ -64,7 +64,35 @@ const lower = (s: string) => s.toLowerCase()
 /** Строка поиска: название и артикул в нижнем регистре, ё → е. */
 export const searchText = (s: string) => lower(s).replace(/ё/g, 'е')
 
-export function createCatalogStore(db: DatabaseSync) {
+/**
+ * Разделы, скрытые от клиентов (`CATALOG_HIDDEN_SECTIONS`, решение владельца 2026-10-27): по названию,
+ * без учёта регистра, вместе с подразделами. Чистая функция — проверяется тестом.
+ */
+export function hiddenSectionGuids(sections: { guid: string, parentGuid: string | null, name: string }[], names: readonly string[]): Set<string> {
+  const want = new Set(names.map(n => n.trim().toLowerCase()).filter(Boolean))
+  const hidden = new Set<string>()
+  if (!want.size) return hidden
+  for (const s of sections) if (want.has(s.name.trim().toLowerCase())) hidden.add(s.guid.toLowerCase())
+  // Потомки — проходами до неподвижной точки (дерево неглубокое, разделов сотни).
+  for (let grew = true; grew;) {
+    grew = false
+    for (const s of sections) {
+      if (s.parentGuid && hidden.has(s.parentGuid.toLowerCase()) && !hidden.has(s.guid.toLowerCase())) {
+        hidden.add(s.guid.toLowerCase())
+        grew = true
+      }
+    }
+  }
+  return hidden
+}
+
+/** Характеристики без скрытых (`CATALOG_HIDDEN_PROPERTIES`): по названию, без учёта регистра. */
+export function visibleProperties(props: Record<string, string>, hidden: readonly string[]): Record<string, string> {
+  const drop = new Set(hidden.map(h => h.trim().toLowerCase()).filter(Boolean))
+  return drop.size ? Object.fromEntries(Object.entries(props).filter(([k]) => !drop.has(k.trim().toLowerCase()))) : props
+}
+
+export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[], hiddenProperties?: () => readonly string[] } = {}) {
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)
   const upsertItem = db.prepare(`INSERT INTO catalog_item
@@ -102,6 +130,19 @@ export function createCatalogStore(db: DatabaseSync) {
       db.exec('ROLLBACK')
       throw e
     }
+  }
+
+  function allSections(): { guid: string, parentGuid: string | null, name: string }[] {
+    return db.prepare('SELECT guid, parent_guid AS parentGuid, name FROM catalog_section ORDER BY name').all() as never
+  }
+  function hiddenNow(): Set<string> {
+    const names = opts.hiddenSections?.() ?? []
+    return names.length ? hiddenSectionGuids(allSections(), names) : new Set()
+  }
+  /** Условие «не из скрытых разделов» для SQL; скрытых нет — пусто. */
+  function notHidden(alias: string): { sql: string, params: string[] } {
+    const ids = [...hiddenNow()]
+    return ids.length ? { sql: `AND ${alias}section_guid NOT IN (${ids.map(() => '?').join(',')})`, params: ids } : { sql: '', params: [] }
   }
 
   return {
@@ -150,7 +191,8 @@ export function createCatalogStore(db: DatabaseSync) {
     },
 
     sections(): { guid: string, parentGuid: string | null, name: string }[] {
-      return db.prepare('SELECT guid, parent_guid AS parentGuid, name FROM catalog_section ORDER BY name').all() as never
+      const hidden = hiddenNow()
+      return allSections().filter(s => !hidden.has(s.guid.toLowerCase()))
     },
 
     /** Картинки всех товаров каталога — для докачки файлов из 1С (§2.8). */
@@ -160,14 +202,17 @@ export function createCatalogStore(db: DatabaseSync) {
     },
     /** Разделы, где есть товар в наличии (сами, без родителей) — меню прячет пустые при «В наличии». */
     stockSections(): string[] {
-      return (db.prepare(`SELECT DISTINCT i.section_guid AS guid FROM catalog_item i WHERE ${AVAILABLE} > 0`).all() as { guid: string }[]).map(r => r.guid)
+      const hidden = hiddenNow()
+      return (db.prepare(`SELECT DISTINCT i.section_guid AS guid FROM catalog_item i WHERE ${AVAILABLE} > 0`).all() as { guid: string }[]).map(r => r.guid).filter(g => !hidden.has(g))
     },
     /** Разделы, где есть хоть один товар — пустые меню не показывает. */
     itemSections(): string[] {
-      return (db.prepare('SELECT DISTINCT section_guid AS guid FROM catalog_item').all() as { guid: string }[]).map(r => r.guid)
+      const hidden = hiddenNow()
+      return (db.prepare('SELECT DISTINCT section_guid AS guid FROM catalog_item').all() as { guid: string }[]).map(r => r.guid).filter(g => !hidden.has(g))
     },
     brands(): string[] {
-      return (db.prepare('SELECT DISTINCT brand FROM catalog_item WHERE brand <> \'\' ORDER BY brand').all() as { brand: string }[]).map(r => r.brand)
+      const { sql, params } = notHidden('')
+      return (db.prepare(`SELECT DISTINCT brand FROM catalog_item WHERE brand <> '' ${sql} ORDER BY brand`).all(...params) as { brand: string }[]).map(r => r.brand)
     },
 
     sectionWithChildren,
@@ -194,6 +239,11 @@ export function createCatalogStore(db: DatabaseSync) {
         params.push(...query.brand)
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
+      const nh = notHidden('i.')
+      if (nh.sql) {
+        where.push(nh.sql.replace(/^AND /, ''))
+        params.push(...nh.params)
+      }
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
       // По цене — по виду цен соглашения клиента; товары без цены — в конце. Вида цен нет — по названию.
       const byPrice = (query.sort === 'price' || query.sort === 'price_desc') && query.priceType
@@ -217,7 +267,7 @@ export function createCatalogStore(db: DatabaseSync) {
     item(guid: string): CatalogItemDetails | null {
       const row = db.prepare(`SELECT ${COLUMNS}, i.description, i.properties, i.images, i.analogs FROM catalog_item i WHERE i.guid = ?`)
         .get(lower(guid)) as (CatalogItem & { description: string, properties: string, images: string, analogs: string }) | undefined
-      if (!row) return null
+      if (!row || hiddenNow().has(row.sectionGuid.toLowerCase())) return null
       const analogGuids = JSON.parse(row.analogs) as string[]
       const analogs = analogGuids.length
         ? db.prepare(`SELECT ${COLUMNS} FROM catalog_item i WHERE i.guid IN (${analogGuids.map(() => '?').join(',')}) ORDER BY available DESC, i.name_sort LIMIT ?`)
@@ -225,7 +275,7 @@ export function createCatalogStore(db: DatabaseSync) {
         : []
       const stock = db.prepare('SELECT warehouse_guid AS warehouseGuid, warehouse_name AS warehouseName, available FROM stock WHERE item_guid = ? ORDER BY warehouse_name')
         .all(row.guid) as never
-      return { ...row, properties: JSON.parse(row.properties), images: JSON.parse(row.images), analogs, stock }
+      return { ...row, properties: visibleProperties(JSON.parse(row.properties), opts.hiddenProperties?.() ?? []), images: JSON.parse(row.images), analogs, stock }
     },
   }
 }

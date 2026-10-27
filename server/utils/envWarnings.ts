@@ -7,7 +7,7 @@
  */
 const FLAGS = ['ONEC_MOCK', 'ONEC_ODATA_ORDERS', 'ONEC_ODATA_TRIPS', 'ONEC_ODATA_IMAGES', 'AI_ASSISTANT']
 const URLS = ['ONEC_URL', 'PUBLIC_URL']
-const KNOWN = /^(B24_|ONEC_|AI_|DEEPSEEK_|SESSION_|MCP_|TELEGRAM_|PUBLIC_URL$|SYNC_|DATA_DIR$|TRUST_PROXY$)/
+const KNOWN = /^(B24_|ONEC_|AI_|DEEPSEEK_|SESSION_|MCP_|TELEGRAM_|PUBLIC_URL$|SYNC_|CATALOG_|DATA_DIR$|TRUST_PROXY$)/
 
 export function envWarnings(source: Record<string, string | undefined>): string[] {
   const out: string[] = []
