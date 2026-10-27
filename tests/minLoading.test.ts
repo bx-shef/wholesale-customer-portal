@@ -100,11 +100,12 @@ describe('экран загрузки', () => {
     expect(read('app/pages/product/[guid].vue')).toContain('<BuildLoader v-else-if="holding')
   })
 
-  it('сцены: стройка (экскаватор, кран, дом) и дача (дом, дерево, бассейн); на сервере — всегда стройка', () => {
+  it('сцена — изометрическая стройплощадка без случайностей (гидратация #76), стоп-кадр при reduced-motion', () => {
     const src = read('app/components/BuildLoader.vue')
-    expect(src).toContain('build: [BuildExcavator, BuildCrane, BuildHouse]')
-    expect(src).toContain('dacha: [BuildHouse, BuildTree, BuildPool]')
-    expect(src).toContain("const scene = ref<keyof typeof SCENES>('build')")
-    for (const f of ['Excavator', 'Crane', 'House', 'Tree', 'Pool']) expect(read(`app/components/build/${f}.vue`), f).toContain('prefers-reduced-motion')
+    expect(src).toContain('<BuildIsoSite />')
+    const site = read('app/components/build/IsoSite.vue')
+    for (const c of ['iso-floor', 'iso-roof', 'iso-hook', 'iso-arm', 'iso-truck', 'iso-ripple', 'iso-tree']) expect(site, c).toContain(`class="${c}"`)
+    expect(site).toMatch(/prefers-reduced-motion: reduce\) \{\n {2}\.iso-site \* \{ animation: none/)
+    expect(site).not.toContain('Math.random')
   })
 })
