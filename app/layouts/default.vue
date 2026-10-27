@@ -38,11 +38,15 @@ const sections = computed<NavigationMenuItem[]>(() => [
 // вне каталога переход открывает его с чистыми фильтрами.
 const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
 watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
-const catalogFilters = computed(() => filtersFromQuery(route.path === '/' ? route.query : {}))
+// «Только в наличии» помним и вне каталога: в карточке, корзине и профиле меню показывает то же.
+const inStockKept = useState('catalog-in-stock', () => false)
+watch(() => route.path === '/' ? filtersFromQuery(route.query).inStock : null, (v) => { if (v !== null) inStockKept.value = v }, { immediate: true })
+const catalogFilters = computed(() => route.path === '/' ? filtersFromQuery(route.query) : { ...filtersFromQuery({}), inStock: inStockKept.value })
 const tree = computed(() => {
   const all = sectionTree(filterOptions.value?.sections ?? [])
   // При «Только в наличии» пустые папки не показываем.
-  return catalogFilters.value.inStock ? pruneTree(all, filterOptions.value?.stockSections ?? []) : all
+  // Пустые разделы (без товаров) не показываем; при «Только в наличии» — без товаров в наличии.
+  return pruneTree(all, (catalogFilters.value.inStock ? filterOptions.value?.stockSections : filterOptions.value?.itemSections) ?? [])
 })
 const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
 function sectionLink(guid: string) {
@@ -50,11 +54,13 @@ function sectionLink(guid: string) {
 }
 function toItem(n: SectionNode): NavigationMenuItem {
   const active = route.path === '/' && n.guid.toLowerCase() === catalogFilters.value.section.toLowerCase()
-  if (!n.children.length) return { label: n.name, to: sectionLink(n.guid), active, onSelect: close }
+  // value — guid: раскрытие держится за раздел, а не за номер строки (список меняется от «В наличии»).
+  if (!n.children.length) return { label: n.name, value: n.guid, to: sectionLink(n.guid), active, onSelect: close }
   return {
     label: n.name,
+    value: n.guid,
     defaultOpen: openPath.value.has(n.guid.toLowerCase()),
-    children: [{ label: 'Все товары раздела', to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
+    children: [{ label: 'Все товары раздела', value: `${n.guid}:all`, to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
   }
 }
 const sectionItems = computed<NavigationMenuItem[]>(() => tree.value.map(toItem))
@@ -77,7 +83,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
 
 <template>
   <B24DashboardGroup v-if="withMenu" unit="px" :class="{ 'md:pr-[440px]': ai.open.value }" class="transition-[padding] duration-200">
-    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
+    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :b24ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
@@ -93,7 +99,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
           <B24NavigationMenu
             :items="sectionItems"
             orientation="vertical"
-            :ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
+            :b24ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
           />
         </div>
         <B24NavigationMenu :collapsed="collapsed" :items="actions" orientation="vertical" class="mt-auto" />

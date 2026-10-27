@@ -119,9 +119,12 @@ onMounted(() => {
 })
 
 const filtersOpen = ref(false)
-const sectionItems = computed(() => [{ label: 'Все разделы', value: '' }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
+// Пункт «Все» — не пустая строка: выпадающий список с поиском пустое значение не принимает.
+const ALL = '__all'
+const pick = (v: unknown) => (v == null || v === ALL ? '' : String(v))
+const sectionItems = computed(() => [{ label: 'Все разделы', value: ALL }, ...(options.value?.sections ?? []).map(s => ({ label: s.name, value: s.guid }))])
 const sortItems = SORT_ITEMS
-const brandItems = computed(() => [{ label: 'Все бренды', value: '' }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
+const brandItems = computed(() => [{ label: 'Все бренды', value: ALL }, ...(options.value?.brands ?? []).map(b => ({ label: b, value: b }))])
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
 const activeCount = computed(() => [filters.value.section, filters.value.brand, filters.value.inStock].filter(Boolean).length)
 
@@ -205,10 +208,10 @@ function reset() {
       <template #body>
         <div class="mx-auto flex w-full max-w-xl flex-col gap-4 pb-4">
           <B24FormField label="Раздел">
-            <B24SelectMenu :model-value="filters.section" :items="sectionItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ section: String(v ?? '') })" />
+            <B24SelectMenu :model-value="filters.section || ALL" :items="sectionItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ section: pick(v) })" />
           </B24FormField>
           <B24FormField label="Бренд">
-            <B24SelectMenu :model-value="filters.brand" :items="brandItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ brand: String(v ?? '') })" />
+            <B24SelectMenu :model-value="filters.brand || ALL" :items="brandItems" value-key="value" :search-input="{ placeholder: 'Найти…' }" class="w-full" @update:model-value="v => setFilters({ brand: pick(v) })" />
           </B24FormField>
           <B24FormField label="Сортировка">
             <B24Select :model-value="filters.sort" :items="sortItems" class="w-full" @update:model-value="v => setFilters({ sort: parseSort(v) })" />

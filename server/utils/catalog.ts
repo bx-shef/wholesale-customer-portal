@@ -160,6 +160,10 @@ export function createCatalogStore(db: DatabaseSync) {
     stockSections(): string[] {
       return (db.prepare(`SELECT DISTINCT i.section_guid AS guid FROM catalog_item i WHERE ${AVAILABLE} > 0`).all() as { guid: string }[]).map(r => r.guid)
     },
+    /** Разделы, где есть хоть один товар — пустые меню не показывает. */
+    itemSections(): string[] {
+      return (db.prepare('SELECT DISTINCT section_guid AS guid FROM catalog_item').all() as { guid: string }[]).map(r => r.guid)
+    },
     brands(): string[] {
       return (db.prepare('SELECT DISTINCT brand FROM catalog_item WHERE brand <> \'\' ORDER BY brand').all() as { brand: string }[]).map(r => r.brand)
     },
