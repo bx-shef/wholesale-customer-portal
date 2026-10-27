@@ -176,6 +176,8 @@ function toggleSub(guid: string) {
   const cur = filters.value.sub
   setFilters({ sub: cur.includes(guid) ? cur.filter(g => g !== guid) : [...cur, guid] })
 }
+/** Характеристика с таким числом значений и меньше — галочками, больше — выпадающим списком. */
+const CHECKBOX_MAX = 12
 const asList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 const brandsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
 
@@ -296,7 +298,16 @@ function resetAll() {
             </B24SelectMenu>
           </B24FormField>
           <B24FormField v-for="f in facets" :key="f.name" :label="f.name">
+            <!-- Мало значений — галочки сразу, в один клик; много — список с поиском (владелец 2026-10-27). -->
+            <B24CheckboxGroup
+              v-if="f.values.length <= CHECKBOX_MAX"
+              :model-value="filters.props[f.name] ?? []"
+              :items="facetItems(f)"
+              value-key="value"
+              @update:model-value="v => setProp(f.name, v)"
+            />
             <B24SelectMenu
+              v-else
               :model-value="filters.props[f.name] ?? []"
               :items="facetItems(f)"
               value-key="value"
