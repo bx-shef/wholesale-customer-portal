@@ -31,4 +31,10 @@ describe('сортировка каталога', () => {
     expect(parseCatalogQuery({ brand: ['ЭРА', 'Ceresit'] }).brand).toEqual(['ЭРА', 'Ceresit'])
     expect(parseCatalogQuery({}).brand).toBeUndefined()
   })
+  it('подразделы — только вместе с разделом', () => {
+    const G = '00000000-0000-0000-0000-000000000001'
+    expect(filtersToQuery({ ...DEFAULT_FILTERS, sub: [G] }).sub).toBeUndefined()
+    expect(filtersToQuery({ ...DEFAULT_FILTERS, section: G, sub: [G] }).sub).toEqual([G])
+    expect(parseCatalogQuery({ sub: [G, 'x'] }).sub).toEqual([G])
+  })
 })

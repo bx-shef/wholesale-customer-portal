@@ -38,6 +38,8 @@ export type CatalogSort = typeof SORTS[number]
 export interface CatalogQuery {
   q?: string
   section?: string
+  /** Выбранные подразделы раздела: товары любого из них (с вложенными). */
+  sub?: string[]
   brand?: string[]
   inStock?: boolean
   sort?: CatalogSort
@@ -180,7 +182,10 @@ export function createCatalogStore(db: DatabaseSync) {
         params.push(`%${word.replace(/[\\%_]/g, c => `\\${c}`)}%`)
       }
       if (query.section) {
-        const ids = sectionWithChildren(query.section)
+        // Подразделы берём только внутри раздела: чужой GUID в адресе выборку не расширит.
+        const inSection = new Set(sectionWithChildren(query.section))
+        const subs = (query.sub ?? []).map(lower).filter(g => inSection.has(g))
+        const ids = subs.length ? [...new Set(subs.flatMap(sectionWithChildren))] : [...inSection]
         where.push(`i.section_guid IN (${ids.map(() => '?').join(',')})`)
         params.push(...ids)
       }

@@ -51,20 +51,21 @@ const tree = computed(() => {
 })
 const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
 function sectionLink(guid: string) {
-  return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid }) }
+  return { path: '/', query: filtersToQuery({ ...catalogFilters.value, section: guid, sub: [] }) }
 }
-function toItem(n: SectionNode): NavigationMenuItem {
+// В меню — два уровня: группа и раздел. Третий уровень — кнопками над списком товаров (страница каталога).
+function toItem(n: SectionNode, depth = 1): NavigationMenuItem {
   const active = route.path === '/' && n.guid.toLowerCase() === catalogFilters.value.section.toLowerCase()
   // value — guid: раскрытие держится за раздел, а не за номер строки (список меняется от «В наличии»).
-  if (!n.children.length) return { label: n.name, value: n.guid, to: sectionLink(n.guid), active, onSelect: close }
+  if (!n.children.length || depth >= 2) return { label: n.name, value: n.guid, to: sectionLink(n.guid), active, onSelect: close }
   return {
     label: n.name,
     value: n.guid,
     defaultOpen: openPath.value.has(n.guid.toLowerCase()),
-    children: [{ label: 'Все товары раздела', value: `${n.guid}:all`, to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
+    children: [{ label: 'Все товары раздела', value: `${n.guid}:all`, to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(c => toItem(c, depth + 1))],
   }
 }
-const sectionItems = computed<NavigationMenuItem[]>(() => tree.value.map(toItem))
+const sectionItems = computed<NavigationMenuItem[]>(() => tree.value.map(n => toItem(n)))
 function setInStock(v: boolean) {
   router.push({ path: '/', query: filtersToQuery({ ...catalogFilters.value, inStock: v }) })
 }
