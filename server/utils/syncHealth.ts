@@ -29,7 +29,8 @@ export const FAILURES_TO_ALERT = 2
 export interface FlowHealth {
   flow: string
   label: string
-  state: 'ok' | 'failing' | 'stale' | 'never'
+  /** `warning` — последний запуск с ошибкой, но подряд их меньше порога тревоги: на странице видно, в Telegram — нет. */
+  state: 'ok' | 'warning' | 'failing' | 'stale' | 'never'
   lastRun: FlowRunRow | null
   lastOkAt: string | null
   failuresInRow: number
@@ -50,6 +51,7 @@ export function flowHealth(flow: string, runs: FlowRunRow[], nowMs: number, sinc
   const lastOkAt = lastOk ? (lastOk.finishedAt ?? lastOk.startedAt) : null
   let state: FlowHealth['state'] = 'ok'
   if (failuresInRow >= FAILURES_TO_ALERT) state = 'failing'
+  else if (failuresInRow > 0) state = 'warning'
   else if (lastOkAt && nowMs - Date.parse(lastOkAt) > def.staleMs) state = 'stale'
   // Ни одного удачного запуска: тревога, только если процесс живёт дольше срока — иначе ложная на выкате.
   else if (!lastOkAt) state = sinceStartMs > def.staleMs ? 'stale' : 'never'
