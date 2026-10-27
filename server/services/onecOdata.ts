@@ -288,9 +288,22 @@ export class ODataClient {
     if (!row) throw new OnecError('http', `1C OData ${set}: not found`, 404)
     const contentType = IMAGE_EXT[(row.Расширение ?? '').toLowerCase().replace(/^\./, '')]
     if (!contentType) throw new OnecError('contract', `1C OData ${set}: not an image (${(row.Расширение ?? '').slice(0, 10)})`)
-    const parsed = ImageFile.safeParse({ id, hash: id.replaceAll('-', ''), contentType, data: (row.ФайлХранилище_Base64Data ?? '').replace(/\s+/g, '') })
+    let data = (row.ФайлХранилище_Base64Data ?? '').replace(/\s+/g, '')
+    // Хранилище справочника пусто — данные файла в регистре «ДвоичныеДанныеФайлов» (так в БСП;
+    // опубликован 2026-10-27). Измерение «Файл» составного типа — отбор через cast.
+    if (!data) data = await this.fileBinary(set, id)
+    const parsed = ImageFile.safeParse({ id, hash: id.replaceAll('-', ''), contentType, data })
     if (!parsed.success) throw new OnecError('contract', `1C OData ${set}: image breaks contract at ${parsed.error.issues[0]?.path.join('.')}`)
     return parsed.data
+  }
+
+  /** Двоичные данные присоединённого файла из регистра; нет записи или поля — пустая строка. */
+  private async fileBinary(fileSet: string, id: string): Promise<string> {
+    const rows = await this.list<{ ДвоичныеДанныеФайла_Base64Data?: string }>('InformationRegister_ДвоичныеДанныеФайлов', {
+      $filter: `Файл eq cast(guid'${id}', '${fileSet}')`,
+      $top: 1,
+    }, IMAGE_MAX_RESPONSE)
+    return (rows[0]?.ДвоичныеДанныеФайла_Base64Data ?? '').replace(/\s+/g, '')
   }
 
   async catalogLookups(): Promise<CatalogLookups & { missing: string[] }> {

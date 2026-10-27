@@ -222,6 +222,8 @@ describe('картинки, снимок каталога, нулевая цен
   it('image: base64 из присоединённого файла, тип — по расширению; не картинка — ошибка', async () => {
     const fake: typeof fetch = async (u) => {
       const url = decodeURIComponent(String(u))
+      if (url.includes('ДвоичныеДанныеФайлов') && url.includes(`cast(guid'${G(6)}', 'Catalog_НоменклатураПрисоединенныеФайлы')`)) return Response.json({ value: [{ ДвоичныеДанныеФайла_Base64Data: PNG }] })
+      if (url.includes(G(6))) return Response.json({ value: [{ Ref_Key: G(6), Расширение: 'png', ФайлХранилище_Base64Data: '' }] })
       if (url.includes(G(7))) return Response.json({ value: [{ Ref_Key: G(7), Расширение: 'PNG', ФайлХранилище_Base64Data: PNG }] })
       if (url.includes(G(8))) return Response.json({ value: [{ Ref_Key: G(8), Расширение: 'pdf', ФайлХранилище_Base64Data: PNG }] })
       return Response.json({ value: [] })
@@ -229,6 +231,8 @@ describe('картинки, снимок каталога, нулевая цен
     const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
     expect(await c.image(G(7))).toEqual({ id: G(7), hash: G(7).replaceAll('-', ''), contentType: 'image/png', data: PNG })
     await expect(c.image(G(8))).rejects.toMatchObject({ kind: 'contract' })
+    // Пустое хранилище справочника — данные из регистра двоичных данных.
+    expect((await c.image(G(6))).data).toBe(PNG)
     await expect(c.image(G(9))).rejects.toMatchObject({ status: 404 })
     await expect(c.image('../x')).rejects.toMatchObject({ kind: 'contract' })
   })

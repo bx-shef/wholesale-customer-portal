@@ -132,6 +132,19 @@ const sortItems = SORT_ITEMS
 const brandItems = computed(() => (options.value?.brands ?? []).map(b => ({ label: b, value: b })))
 const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
 const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
+// Третий уровень: подразделы выбранного раздела кнопками; можно выбрать несколько.
+const subSections = computed(() => {
+  const sec = filters.value.section.toLowerCase()
+  if (!sec) return []
+  const keep = new Set((filters.value.inStock ? options.value?.stockSections : options.value?.itemSections)?.map(g => g.toLowerCase()) ?? [])
+  const all = options.value?.sections ?? []
+  const hasGoods = (g: string): boolean => keep.has(g) || all.some(s => s.parentGuid?.toLowerCase() === g && hasGoods(s.guid.toLowerCase()))
+  return all.filter(s => s.parentGuid?.toLowerCase() === sec && hasGoods(s.guid.toLowerCase()))
+})
+function toggleSub(guid: string) {
+  const cur = filters.value.sub
+  setFilters({ sub: cur.includes(guid) ? cur.filter(g => g !== guid) : [...cur, guid] })
+}
 const brandsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
 
 /** «Сбросить» в фильтрах — только то, что в них: бренды и сортировка. Раздел и наличие задаёт меню. */
@@ -155,8 +168,20 @@ function resetAll() {
           <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
         </div>
 
+        <div v-if="subSections.length" class="flex flex-wrap gap-2" role="group" aria-label="Подразделы">
+          <B24Button
+            v-for="s in subSections"
+            :key="s.guid"
+            size="sm"
+            :color="filters.sub.includes(s.guid) ? 'air-primary' : 'air-tertiary'"
+            :label="s.name"
+            :aria-pressed="filters.sub.includes(s.guid)"
+            @click="toggleSub(s.guid)"
+          />
+        </div>
+
         <div v-if="sectionName || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
-          <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '' })" />
+          <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '', sub: [] })" />
           <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
           <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
         </div>

@@ -51,6 +51,9 @@ describe('индекс каталога', () => {
     expect(store.search({ inStock: true }).items.map(i => i.guid)).toEqual([g(2)])
     expect(store.stockSections()).toEqual([g(901)])
     expect(store.itemSections().sort()).toEqual([g(900), g(901), g(999)].sort())
+    // Подразделы: только внутри раздела; чужой GUID не расширяет выборку.
+    expect(store.search({ section: g(900), sub: [g(901)] }).items.map(i => i.guid)).toEqual([g(2)])
+    expect(store.search({ section: g(900), sub: [g(999)] }).total).toBe(2)
   })
 
   it('остатки суммируются по складам, обновляются, удалённый товар уходит вместе с остатками', () => {
