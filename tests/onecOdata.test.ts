@@ -41,7 +41,9 @@ describe('ODataClient.catalog', () => {
 
   it('страницы, разделы и проверка схемой', async () => {
     const look = await client.catalogLookups()
-    expect(look.missing).toEqual(['Catalog_Марки'])
+    // Справочников характеристик в фейке нет — они тоже в missing, каталог от этого не падает.
+    expect(look.missing).toContain('Catalog_Марки')
+    expect(look.missing).not.toContain('Catalog_УпаковкиЕдиницыИзмерения')
     const p1 = await client.catalog({ pageSize: 2 }, look)
     expect(CatalogPage.safeParse(p1).success).toBe(true)
     expect(p1.sections.map(s => s.name)).toEqual(['Без группы', 'Смеси'])
@@ -252,7 +254,9 @@ describe('картинки, снимок каталога, нулевая цен
     const c = new ODataClient({ baseUrl: 'https://x', auth: { kind: 'bearer', token: 't' }, fetch: fake })
     const snap = await c.catalogSnapshot()
     expect(snap.items).toHaveLength(ODATA_PAGE + 2)
-    expect(snap.items.at(-1)).toMatchObject({ version: `v${ODATA_PAGE + 1}`, item: { name: `Т${ODATA_PAGE + 1}` } })
+    expect(snap.items.at(-1)).toMatchObject({ item: { name: `Т${ODATA_PAGE + 1}` } })
+    // Версия — версия объекта 1С плюс отпечаток характеристик.
+    expect(snap.items.at(-1)!.version).toMatch(new RegExp(`^v${ODATA_PAGE + 1}\\|[0-9a-f]{12}$`))
   })
 
   it('mapPrices: цена 0 уходит удалённой (в ЛК «нет цены»)', async () => {
@@ -261,5 +265,26 @@ describe('картинки, снимок каталога, нулевая цен
     const out = mapPrices([{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 0, Валюта_Key: G(90) }], { currencies: new Map([[G(90), 'BYN']]), vat: new Map() }, stats)
     expect(out).toMatchObject([{ price: 0, deleted: true }])
     expect(stats.zero).toBe(1)
+  })
+})
+
+describe('характеристики товара (Дополнительные реквизиты)', () => {
+  it('строки и ссылки — по справочникам; флажки и чужие типы пропускаем', async () => {
+    const { mapProperties } = await import('../server/services/onecOdata')
+    const look = {
+      units: new Map(), brands: new Map(),
+      properties: new Map([[G(1), 'Цвет'], [G(2), 'Страна изготовления'], [G(3), 'Выгружать на сайт'], [G(4), 'Тип работ'], [G(5), 'Вес']]),
+      propertyValues: new Map([[G(11), 'Черный'], [G(12), 'БЕЛАРУСЬ']]),
+    }
+    const props = mapProperties([
+      { Свойство_Key: G(1).toUpperCase(), Значение: G(11), Значение_Type: 'StandardODATA.Catalog_ЗначенияСвойствОбъектов' },
+      { Свойство_Key: G(2), Значение: G(12), Значение_Type: 'StandardODATA.Catalog_СтраныМира' },
+      { Свойство_Key: G(3), Значение: 'true', Значение_Type: 'Edm.Boolean' },
+      { Свойство_Key: G(4), Значение: ' Для наружных работ ', Значение_Type: 'Edm.String' },
+      { Свойство_Key: G(5), Значение: 50, Значение_Type: 'Edm.Double' },
+      { Свойство_Key: G(9), Значение: 'нет названия', Значение_Type: 'Edm.String' },
+      { Свойство_Key: G(1), Значение: G(13), Значение_Type: 'StandardODATA.Catalog_Прочее' },
+    ], look)
+    expect(props).toEqual({ 'Цвет': 'Черный', 'Страна изготовления': 'БЕЛАРУСЬ', 'Тип работ': 'Для наружных работ', 'Вес': '50' })
   })
 })

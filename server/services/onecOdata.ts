@@ -5,6 +5,7 @@
  * Каталог, картинки, цены и остатки. Сопоставление полей и открытые вопросы — в документе.
  * Ответ проверяется схемой контракта: «прошло здесь» значит «ЛК прочитает».
  */
+import { createHash } from 'node:crypto'
 import type { z } from 'zod'
 import { CatalogPage, ImageFile, PAGE_SIZE_MAX, Price, Stock, type ImageFileT, type ItemT, type PriceT, type SectionT, type StockT } from '../../shared/onec/schemas'
 import { OnecError, onecAuthHeader, type OnecAuth } from './onec'
@@ -40,6 +41,7 @@ export const DEFAULT_STOCK_WAREHOUSES = ['Основной склад']
 export const NOMENCLATURE_FIELDS = [
   'Ref_Key', 'DataVersion', 'Description', 'Parent_Key', 'IsFolder', 'DeletionMark',
   'Артикул', 'art_НаименованиеДляСайта', 'Описание', 'ЕдиницаИзмерения_Key', 'Марка_Key', 'ФайлКартинки_Key', 'ВидНоменклатуры_Key',
+  'ДополнительныеРеквизиты',
 ] as const
 
 export interface NomenclatureRow {
@@ -56,12 +58,44 @@ export interface NomenclatureRow {
   Марка_Key?: string
   ФайлКартинки_Key?: string
   ВидНоменклатуры_Key?: string
+  /** Характеристики товара: табличная часть «Дополнительные реквизиты». */
+  ДополнительныеРеквизиты?: PropertyRow[]
 }
+
+export interface PropertyRow { Свойство_Key?: string, Значение?: string | number | boolean, Значение_Type?: string }
 
 /** Справочники, которые могут быть ещё не опубликованы: без них поле заполняется запасным значением. */
 export interface CatalogLookups {
   units: Map<string, string>
   brands: Map<string, string>
+  /** Названия характеристик (план видов характеристик «Дополнительные реквизиты и сведения»). */
+  properties?: Map<string, string>
+  /** Значения-ссылки характеристик: «Значения свойств объектов», их иерархия, страны мира. */
+  propertyValues?: Map<string, string>
+}
+
+const PROPERTY_REF_TYPES = ['Catalog_ЗначенияСвойствОбъектов', 'Catalog_ЗначенияСвойствОбъектовИерархия', 'Catalog_СтраныМира']
+const PROPERTIES_MAX = 40
+
+/**
+ * Характеристики товара для карточки: «название → значение». Строки и числа — как есть, ссылки —
+ * по справочникам значений. Флажки (Edm.Boolean) и непонятные типы пропускаем: это служебные
+ * признаки вроде «выгружать на сайт», клиенту они ни о чём не говорят.
+ */
+export function mapProperties(rows: PropertyRow[] | undefined, lookups: CatalogLookups): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const r of rows ?? []) {
+    const name = r.Свойство_Key && lookups.properties?.get(r.Свойство_Key.toLowerCase())
+    if (!name || out[name] !== undefined || Object.keys(out).length >= PROPERTIES_MAX) continue
+    const type = (r.Значение_Type ?? '').replace(/^StandardODATA\./, '')
+    let value = ''
+    if (type === 'Edm.String') value = String(r.Значение ?? '')
+    else if (/^Edm\.(Double|Decimal|Int\d+)$/.test(type)) value = String(r.Значение ?? '')
+    else if (PROPERTY_REF_TYPES.includes(type) && typeof r.Значение === 'string') value = lookups.propertyValues?.get(r.Значение.toLowerCase()) ?? ''
+    value = value.trim().slice(0, 300)
+    if (value) out[name.slice(0, 100)] = value
+  }
+  return out
 }
 
 const ref = (v: string | undefined) => (v && v !== EMPTY_REF ? v.toLowerCase() : null)
@@ -89,7 +123,7 @@ export function mapItem(row: NomenclatureRow, lookups: CatalogLookups, changedAt
     packQty: 1,
     minQty: 1,
     description: (row.Описание ?? '').trim(),
-    properties: {},
+    properties: mapProperties(row.ДополнительныеРеквизиты, lookups),
     // Хэш картинки — по ссылке на файл: версию файла узнаем, когда дойдём до загрузки картинок.
     images: image ? [{ id: image, hash: image.replaceAll('-', '') }] : [],
     analogs: [],
@@ -206,6 +240,18 @@ export class ODataClient {
   }
 
   /** Справочник «ссылка → наименование»; не опубликован или не читается — пустой, с причиной. */
+  /** Названия характеристик: «Заголовок», если задан (так их видит пользователь), иначе наименование. */
+  async propertyNames(): Promise<{ map: Map<string, string>, error?: string }> {
+    const set = 'ChartOfCharacteristicTypes_ДополнительныеРеквизитыИСведения'
+    try {
+      const rows = await this.list<{ Ref_Key: string, Description?: string, Заголовок?: string }>(set, { $select: 'Ref_Key,Description,Заголовок' })
+      return { map: new Map(rows.map(r => [r.Ref_Key.toLowerCase(), (r.Заголовок || r.Description || '').trim()])) }
+    }
+    catch {
+      return this.names(set)
+    }
+  }
+
   async names(set: string): Promise<{ map: Map<string, string>, error?: string }> {
     try {
       const rows = await this.list<{ Ref_Key: string, Description?: string }>(set, { $select: 'Ref_Key,Description' })
@@ -266,7 +312,12 @@ export class ODataClient {
     for (let page = 0; ; page++) {
       if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData Catalog_Номенклатура: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
       const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
-      for (const r of rows) items.push({ item: mapItem(r, look, ''), version: r.DataVersion ?? '' })
+      for (const r of rows) {
+        const item = mapItem(r, look, '')
+        // Характеристики — часть версии: переименовали значение в справочнике 1С, а товар не трогали —
+        // карточка всё равно обновится.
+        items.push({ item, version: `${r.DataVersion ?? ''}|${createHash('sha1').update(JSON.stringify(item.properties)).digest('hex').slice(0, 12)}` })
+      }
       if (rows.length < ODATA_PAGE) break
     }
     return { sections, items }
@@ -310,11 +361,15 @@ export class ODataClient {
     // По очереди: 1С держим на одном запросе за раз (onecGuard).
     const units = await this.names('Catalog_УпаковкиЕдиницыИзмерения')
     const brands = await this.names('Catalog_Марки')
-    return {
-      units: units.map,
-      brands: brands.map,
-      missing: [units.error && 'Catalog_УпаковкиЕдиницыИзмерения', brands.error && 'Catalog_Марки'].filter((x): x is string => !!x),
+    const properties = await this.propertyNames()
+    const propertyValues = new Map<string, string>()
+    const missing = [units.error && 'Catalog_УпаковкиЕдиницыИзмерения', brands.error && 'Catalog_Марки', properties.error && 'ChartOfCharacteristicTypes_ДополнительныеРеквизитыИСведения']
+    for (const set of PROPERTY_REF_TYPES) {
+      const v = await this.names(set)
+      for (const [k, n] of v.map) propertyValues.set(k, n)
+      missing.push(v.error && set)
     }
+    return { units: units.map, brands: brands.map, properties: properties.map, propertyValues, missing: missing.filter((x): x is string => !!x) }
   }
 
   /**
