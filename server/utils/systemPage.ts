@@ -111,6 +111,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   function summaryHtml(s) {
     const warn = s.flows.filter((f) => f.state === 'warning')
     const lines = s.alerts.map((a) => '⚠️ ' + esc(a.text))
+      .concat((s.config || []).map((c) => '⚙️ Настройка .env — ' + esc(c)))
       .concat(warn.map((f) => '⚠️ Последний обмен «' + esc(f.label) + '» с ошибкой' + (f.lastRun && f.lastRun.error ? ': ' + esc(f.lastRun.error) : '') + '. Следующий запуск по расписанию повторит его, можно и «Запустить».'))
     return lines.length ? '<div class="alert" style="margin-top:6px">' + lines.join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>'
   }

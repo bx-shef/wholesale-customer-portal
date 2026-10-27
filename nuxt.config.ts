@@ -52,7 +52,7 @@ export default defineNuxtConfig({
     // Синхронизация с 1С: задачи просыпаются раз в минуту, частота каждой — окружением
     // (SYNC_*_EVERY_MIN, server/utils/syncSchedule.ts), пауза — на странице «Состояние системы».
     scheduledTasks: {
-      '* * * * *': ['sync:catalog', 'sync:prices', 'sync:stock', 'sync:clients', 'sync:orders', 'sync:schedule', 'sync:trips'],
+      '* * * * *': ['sync:catalog', 'sync:prices', 'sync:stock', 'sync:clients', 'sync:orders', 'sync:schedule', 'sync:trips', 'sync:images'],
       '1-59/5 * * * *': ['monitor:alerts'],
       '17 3 * * *': ['maintenance:prune'],
     },

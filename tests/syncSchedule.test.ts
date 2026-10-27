@@ -58,7 +58,7 @@ describe('пауза и решение задачи', () => {
     expect(autoSyncSkip('stock', { db, every: { ...every, stock: 0 }, now: 0 })).toMatch(/off/)
   })
   it('каждая задача спрашивает autoSyncSkip своим потоком и выходит при пропуске; расписание будит все', () => {
-    const flowOf: Record<string, string> = { catalog: 'catalog', prices: 'prices', stock: 'stock', clients: 'client_data', orders: 'orders', schedule: 'schedule', trips: 'trips' }
+    const flowOf: Record<string, string> = { catalog: 'catalog', prices: 'prices', stock: 'stock', clients: 'client_data', orders: 'orders', schedule: 'schedule', trips: 'trips', images: 'images' }
     const files = readdirSync('server/tasks/sync').map(f => f.replace(/\.ts$/, '')).sort()
     expect(files).toEqual(Object.keys(flowOf).sort())
     const config = readFileSync('nuxt.config.ts', 'utf8')
