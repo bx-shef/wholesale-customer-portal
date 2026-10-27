@@ -4,11 +4,13 @@
   коробки (/b24) меню нет — только страница.
 -->
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
+import type { DropdownMenuItem, NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
 import ProductsCubeIcon from '@bitrix24/b24icons-vue/outline/ProductsCubeIcon'
 import ShoppingCartIcon from '@bitrix24/b24icons-vue/outline/ShoppingCartIcon'
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
 import QuestionIcon from '@bitrix24/b24icons-vue/outline/QuestionIcon'
+import PersonIcon from '@bitrix24/b24icons-vue/outline/PersonIcon'
+import ChevronTopSIcon from '@bitrix24/b24icons-vue/outline/ChevronTopSIcon'
 import LogOutIcon from '@bitrix24/b24icons-vue/outline/LogOutIcon'
 import HamburgerMenuIcon from '@bitrix24/b24icons-vue/outline/HamburgerMenuIcon'
 
@@ -32,7 +34,6 @@ const sections = computed<NavigationMenuItem[]>(() => [
   // поэтому разметка совпадает при гидрации.
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
   { label: 'Заявки', icon: DeliveryIcon, to: '/orders', onSelect: close },
-  { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
 ])
 // Разделы каталога деревом и «Только в наличии» — в меню. Фильтры живут в адресе каталога:
 // вне каталога переход открывает его с чистыми фильтрами.
@@ -68,8 +69,14 @@ function setInStock(v: boolean) {
   router.push({ path: '/', query: filtersToQuery({ ...catalogFilters.value, inStock: v }) })
 }
 
-const actions = computed<NavigationMenuItem[]>(() => [
-  { label: 'Выйти', icon: LogOutIcon, onSelect: () => { close(); logout() } },
+// Меню компании внизу — как меню пользователя в templates-dashboard: профиль, справка, выход.
+const companyMenu = computed<DropdownMenuItem[][]>(() => [
+  [{ type: 'label', label: me.value?.company.title || '' }],
+  [
+    { label: 'Профиль', icon: PersonIcon, to: '/profile', onSelect: close },
+    { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
+  ],
+  [{ label: 'Выйти', icon: LogOutIcon, onSelect: () => { close(); logout() } }],
 ])
 
 function bindCompany(id: number) {
@@ -102,21 +109,22 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
             :b24ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
           />
         </div>
-        <B24NavigationMenu :collapsed="collapsed" :items="actions" orientation="vertical" class="mt-auto" />
       </template>
       <template #footer="{ collapsed }">
         <!-- Компания клиента — вход в профиль, как пользователь внизу меню в templates-dashboard. -->
-        <B24Button
-          to="/profile"
-          color="air-tertiary"
-          :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
-          :title="me?.company.title"
-          :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-(--ui-color-accent-main-primary) text-white font-semibold' }"
-          :active="route.path === '/profile'"
-          block
-          class="mb-1 justify-start truncate"
-          @click="close"
-        />
+        <B24DropdownMenu :items="companyMenu" :content="{ side: 'top', align: 'start' }" class="w-full">
+          <B24Button
+            color="air-tertiary"
+            :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
+            :title="me?.company.title"
+            :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-(--ui-color-accent-main-primary) text-white font-semibold' }"
+            :trailing-icon="collapsed ? undefined : ChevronTopSIcon"
+            :active="route.path === '/profile' || route.path === '/help'"
+            block
+            class="mb-1 justify-start truncate"
+            :b24ui="{ trailingIcon: 'ms-auto' }"
+          />
+        </B24DropdownMenu>
       </template>
     </B24DashboardSidebar>
     <slot />
