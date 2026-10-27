@@ -74,11 +74,14 @@ async function requestCallback() {
               </p>
               <B24Button v-if="data.manager.phone" :to="`tel:${data.manager.phone}`" color="air-primary" block label="Позвонить" />
               <!-- Тексты — позитивом, без указания на недоработку клиента (замечание владельца 2026-10-27). -->
+              <!-- Блок выключается окружением: CALLBACK_ENABLED=false. -->
+              <template v-if="data.callbackEnabled !== false">
               <p class="text-sm">
                 Закажите звонок — менеджер вам перезвонит.
               </p>
               <B24Button color="air-secondary" block :loading="calling" :disabled="callbackSent" :label="callbackSent ? 'Менеджер перезвонит' : 'Заказать звонок'" @click="requestCallback" />
               <B24Alert v-if="callbackError" color="air-primary-alert" :title="callbackError" />
+              </template>
             </div>
             <p v-else class="text-sm">
               Менеджер не назначен.

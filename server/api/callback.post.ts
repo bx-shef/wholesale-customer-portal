@@ -3,6 +3,7 @@ import { neutralizeBb } from '../../shared/cart'
 export default defineEventHandler(async (event) => {
   const session = await resolveClientSession(event)
   if (!session) throw createError({ statusCode: 401 })
+  if (!readServerEnv().callbackEnabled) throw createError({ statusCode: 404, message: 'Заказ звонка выключен' })
   // Место резервируется до похода в CRM: параллельные клики не создают двух дел.
   if (!limits.callbackContact.take(String(session.contactId))) return { ok: true, repeated: true }
   if (!limits.callbackCompany.take(String(session.companyId))) {

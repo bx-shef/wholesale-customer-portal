@@ -93,3 +93,15 @@ describe('выпадающие списки корзины не вылезают
     expect(src).toContain("value: 'whitespace-normal break-words text-start'")
   })
 })
+
+describe('«Заказать звонок» выключается окружением (владелец 2026-10-27)', () => {
+  it('CALLBACK_ENABLED=false — выключено, пусто — включено', async () => {
+    const { readServerEnv } = await import('../server/utils/env')
+    expect(readServerEnv({}).callbackEnabled).toBe(true)
+    expect(readServerEnv({ CALLBACK_ENABLED: 'false' }).callbackEnabled).toBe(false)
+  })
+  it('профиль прячет блок, API отказывает', () => {
+    expect(readFileSync('app/pages/profile.vue', 'utf8')).toContain('<template v-if="data.callbackEnabled !== false">')
+    expect(readFileSync('server/api/callback.post.ts', 'utf8')).toContain('if (!readServerEnv().callbackEnabled) throw createError({ statusCode: 404')
+  })
+})
