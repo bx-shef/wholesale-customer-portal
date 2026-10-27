@@ -17,6 +17,8 @@ interface Order {
   currency: string
   onecNumber: string | null
   shipmentDate: string | null
+  /** Доставка подтверждена в 1С — день приезда по графику (решение клиента 2026-10-27). */
+  confirmedDate: string | null
   /** Рейс из задания на перевозку 1С: формируется → к погрузке → отправлено → закрыто. */
   trip: { plannedStart: string, status: 'forming' | 'loading' | 'sent' | 'closed' } | null
   items: { name: string, sku: string, qty: number, unit: string, price: number, vatRate: number }[]
@@ -69,7 +71,10 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
               </template>
             </p>
             <p class="text-sm">
-              <template v-if="o.trip">
+              <template v-if="o.confirmedDate">
+                <B24Badge color="air-primary-success" :label="`Точно приедет: ${date(o.confirmedDate)}`" />
+              </template>
+              <template v-else-if="o.trip">
                 Рейс: <b>{{ tripDate(o.trip.plannedStart) }}</b> · {{ TRIP_STATUS[o.trip.status] }}
               </template>
               <template v-else-if="o.shipmentDate">

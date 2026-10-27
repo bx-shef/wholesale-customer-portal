@@ -191,6 +191,7 @@ export function applyOnecStatuses(rows: OrderStatusRowT[], deps: Pick<OrderSyncD
     const order = deps.orders.findForStatus(r.orderGuid)
     if (!order) continue
     deps.orders.setTrip(order.id, r.tripGuid)
+    deps.orders.setDeliveryConfirmed(order.id, r.deliveryConfirmed === true)
     if (!isForward(order.status, r.status)) continue
     deps.orders.applyStatus(order.id, r.status, r.shipmentDate, r.number, iso)
     applied++

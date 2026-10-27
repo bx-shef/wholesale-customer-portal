@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
@@ -351,5 +352,21 @@ describe('сделка в CRM', () => {
     const f = fake()
     expect(await createB24Orders(f.call).requestCallback({ companyId: 7, responsibleId: 3, contactLabel: 'Иван', now: new Date('2026-10-12T10:00:00Z') })).toBe(15)
     expect(f.calls[0]!.params).toMatchObject({ ownerTypeId: 4, ownerId: 7, responsibleId: 3, deadline: '2026-10-12T11:00:00.000Z' })
+  })
+})
+
+describe('«Точно приедет» в «Моих заявках» (решение клиента 2026-10-27)', () => {
+  it('список отдаёт подтверждение доставки, страница его показывает', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createOrderStore(db)
+    const row = store.begin({ requestId: '00000000-0000-4000-8000-000000000001', companyId: 1, contactId: 1, clientGuid: 'c', contractGuid: 'k', addressGuid: 'a', addressText: 'г. Брест', slot: null, items: [], total: 0, currency: 'BYN', comment: '' }, 'h', '2026-10-27T00:00:00Z')
+    expect(store.list(1)[0]!.deliveryConfirmed).toBe(0)
+    store.setDeliveryConfirmed(row.id, true)
+    expect(store.list(1)[0]!.deliveryConfirmed).toBe(1)
+    store.setDeliveryConfirmed(row.id, false)
+    expect(store.list(1)[0]!.deliveryConfirmed).toBe(0)
+    expect(readFileSync('server/api/orders/index.get.ts', 'utf8')).toContain('confirmedDate: slot?.date ?? null')
+    expect(readFileSync('app/pages/orders.vue', 'utf8')).toContain('`Точно приедет: ${date(o.confirmedDate)}`')
   })
 })

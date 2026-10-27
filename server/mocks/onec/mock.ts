@@ -372,6 +372,7 @@ export function handleMockRequest(state: MockState, req: MockRequest, now: numbe
         status,
         shipmentDate: status === 'shipped' || status === 'delivered' ? new Date(o.createdAt + SHIPPED_AFTER_SEC * 1000).toISOString().slice(0, 10) : null,
         tripGuid: orderTripGuid(state, o, status),
+        deliveryConfirmed: false,
         changedAt: new Date(changedAt).toISOString(),
       }
     }).filter(r => Date.parse(r.changedAt) >= since(q.changedSince))

@@ -103,7 +103,7 @@ describe('рейс заказа из статусов 1С', () => {
     const { applyOnecStatuses } = await import('../server/utils/orderSync')
     const setTrip = vi.fn(() => true)
     const applyStatus = vi.fn()
-    const orders = { findForStatus: () => ({ id: 7, status: 'assembled' }), setTrip, applyStatus } as never
+    const orders = { findForStatus: () => ({ id: 7, status: 'assembled' }), setTrip, applyStatus, setDeliveryConfirmed: vi.fn() } as never
     const row = { orderGuid: g(20), externalId: '1', number: 'ЗК-1', status: 'assembled' as const, shipmentDate: null, tripGuid: g(10), changedAt: '2026-10-19T09:00:00.000Z' }
     expect(applyOnecStatuses([row], { orders })).toBe(0)
     expect(setTrip).toHaveBeenCalledWith(7, g(10))
