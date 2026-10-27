@@ -5,9 +5,6 @@ import { ru } from '@bitrix24/b24ui-nuxt/locale'
 // Тема b24ui включается только вызовом композабла: он ставит класс light/dark на <html>
 // (как в bx-shef/skills-site, где его зовёт шапка). Без вызова тёмная тема не включалась.
 useColorMode()
-const { open: aiOpen } = useAiChat()
-// Помощник выключен на сервере (`AI_ASSISTANT`) — панели нет вовсе.
-const { data: me } = useNuxtData<{ ai?: boolean }>('me')
 const online = useOnline()
 onMounted(registerServiceWorker)
 
@@ -32,7 +29,7 @@ useSeoMeta({
   <B24App :locale="ru">
     <NuxtLoadingIndicator color="#0075ff" />
     <!-- Открытый чат на компьютере сдвигает страницу влево: без меню — эта обёртка, в кабинете — раскладка (fixed). -->
-    <div class="ai-shell" :class="{ 'ai-shell--chat': aiOpen }">
+    <div>
       <B24Alert
         v-if="!online"
         color="air-primary-warning"
@@ -45,8 +42,5 @@ useSeoMeta({
         </NuxtLayout>
       </ClientDataGate>
     </div>
-    <ClientOnly v-if="me?.ai">
-      <AiChatPanel />
-    </ClientOnly>
   </B24App>
 </template>
