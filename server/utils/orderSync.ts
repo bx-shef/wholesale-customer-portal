@@ -19,6 +19,7 @@ import type { OrderLineFactT, OrderRequestT, OrderStatusRowT, OrderStatusT } fro
 import { neutralizeBb } from '../../shared/cart'
 import { MINSK_OFFSET_MIN, nextDelivery, type TripSchedule } from '../../shared/delivery'
 import type { DealStage, B24Orders } from '../services/b24Orders'
+import { OnecError } from '../services/onec'
 import type { ClientStore } from './clients'
 import { dealClientName, sendToCrm, type OrderItem, type OrderStore } from './orders'
 
@@ -79,7 +80,17 @@ export function orderFactsDiff(items: OrderItem[], facts: OrderLineFactT[]): str
 
 export interface SyncSummary { resent: number, ordered: number, cancelled: number, reported: number, failed: number }
 
-const errKind = (e: unknown) => (e as Error)?.name || 'Error'
+/**
+ * Класс ошибки для журнала и строки заявки. У ошибки 1С — ещё вид, статус и наш текст причины
+ * («delivery address not found», «agreement is not active»): без него «OnecError» не чинится
+ * (стенд 2026-10-27). Секретов в тексте нет — его собирает клиент 1С; переводы строк убраны, длина ограничена.
+ */
+export function errKind(e: unknown): string {
+  const name = (e as Error)?.name || 'Error'
+  if (!(e instanceof OnecError)) return name
+  const why = [e.kind, e.status, e.code].filter(Boolean).join(' ')
+  return `${name}(${why}): ${e.message.replace(/\s+/g, ' ')}`.slice(0, 300)
+}
 
 export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
   const now = deps.now?.() ?? new Date()
