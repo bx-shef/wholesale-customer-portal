@@ -56,6 +56,8 @@ export interface ServerEnv {
   trustProxy: boolean
   /** Частота автосинхронизации по потокам, минут (`SYNC_*_EVERY_MIN`, 0 — только вручную). */
   syncEvery: Record<AutoFlow, number>
+  /** Картинок за прогон потока `images` (`SYNC_IMAGES_BATCH`, 1–5000, по умолчанию 1000). */
+  imagesBatch: number
 }
 
 export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -90,6 +92,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     publicUrl: get('PUBLIC_URL').replace(/\/+$/, ''),
     commitSha: get('COMMIT_SHA'),
     syncEvery: everyFromEnv(get),
+    imagesBatch: (n => (Number.isInteger(n) && n >= 1 && n <= 5000 ? n : 1000))(Number(get('SYNC_IMAGES_BATCH') || 1000)),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',
   }
