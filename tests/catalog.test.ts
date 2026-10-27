@@ -368,3 +368,19 @@ describe('скрытые разделы (CATALOG_HIDDEN_SECTIONS)', () => {
     expect(visibleProperties({ 'Цвет': 'Черный' }, [])).toEqual({ 'Цвет': 'Черный' })
   })
 })
+
+describe('очередь картинок', () => {
+  it('сначала в наличии, потом остальные, скрытые разделы — в конце', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createCatalogStore(db, { hiddenSections: () => ['Скрытый'] })
+    const img = (n: number) => [{ id: g(700 + n), hash: `h${n}` }]
+    store.saveCatalog([{ guid: g(900), parentGuid: null, name: 'Крепёж' }, { guid: g(910), parentGuid: null, name: 'Скрытый' }], [
+      item(1, { name: 'А', images: img(1) }),
+      item(2, { name: 'Б', images: img(2) }),
+      item(3, { name: 'В', sectionGuid: g(910), images: img(3) }),
+    ])
+    store.saveStock([2, 3].map(n => ({ itemGuid: g(n), warehouseGuid: g(500), warehouseName: 'Склад', available: 5, changedAt: at })))
+    expect(store.imageRefs().map(r => r.id)).toEqual([g(702), g(701), g(703)])
+  })
+})
