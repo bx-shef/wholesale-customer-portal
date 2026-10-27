@@ -58,6 +58,8 @@ export interface ServerEnv {
   syncEvery: Record<AutoFlow, number>
   /** Разделы 1С, скрытые от клиентов вместе с товарами (`CATALOG_HIDDEN_SECTIONS`, названия через запятую). */
   catalogHiddenSections: string[]
+  /** Картинок за прогон потока `images` (`SYNC_IMAGES_BATCH`, 1–5000, по умолчанию 1000). */
+  imagesBatch: number
 }
 
 export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
@@ -93,6 +95,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     commitSha: get('COMMIT_SHA'),
     syncEvery: everyFromEnv(get),
     catalogHiddenSections: get('CATALOG_HIDDEN_SECTIONS').split(',').map(s => s.trim()).filter(Boolean),
+    imagesBatch: (n => (Number.isInteger(n) && n >= 1 && n <= 5000 ? n : 1000))(Number(get('SYNC_IMAGES_BATCH') || 1000)),
     dataDir: get('DATA_DIR') || '.data',
     trustProxy: get('TRUST_PROXY') === '1',
   }

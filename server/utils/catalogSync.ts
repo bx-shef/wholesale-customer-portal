@@ -50,8 +50,6 @@ export function syncCatalog(): Promise<SyncRun> {
       consume: async items => catalog.saveCatalog([...sections.values()], items),
     }, sqliteSyncStore(useDb()))
     if (run.status === 'failed') console.error(`[sync:catalog] ${run.error}`)
-    // Картинки — после каталога и не мешая ему: сбой картинок каталог не роняет.
-    if (imagesEnabled(readServerEnv())) await syncImages().catch(e => console.error(`[sync:images] ${(e as Error).message}`))
     return run
   })
 }
@@ -64,28 +62,50 @@ export function imagesEnabled(env: { onecMock: boolean, onecMode: string, onecOd
   return env.onecMock || env.onecMode !== 'odata' || env.onecOdataImages
 }
 
-/** Докачать из 1С картинки, которых ещё нет на томе (§2.8); за прогон — не больше IMAGES_PER_RUN. */
-export async function syncImages() {
-  const dir = join(readServerEnv().dataDir, 'images')
-  await mkdir(dir, { recursive: true })
-  const onec = useOnec()
-  const result = await fetchMissingImages(useCatalog().imageRefs(), {
-    fs: {
-      exists: name => access(join(dir, name)).then(() => true, () => false),
-      // Сначала во временный файл: оборванная запись не станет «готовой» картинкой.
-      write: async (name, bytes) => {
-        const tmp = join(dir, `.${name}.tmp`)
-        await writeFile(tmp, bytes)
-        await rename(tmp, join(dir, name))
-      },
-    },
-    load: id => onec.image(id),
+/**
+ * Поток картинок (§2.8): докачать из 1С файлы, которых ещё нет на томе, не больше `SYNC_IMAGES_BATCH`
+ * за прогон. Свой поток со своей частотой (`SYNC_IMAGES_EVERY_MIN`); итог — в журнале запусков.
+ */
+export function syncImages(): Promise<SyncRun> {
+  return once('images', async () => {
+    const env = readServerEnv()
+    const runs = sqliteSyncStore(useDb())
+    const startedAt = new Date().toISOString()
+    const run: SyncRun = { flow: 'images', status: 'running', startedAt, finishedAt: null, cursorFrom: null, cursorTo: null, received: 0, error: null }
+    if (!imagesEnabled(env)) return { ...run, status: 'done', finishedAt: startedAt, error: 'выключено (ONEC_ODATA_IMAGES)' }
+    await runs.saveRun(run)
+    try {
+      const dir = join(env.dataDir, 'images')
+      await mkdir(dir, { recursive: true })
+      const onec = useOnec()
+      const result = await fetchMissingImages(useCatalog().imageRefs(), {
+        fs: {
+          exists: name => access(join(dir, name)).then(() => true, () => false),
+          // Сначала во временный файл: оборванная запись не станет «готовой» картинкой.
+          write: async (name, bytes) => {
+            const tmp = join(dir, `.${name}.tmp`)
+            await writeFile(tmp, bytes)
+            await rename(tmp, join(dir, name))
+          },
+        },
+        load: id => onec.image(id),
+        limit: env.imagesBatch,
+      })
+      console.info(`[sync:images] saved ${result.saved}, failed ${result.failed.length}, left ${result.left}`)
+      for (const f of result.failed.slice(0, 5)) console.warn(`[sync:images] ${f.id}: ${f.reason}`)
+      // Все попытки неудачны — сбой потока (видно на «Состоянии системы»); единичные пустые файлы — нет.
+      const failed = result.saved === 0 && result.failed.length > 0
+      const done: SyncRun = { ...run, status: failed ? 'failed' : 'done', finishedAt: new Date().toISOString(), received: result.saved,
+        error: failed ? `${result.failed.length} не скачано: ${result.failed[0]!.reason}`.slice(0, 300) : result.left ? `осталось ${result.left}` : null }
+      await runs.saveRun(done)
+      return done
+    }
+    catch (e) {
+      const done: SyncRun = { ...run, status: 'failed', finishedAt: new Date().toISOString(), error: (e as Error).message.slice(0, 300) }
+      await runs.saveRun(done)
+      return done
+    }
   })
-  if (result.saved || result.failed.length || result.left) {
-    console.info(`[sync:images] saved ${result.saved}, failed ${result.failed.length}, left ${result.left}`)
-    for (const f of result.failed.slice(0, 5)) console.warn(`[sync:images] ${f.id}: ${f.reason}`)
-  }
-  return result
 }
 
 /** Прайс по изменениям (§2.4): раз в 15 минут, ключ — «вид цен × товар». */

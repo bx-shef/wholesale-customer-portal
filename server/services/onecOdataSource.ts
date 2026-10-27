@@ -36,9 +36,10 @@ export const ODATA_UNSUPPORTED_FLOWS = ['schedule'] as const
  * `ONEC_ODATA_ORDERS` (заказы пишутся в 1С), рейсов — пока не включён `ONEC_ODATA_TRIPS` (документ
  * выпал из публикации OData). График доставки в 1С не ведётся (Excel, #45).
  */
-export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataOrders: boolean, onecOdataTrips: boolean }): readonly string[] {
+export function unsupportedFlowsFor(env: { onecMock: boolean, onecMode: string, onecOdataOrders: boolean, onecOdataTrips: boolean, onecOdataImages?: boolean }): readonly string[] {
   if (env.onecMock || env.onecMode !== 'odata') return []
-  return [...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...ODATA_UNSUPPORTED_FLOWS]
+  // Картинки — пока не включён ONEC_ODATA_IMAGES: иначе поток «ещё не было» тревожил бы зря.
+  return [...(env.onecOdataOrders ? [] : ['orders']), ...(env.onecOdataTrips ? [] : ['trips']), ...(env.onecOdataImages ? [] : ['images']), ...ODATA_UNSUPPORTED_FLOWS]
 }
 
 export interface VersionStore {

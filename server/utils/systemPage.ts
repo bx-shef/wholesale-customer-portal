@@ -107,7 +107,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   }
   const STATE = { ok: 'в порядке', warning: 'сбой', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
-  const FLOWS = { catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы' }
+  const FLOWS = { catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы', images: 'картинки' }
   // Сводка не спорит с таблицей: «Проблем нет» — только когда нет ни тревог, ни сбоя в последнем запуске.
   function summaryHtml(s) {
     const warn = s.flows.filter((f) => f.state === 'warning')

@@ -15,6 +15,8 @@ export const AUTO_FLOWS = {
   orders: { env: 'SYNC_ORDERS_EVERY_MIN', every: 2 },
   schedule: { env: 'SYNC_SCHEDULE_EVERY_MIN', every: 60 },
   trips: { env: 'SYNC_TRIPS_EVERY_MIN', every: 10 },
+  // Картинки — своим потоком (решение владельца 2026-10-27): докачка 40+ тыс. файлов не ждёт суточного каталога.
+  images: { env: 'SYNC_IMAGES_EVERY_MIN', every: 30 },
 } as const
 export type AutoFlow = keyof typeof AUTO_FLOWS
 
