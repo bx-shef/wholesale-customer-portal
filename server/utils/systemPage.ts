@@ -23,7 +23,7 @@ export const SYSTEM_PAGE = `<!doctype html>
   th { text-align: left; font-weight: 600; color: #5d6670; font-size: 12px; padding: 4px 6px; }
   td { padding: 6px; border-top: 1px solid #e6e9ec; vertical-align: top; }
   .b { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; color: #fff; }
-  .ok { background: #1b8a3a; } .failing, .failed { background: #c62828; } .stale { background: #b26a00; } .never, .running { background: #7a8691; }
+  .ok { background: #1b8a3a; } .failing, .failed { background: #c62828; } .stale, .warning { background: #b26a00; } .never, .running { background: #7a8691; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
   .tile { background: #f5f7f9; border-radius: 8px; padding: 8px 10px; }
   .tile b { display: block; font-size: 20px; }
@@ -105,9 +105,17 @@ export const SYSTEM_PAGE = `<!doctype html>
     const s = Math.round(ms / 1000)
     return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с'
   }
-  const STATE = { ok: 'в порядке', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
+  const STATE = { ok: 'в порядке', warning: 'сбой', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
   const FLOWS = { catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы', images: 'картинки' }
+  // Сводка не спорит с таблицей: «Проблем нет» — только когда нет ни тревог, ни сбоя в последнем запуске.
+  function summaryHtml(s) {
+    const warn = s.flows.filter((f) => f.state === 'warning')
+    const lines = s.alerts.map((a) => '⚠️ ' + esc(a.text))
+      .concat((s.config || []).map((c) => '⚙️ Настройка .env — ' + esc(c)))
+      .concat(warn.map((f) => '⚠️ Последний обмен «' + esc(f.label) + '» с ошибкой' + (f.lastRun && f.lastRun.error ? ': ' + esc(f.lastRun.error) : '') + '. Следующий запуск по расписанию повторит его, можно и «Запустить».'))
+    return lines.length ? '<div class="alert" style="margin-top:6px">' + lines.join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>'
+  }
   async function api(path, body) {
     const res = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-lk-stand': '1' }, body: JSON.stringify(body) } : {})
     const data = await res.json().catch(() => ({}))
@@ -123,7 +131,7 @@ export const SYSTEM_PAGE = `<!doctype html>
       + '<div style="margin-top:6px">Автосинхронизация: ' + (s.autoSync.paused
         ? '<span class="alert">на паузе с ' + esc(ago(s.autoSync.since)) + '</span> <button id="auto-resume">Возобновить</button>'
         : 'идёт <button id="auto-pause">Поставить на паузу</button>') + ' <span class="muted">ручной запуск работает всегда</span></div>'
-      + (s.alerts.length ? '<div class="alert" style="margin-top:6px">' + s.alerts.map((a) => '⚠️ ' + esc(a.text)).join('<br>') + '</div>' : '<div style="margin-top:6px;color:#1b8a3a;font-weight:600">✅ Проблем нет</div>')
+      + summaryHtml(s)
     $('flows').innerHTML = s.flows.map((f) => '<tr><td><b>' + esc(f.label) + '</b></td><td><span class="b ' + f.state + '">' + STATE[f.state] + '</span>'
       + (f.failuresInRow ? ' <span class="muted">сбоев подряд: ' + Number(f.failuresInRow) + '</span>' : '')
       + '<br><span class="muted">' + (s.autoSync.every[f.flow] > 0 ? 'сам — каждые ' + Number(s.autoSync.every[f.flow]) + ' мин' : 'сам не ходит, только вручную') + '</span></td><td>' + esc(ago(f.lastOkAt)) + '</td><td class="hide-m">'

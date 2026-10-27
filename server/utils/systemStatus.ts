@@ -18,12 +18,14 @@ export interface SystemStatus {
   orders: Record<string, number>
   recentRuns: FlowRunRow[]
   alerts: { kind: string, subject: string, text: string }[]
+  /** Кривые значения окружения (`envWarnings`): только имена и что не так, без значений. */
+  config: string[]
   telegram: boolean
   /** Автосинхронизация: на паузе ли (кнопкой) и частота по потокам, минут (0 — только вручную). */
   autoSync: { paused: boolean, since: string | null, every: Record<string, number> }
 }
 
-export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number> }): SystemStatus {
+export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number>, config?: string[] }): SystemStatus {
   const now = deps.now ?? Date.now()
   const runsOf = db.prepare(`SELECT flow, status, started_at AS startedAt, finished_at AS finishedAt, received, error
     FROM sync_run WHERE flow = ? ORDER BY id DESC LIMIT 10`)
@@ -56,6 +58,7 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     orders,
     recentRuns,
     alerts: healthAlerts(flows, deps.guard, now, auto.paused),
+    config: deps.config ?? [],
     telegram: deps.telegram,
     autoSync: { ...auto, every },
   }
@@ -72,5 +75,6 @@ export function currentSystemStatus(): SystemStatus {
     commit: env.commitSha || 'dev',
     telegram: resolveTelegramConfig() !== null,
     every: env.syncEvery,
+    config: envWarnings(process.env),
   })
 }

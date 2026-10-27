@@ -20,7 +20,10 @@ const run = (status: string, minutesAgo: number, error: string | null = null): F
 
 describe('здоровье обмена', () => {
   it('один сбой — ещё не тревога, два подряд — тревога с классом ошибки, но без её текста', () => {
-    expect(flowHealth('stock', [run('failed', 1), run('done', 6)], T0, 1e9).state).toBe('ok')
+    // Один сбой — не тревога в Telegram, но и не «в порядке»: страница его показывает.
+    const one = flowHealth('stock', [run('failed', 1), run('done', 6)], T0, 1e9)
+    expect(one.state).toBe('warning')
+    expect(healthAlerts([one], { pausedUntil: 0 }, T0)).toEqual([])
     const h = flowHealth('stock', [run('failed', 1, 'OnecError: ООО «Ромашка», УНП 190000000 — не по схеме'), run('failed', 6), run('done', 11)], T0, 1e9)
     expect(h.failuresInRow).toBe(FAILURES_TO_ALERT)
     expect(h.state).toBe('failing')
