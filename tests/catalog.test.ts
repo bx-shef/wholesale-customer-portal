@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { DEFAULT_FILTER_PROPERTIES, parsePropertyList } from '../shared/propFilter'
+import { DEFAULT_FILTER_PROPERTIES, parsePropertyList, selectedSummary } from '../shared/propFilter'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
@@ -435,5 +435,16 @@ describe('фильтр характеристик: стенд 2026-10-27 (фил
     expect(parsePropertyList('Цвет; Длина, мм')).toEqual(['Цвет', 'Длина, мм'])
     expect(parsePropertyList('Цвет, Вес')).toEqual(['Цвет', 'Вес'])
     expect(DEFAULT_FILTER_PROPERTIES).toEqual(expect.arrayContaining(['Цвет', 'Степень блеска', 'Объем', 'Страна изготовления', 'Длина, мм']))
+  })
+})
+
+describe('несколько значений в поле фильтра — коротко (владелец 2026-10-27)', () => {
+  it('«первое и ещё N»', () => {
+    expect(selectedSummary([])).toBe('')
+    expect(selectedSummary(['По бетону'])).toBe('По бетону')
+    expect(selectedSummary(['По бетону', 'По керамике', 'Универсальный'])).toBe('По бетону и ещё 2')
+  })
+  it('поля фильтров показывают сводку, а не весь список', () => {
+    expect(readFileSync('app/pages/index.vue', 'utf8').match(/selectedSummary\(asList\(modelValue\)\)/g)?.length).toBe(4)
   })
 })
