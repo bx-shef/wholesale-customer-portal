@@ -5,7 +5,7 @@ import { refreshSeenClients } from '../../utils/clientRefresh'
 
 const running = new Set<string>()
 const lastStartedAt = new Map<string, number>()
-const body = z.object({ flow: z.enum(['client_data', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips']) })
+const body = z.object({ flow: z.enum(['client_data', 'catalog', 'prices', 'stock', 'orders', 'schedule', 'trips', 'images']) })
 
 export default defineEventHandler(async (event) => {
   guardOnecTest(event)
@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
     orders: () => runOrderSync(),
     schedule: () => syncDeliverySchedule(),
     trips: () => syncTrips(),
+    images: () => syncImages(),
   }[flow]
   console.info(`[system] manual run ${flow}`)
   void Promise.resolve().then(job)

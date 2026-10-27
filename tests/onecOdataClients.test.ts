@@ -121,8 +121,8 @@ describe('mapClients', () => {
 
   it('unsupportedFlowsFor: потока «clients» больше нет — компании заводит обмен 1С', async () => {
     const { unsupportedFlowsFor } = await import('../server/services/onecOdataSource')
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: false, onecOdataTrips: false })).toEqual(['orders', 'trips', 'schedule'])
-    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: true, onecOdataTrips: true })).toEqual(['schedule'])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: false, onecOdataTrips: false })).toEqual(['orders', 'trips', 'images', 'schedule'])
+    expect(unsupportedFlowsFor({ onecMock: false, onecMode: 'odata', onecOdataOrders: true, onecOdataTrips: true, onecOdataImages: true })).toEqual(['schedule'])
   })
 
   it('sampleName: организации — как есть, прочее (ИП — ФИО) — скрыто', async () => {

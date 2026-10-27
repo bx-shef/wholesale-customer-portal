@@ -16,6 +16,7 @@ export const FLOWS: Record<string, { label: string, staleMs: number }> = {
   orders: { label: 'статусы заказов', staleMs: 20 * 60_000 },
   schedule: { label: 'график доставки', staleMs: 3 * 60 * 60_000 },
   trips: { label: 'рейсы', staleMs: 40 * 60_000 },
+  images: { label: 'картинки', staleMs: 2 * 60 * 60_000 },
 }
 
 /** Потоки, которые ждём от текущего транспорта 1С: без тех, которых у него нет (OData — docs/onec-odata.md). */
