@@ -67,3 +67,14 @@ describe('раскладка: выход, гидрация, чат (панель
     expect(src).not.toContain('useAiChat')
   })
 })
+
+describe('компания внизу меню (владелец 2026-10-27)', () => {
+  const src = readFileSync('app/layouts/default.vue', 'utf8')
+  it('название не обрезается и стоит по центру', () => {
+    expect(src).not.toContain('line-clamp')
+    expect(src).toContain("labelInner: 'whitespace-normal break-words text-center'")
+  })
+  it('аватар не синий', () => {
+    expect(src).not.toMatch(/avatar="\{[^}]*accent-main-primary/)
+  })
+})

@@ -124,18 +124,19 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
         </div>
       </template>
       <template #footer="{ collapsed }">
-        <!-- Компания клиента — вход в профиль, как пользователь внизу меню в templates-dashboard. -->
+        <!-- Компания клиента — вход в профиль, как пользователь внизу меню в templates-dashboard.
+             Название целиком (не обрезаем — владелец 2026-10-27), по центру; аватар тёплый, белые буквы ≥ 4.5:1. -->
         <B24DropdownMenu :items="companyMenu" :content="{ side: 'top', align: 'start' }" class="w-full">
           <B24Button
             color="air-tertiary"
             :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
             :title="me?.company.title"
-            :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-(--ui-color-accent-main-primary) text-white font-semibold' }"
+            :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-linear-to-br from-amber-700 to-orange-700 ring-0', b24ui: { fallback: 'text-white font-semibold' } }"
             :trailing-icon="collapsed ? undefined : ChevronTopSIcon"
             :active="route.path === '/profile' || route.path === '/help'"
             block
             class="mb-1 h-auto min-h-10 justify-start py-1 text-start"
-            :b24ui="{ trailingIcon: 'ms-auto', label: 'whitespace-normal line-clamp-2 leading-snug' }"
+            :b24ui="{ trailingIcon: 'ms-auto', baseLine: 'h-auto py-1', label: 'h-auto flex-1 justify-center whitespace-normal text-center leading-snug', labelInner: 'whitespace-normal break-words text-center' }"
           />
         </B24DropdownMenu>
       </template>
