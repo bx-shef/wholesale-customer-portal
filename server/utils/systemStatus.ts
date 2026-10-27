@@ -19,6 +19,8 @@ export interface SystemStatus {
   recentRuns: FlowRunRow[]
   alerts: { kind: string, subject: string, text: string }[]
   telegram: boolean
+  /** Названия потоков по-русски — один источник (`FLOWS`) для таблицы потоков и журнала запусков. */
+  labels: Record<string, string>
   /** Автосинхронизация: на паузе ли (кнопкой) и частота по потокам, минут (0 — только вручную). */
   autoSync: { paused: boolean, since: string | null, every: Record<string, number> }
 }
@@ -57,6 +59,7 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     recentRuns,
     alerts: healthAlerts(flows, deps.guard, now, auto.paused),
     telegram: deps.telegram,
+    labels: Object.fromEntries(Object.entries(FLOWS).map(([k, v]) => [k, v.label])),
     autoSync: { ...auto, every },
   }
 }
