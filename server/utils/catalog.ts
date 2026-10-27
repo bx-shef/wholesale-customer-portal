@@ -196,8 +196,15 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
     },
 
     /** Картинки всех товаров каталога — для докачки файлов из 1С (§2.8). */
+    /**
+     * Картинки для докачки — по очереди важности (решение владельца 2026-10-27): сначала товары в
+     * наличии, потом остальные, в самом конце — товары скрытых разделов.
+     */
     imageRefs(): ImageRefT[] {
-      const rows = db.prepare(`SELECT j.value AS url FROM catalog_item i, json_each(i.images) j`).all() as { url: string }[]
+      const hidden = [...hiddenNow()]
+      const hiddenRank = hidden.length ? `CASE WHEN i.section_guid IN (${hidden.map(() => '?').join(',')}) THEN 1 ELSE 0 END` : '0'
+      const rows = db.prepare(`SELECT j.value AS url FROM catalog_item i, json_each(i.images) j
+        ORDER BY ${hiddenRank}, CASE WHEN ${AVAILABLE} > 0 THEN 0 ELSE 1 END, i.name_sort`).all(...hidden) as { url: string }[]
       return rows.map(r => refFromUrl(r.url)).filter((r): r is ImageRefT => r !== null)
     },
     /** Разделы, где есть товар в наличии (сами, без родителей) — меню прячет пустые при «В наличии». */
