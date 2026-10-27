@@ -35,12 +35,25 @@ const sections = computed<NavigationMenuItem[]>(() => [
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
   { label: 'Заявки', icon: DeliveryIcon, to: '/orders', onSelect: close },
 ])
+// В теме b24ui у пунктов меню фиксированная высота (h-9.5, у подписи h-5.5) и строка без переноса:
+// перенесённое длинное название наезжало на соседний пункт. Высота — по содержимому; раскрытая
+// группа не бледнеет (в теме opacity-70 — заголовок читался как неактивный).
+const SECTION_MENU_UI = {
+  link: 'h-auto min-h-9.5 items-start py-1.5 data-[state=open]:opacity-100 data-[state=open]:text-(length:--ui-font-size-md)',
+  linkLabelWrapper: 'h-auto',
+  linkLabel: 'whitespace-normal text-start leading-snug',
+  linkTrailing: 'mt-0.5',
+  childItem: 'h-auto min-h-9',
+  childLink: 'h-auto min-h-9 items-start py-1.5 whitespace-normal',
+  childLinkLabel: 'whitespace-normal text-start leading-snug',
+}
+
 // Разделы каталога деревом и «Только в наличии» — в меню. Фильтры живут в адресе каталога:
 // вне каталога переход открывает его с чистыми фильтрами.
 const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
 watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
-// «Только в наличии» помним и вне каталога: в карточке, корзине и профиле меню показывает то же.
-const inStockKept = useState('catalog-in-stock', () => false)
+// «Только в наличии» помним и вне каталога и после перезагрузки (cookie — видна и серверу, гидрация совпадает): в карточке, корзине и профиле меню показывает то же.
+const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 watch(() => route.path === '/' ? filtersFromQuery(route.query).inStock : null, (v) => { if (v !== null) inStockKept.value = v }, { immediate: true })
 const catalogFilters = computed(() => route.path === '/' ? filtersFromQuery(route.query) : { ...filtersFromQuery({}), inStock: inStockKept.value })
 const tree = computed(() => {
@@ -97,7 +110,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
         <img v-if="!collapsed" src="/logo.png" alt="Алгена — личный кабинет" class="h-7 w-auto shrink-0">
         <!-- «В наличии» — в шапке меню: она не прокручивается вместе с длинным списком разделов. -->
-        <B24Switch v-if="!collapsed" :model-value="catalogFilters.inStock" size="xs" label="Только в наличии" class="basis-full ps-1" @update:model-value="v => setInStock(!!v)" />
+        <B24Switch v-if="!collapsed" :model-value="catalogFilters.inStock" size="xs" label="Только в наличии" class="basis-full ps-1 pb-2" @update:model-value="v => setInStock(!!v)" />
       </template>
       <template #default="{ collapsed }">
         <B24NavigationMenu :collapsed="collapsed" :items="sections" orientation="vertical" />
@@ -107,7 +120,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
           <B24NavigationMenu
             :items="sectionItems"
             orientation="vertical"
-            :b24ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
+            :b24ui="SECTION_MENU_UI"
           />
         </div>
       </template>
@@ -122,8 +135,8 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
             :trailing-icon="collapsed ? undefined : ChevronTopSIcon"
             :active="route.path === '/profile' || route.path === '/help'"
             block
-            class="mb-1 justify-start truncate"
-            :b24ui="{ trailingIcon: 'ms-auto' }"
+            class="mb-1 h-auto min-h-10 justify-start py-1 text-start"
+            :b24ui="{ trailingIcon: 'ms-auto', label: 'whitespace-normal line-clamp-2 leading-snug' }"
           />
         </B24DropdownMenu>
       </template>

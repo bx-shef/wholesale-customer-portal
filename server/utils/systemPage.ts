@@ -107,7 +107,6 @@ export const SYSTEM_PAGE = `<!doctype html>
   }
   const STATE = { ok: 'в порядке', warning: 'сбой', failing: 'падает', stale: 'давно не было', never: 'ещё не было' }
   const RUN = { done: 'ок', failed: 'ошибка', running: 'идёт' }
-  const FLOWS = { catalog: 'каталог', prices: 'прайс', stock: 'остатки', orders: 'статусы заказов', schedule: 'график доставки', trips: 'рейсы', images: 'картинки' }
   // Сводка не спорит с таблицей: «Проблем нет» — только когда нет ни тревог, ни сбоя в последнем запуске.
   function summaryHtml(s) {
     const warn = s.flows.filter((f) => f.state === 'warning')
@@ -139,7 +138,7 @@ export const SYSTEM_PAGE = `<!doctype html>
       + '</td><td><button data-run="' + f.flow + '">Запустить</button></td></tr>').join('')
     $('counts').innerHTML = Object.entries(s.counts).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>' + esc(k) + '</div>').join('')
       + Object.entries(s.orders).map(([k, v]) => '<div class="tile"><b>' + Number(v) + '</b>заявки: ' + esc(k) + '</div>').join('')
-    $('runs').innerHTML = s.recentRuns.map((r) => '<tr><td>' + esc(ago(r.startedAt)) + '</td><td>' + esc(FLOWS[r.flow] || r.flow) + '</td><td><span class="b ' + r.status + '">' + RUN[r.status] + '</span> <span class="muted">' + esc(dur(r)) + '</span></td><td>' + r.received + '</td><td class="hide-m muted">' + esc(r.error || '') + '</td></tr>').join('')
+    $('runs').innerHTML = s.recentRuns.map((r) => '<tr><td>' + esc(ago(r.startedAt)) + '</td><td>' + esc((s.labels || {})[r.flow] || r.flow) + '</td><td><span class="b ' + r.status + '">' + RUN[r.status] + '</span> <span class="muted">' + esc(dur(r)) + '</span></td><td>' + r.received + '</td><td class="hide-m muted">' + esc(r.error || '') + '</td></tr>').join('')
     $('mock-card').hidden = s.onec.mode !== 'mock'
     $('tg').textContent = s.telegram ? 'Включены: сообщение на каждую поломку обмена и на восстановление.' : 'Выключены: задайте TELEGRAM_ALERT_BOT_TOKEN и TELEGRAM_ALERT_CHAT_ID.'
   }

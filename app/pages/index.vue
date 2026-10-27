@@ -7,6 +7,8 @@ import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
 useHead({ title: 'Каталог' })
 
 const PAGE = 30
+// Сервер ждёт наличие явно (inStock=1); в адресе страницы оно по умолчанию и не пишется.
+const apiQuery = (f: CatalogFilters) => ({ ...filtersToQuery(f), inStock: f.inStock ? '1' : '0' })
 const cart = useCart()
 const route = useRoute()
 const router = useRouter()
@@ -27,7 +29,7 @@ function setFilters(patch: Partial<CatalogFilters>) {
 // каталог с загрузчиком, а не пустую вкладку, пока сервер ждёт 1С.
 const { data: first, error: firstError, status } = await useAsyncData(
   'catalog-first',
-  () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...filtersToQuery(filters.value), limit: PAGE } }),
+  () => $fetch<CatalogPageView>('/api/catalog', { headers, query: { ...apiQuery(filters.value), limit: PAGE } }),
   { watch: [filters], server: false, lazy: true },
 )
 watch(firstError, (e) => {
@@ -57,7 +59,7 @@ async function loadMore() {
   moreFailed.value = false
   try {
     const page = await $fetch<CatalogPageView>('/api/catalog', {
-      query: { ...filtersToQuery(filters.value), offset: items.value.length, limit: PAGE },
+      query: { ...apiQuery(filters.value), offset: items.value.length, limit: PAGE },
     })
     if (gen === generation) extra.value = [...extra.value, ...page.items]
   }
@@ -88,9 +90,14 @@ const sentinel = ref<HTMLElement>()
 let sentinelVisible = false
 // Поиск и фильтры запоминаются: вернулся в каталог из карточки или корзины — всё как было.
 const SAVED_KEY = 'wcp-catalog-filters'
+// «Только в наличии» — из той же cookie, что у переключателя в меню: иначе восстановленные фильтры
+// включали его, когда в меню он выключен.
+const inStockKept = useCookie<boolean>('lk_in_stock', { default: () => true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 onMounted(() => {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '{}') as Record<string, string>
+    delete saved.inStock
+    if (!inStockKept.value) saved.inStock = '0'
     if (Object.keys(route.query).length === 0 && Object.keys(saved).length > 0) router.replace({ query: saved })
   }
   catch { /* хранилище недоступно — каталог просто без сохранённых фильтров */ }
@@ -126,11 +133,21 @@ onMounted(() => {
   desktop.value = mq.matches
   mq.addEventListener('change', e => { desktop.value = e.matches })
 })
-const FilterPanel = computed(() => resolveComponent(desktop.value ? 'B24Modal' : 'B24Drawer'))
+// resolveComponent — только в setup: внутри computed он не находит компонент, и окно не открывалось.
+const ModalPanel = resolveComponent('B24Modal')
+const DrawerPanel = resolveComponent('B24Drawer')
+const FilterPanel = computed(() => (desktop.value ? ModalPanel : DrawerPanel))
 const panelProps = computed(() => (desktop.value ? {} : { direction: 'bottom', handle: true }))
 const sortItems = SORT_ITEMS
-const brandItems = computed(() => (options.value?.brands ?? []).map(b => ({ label: b, value: b })))
-const sectionName = computed(() => options.value?.sections.find(s => s.guid === filters.value.section)?.name)
+const brandItems = computed(() => (options.value?.brands ?? []).map(b => b.trim()).filter(Boolean).map(b => ({ label: b, value: b })))
+// Хлебные крошки раздела: каждое звено — меню соседних разделов (SectionCrumbs).
+const crumbLink = (guid: string) => ({ path: '/', query: filtersToQuery({ ...filters.value, section: guid, sub: [] }) })
+const crumbVisible = computed(() => {
+  const keep = new Set((filters.value.inStock ? options.value?.stockSections : options.value?.itemSections)?.map(g => g.toLowerCase()) ?? [])
+  const all = options.value?.sections ?? []
+  const has = (g: string): boolean => keep.has(g) || all.some(s => s.parentGuid?.toLowerCase() === g && has(s.guid.toLowerCase()))
+  return (g: string) => has(g.toLowerCase())
+})
 const activeCount = computed(() => filters.value.brand.length + (filters.value.sort !== 'name' ? 1 : 0))
 // Третий уровень: подразделы выбранного раздела кнопками; можно выбрать несколько.
 const subSections = computed(() => {
@@ -168,6 +185,8 @@ function resetAll() {
           <B24Button color="air-secondary" :label="activeCount ? `Фильтры · ${activeCount}` : 'Фильтры'" @click="filtersOpen = true" />
         </div>
 
+        <SectionCrumbs v-if="filters.section" :sections="options?.sections ?? []" :guid="filters.section" :link="crumbLink" :visible="crumbVisible" />
+
         <div v-if="subSections.length" class="flex flex-wrap gap-2" role="group" aria-label="Подразделы">
           <B24Button
             v-for="s in subSections"
@@ -180,11 +199,9 @@ function resetAll() {
           />
         </div>
 
-        <div v-if="sectionName || filters.brand.length || filters.inStock" class="flex flex-wrap gap-2">
-          <B24Button v-if="sectionName" size="sm" color="air-secondary-accent" :label="`${sectionName} ✕`" :aria-label="`Убрать фильтр: ${sectionName}`" @click="setFilters({ section: '', sub: [] })" />
+        <div v-if="filters.brand.length" class="flex flex-wrap gap-2">
           <B24Button v-for="b in filters.brand" :key="b" size="sm" color="air-secondary-accent" :label="`${b} ✕`" :aria-label="`Убрать фильтр: ${b}`" @click="setFilters({ brand: filters.brand.filter(x => x !== b) })" />
-          <B24Button v-if="filters.inStock" size="sm" color="air-secondary-accent" label="В наличии ✕" aria-label="Убрать фильтр: в наличии" @click="setFilters({ inStock: false })" />
-        </div>
+                  </div>
 
         <B24Alert v-if="priceStatus === 'unavailable'" color="air-primary-warning" title="Цены временно недоступны" description="Каталог и остатки показываем, цены появятся, как только ответит учётная система. Обновите страницу через минуту." />
         <B24Alert v-else-if="priceStatus === 'no-contract'" color="air-primary-warning" title="Цены пока не подключены" description="Ваша компания ещё не связана с договором в учётной системе. Обратитесь к менеджеру — после подключения цены появятся здесь." />
