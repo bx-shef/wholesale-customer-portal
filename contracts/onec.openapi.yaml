@@ -1244,6 +1244,10 @@ components:
         deliveryAddressGuid:
           type: string
           pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+        deliveryAddressText:
+          type: string
+          minLength: 1
+          maxLength: 300
         deliveryDate:
           type: string
           format: date

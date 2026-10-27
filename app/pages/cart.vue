@@ -5,6 +5,9 @@ import { COMMENT_MAX, maxOrderQty } from '~~/shared/cart'
 import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
+/** Как `NEW_ADDRESS_MAX` на сервере (server/utils/orders.ts). */
+const NEW_ADDRESS_MAX = 300
+
 // Длинное соглашение или адрес не вылезает за край: переносится, как и пункты списка (владелец 2026-10-27).
 const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', value: 'whitespace-normal break-words text-start', viewport: 'w-[min(32rem,calc(100vw-2rem))]', item: 'h-auto min-h-9 py-1.5 whitespace-normal', itemLabel: 'whitespace-normal break-words' }
 useHead({ title: 'Корзина' })
@@ -27,8 +30,27 @@ const addressGuid = ref('')
 watch(delivery, (d) => {
   if (!addressGuid.value && d?.addresses[0]) addressGuid.value = d.addresses[0].guid
 }, { immediate: true })
+// Новый адрес (#124): клиент набирает его в том же поле — «Доставить по адресу: …». В 1С его нет,
+// менеджер внесёт его сам; дату доставки для него согласует менеджер.
+const NEW = '__new'
+const newAddress = ref('')
 const address = computed(() => delivery.value?.addresses.find(a => a.guid === addressGuid.value))
-const addressItems = computed(() => (delivery.value?.addresses ?? []).map(a => ({ label: a.label, value: a.guid })))
+const addressItems = computed(() => [
+  ...(delivery.value?.addresses ?? []).map(a => ({ label: a.label, value: a.guid })),
+  ...(newAddress.value ? [{ label: `Новый адрес: ${newAddress.value}`, value: NEW }] : []),
+])
+const addressError = ref('')
+function createAddress(text: string) {
+  const s = text.replace(/\s+/g, ' ').trim()
+  if (s.length < 5 || s.length > NEW_ADDRESS_MAX) {
+    addressError.value = `Укажите адрес полностью: город, улица, дом (до ${NEW_ADDRESS_MAX} знаков).`
+    return
+  }
+  addressError.value = ''
+  newAddress.value = s
+  addressGuid.value = NEW
+}
+const isNewAddress = computed(() => addressGuid.value === NEW && !!newAddress.value)
 
 let seq = 0
 async function refresh() {
@@ -99,7 +121,7 @@ async function submit() {
   try {
     const r = await $fetch<{ ok: true, orderId: number, deliveryFrom: string | null, deliveryTo: string | null }>('/api/orders', {
       method: 'POST',
-      body: { requestId: requestId.value, items: cart.lines.value, addressGuid: addressGuid.value, comment: comment.value },
+      body: { requestId: requestId.value, items: cart.lines.value, ...(isNewAddress.value ? { addressGuid: '', newAddress: newAddress.value } : { addressGuid: addressGuid.value }), comment: comment.value },
     })
     sent.value = { orderId: r.orderId, deliveryFrom: r.deliveryFrom, deliveryTo: r.deliveryTo }
     cart.clear()
@@ -112,7 +134,9 @@ async function submit() {
     if (status === 401) return navigateTo('/login')
     sendError.value = status === 422
       ? 'Корзина изменилась: проверьте строки с пометками и отправьте снова.'
-      : code === 'in_progress'
+      : code === 'bad_address'
+        ? 'Проверьте адрес доставки: выберите из списка или наберите новый полностью.'
+        : code === 'in_progress'
         ? 'Заявка уже отправляется — подождите несколько секунд и обновите раздел «Заявки».'
         : code === 'already_sent'
           ? 'Эта заявка уже отправлена. Изменения уйдут новой заявкой — нажмите «Отправить» ещё раз.'
@@ -188,13 +212,24 @@ async function submit() {
                 <B24Select v-model="contractGuid" :items="contractItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
               </B24FormField>
               <B24Alert v-if="contractError" color="air-primary-alert" :title="contractError" />
-              <B24FormField label="Адрес доставки">
-                <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
-                <p v-else class="text-sm">
-                  Адрес доставки не найден в учётной системе — обратитесь к менеджеру.
-                </p>
+              <B24FormField label="Адрес доставки" description="Выберите адрес или наберите новый и нажмите на него в списке.">
+                <B24SelectMenu
+                  v-model="addressGuid"
+                  :items="addressItems"
+                  value-key="value"
+                  create-item="always"
+                  :search-input="{ placeholder: 'Найти или ввести новый адрес…' }"
+                  placeholder="Выберите адрес доставки"
+                  class="w-full min-w-0 max-w-full"
+                  :b24ui="WRAP_SELECT"
+                  @create="createAddress"
+                />
               </B24FormField>
-              <p v-if="address" class="text-sm">
+              <B24Alert v-if="addressError" color="air-primary-warning" :title="addressError" />
+              <p v-if="isNewAddress" class="text-sm">
+                Доставим по новому адресу. Менеджер внесёт его в учётную систему и согласует дату доставки.
+              </p>
+              <p v-else-if="address" class="text-sm">
                 <template v-if="address.slot">
                   Машина приедет: <b>{{ formatSlot(address.slot) }}</b>, если заявка будет подтверждена до {{ formatCutoff(address.slot.cutoffAt) }}.
                 </template>

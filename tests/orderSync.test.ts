@@ -124,6 +124,15 @@ describe('синхронизация заявок', () => {
       expect(deps.createOnecOrder).not.toHaveBeenCalled()
     })
 
+    it('новый адрес (#124): заказ на запасной адрес партнёра, текст — в «Адрес доставки»', async () => {
+      deps.clients.save([{ guid: g(100), name: 'К', unp: '1', address: '', city: 'Минск', region: null, shipmentBlocked: false, managerEmail: '', contract: null, deliveryAddresses: [{ guid: g(301), city: 'Минск', address: 'ул. 1' }], changedAt: NOW.toISOString(), deleted: false } as never])
+      const row = deps.orders.begin(draft(1, { addressGuid: '', addressText: 'г. Брест, ул. Новая, 5' }), 'h', '2026-10-12T09:00:00Z')
+      deps.orders.sent(row.id, 501, '2026-10-12T09:00:00Z')
+      stageOf[501] = 'C9:PREPARATION'
+      await syncOrders(deps)
+      expect(deps.createOnecOrder.mock.calls[0]![0]).toMatchObject({ deliveryAddressGuid: g(301), deliveryAddressText: 'г. Брест, ул. Новая, 5' })
+    })
+
     it('подтверждена — заказ в 1С с externalId = ID сделки, один раз', async () => {
       const id = await confirmed()
       expect(deps.createOnecOrder).toHaveBeenCalledTimes(1)

@@ -180,8 +180,8 @@ export const SENDING_STALE_MS = 2 * 60_000
  * Отпечаток того, что выбрал клиент: адрес, комментарий, товары и количество. Цены в него не входят:
  * повтор после смены цены в 1С — тот же заказ клиента, и в сделку уходят цены, сохранённые в строке.
  */
-export function payloadHash(d: Pick<OrderDraft, 'addressGuid' | 'items' | 'comment'>): string {
-  const key = JSON.stringify([d.addressGuid, d.comment, d.items.map(i => [i.guid, i.qty]).sort()])
+export function payloadHash(d: Pick<OrderDraft, 'addressGuid' | 'addressText' | 'items' | 'comment'>): string {
+  const key = JSON.stringify([d.addressGuid || `new:${d.addressText}`, d.comment, d.items.map(i => [i.guid, i.qty]).sort()])
   return createHash('sha256').update(key).digest('hex')
 }
 
@@ -294,7 +294,22 @@ export function createOrderStore(db: DatabaseSync) {
 }
 export type OrderStore = ReturnType<typeof createOrderStore>
 
-export interface SubmitInput { requestId: string, lines: CartLineInput[], addressGuid: string, comment: string }
+/** `newAddress` — адрес, которого нет в 1С (#124): вместо `addressGuid`, текстом. */
+export interface SubmitInput { requestId: string, lines: CartLineInput[], addressGuid: string, newAddress?: string, comment: string }
+
+/** Новый адрес доставки: 5–300 знаков, пробелы схлопнуты; кривой — `null`. */
+export const NEW_ADDRESS_MAX = 300
+export function cleanNewAddress(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.replace(/\s+/g, ' ').trim()
+  return s.length >= 5 && s.length <= NEW_ADDRESS_MAX ? s : null
+}
+
+/** Город для графика по тексту нового адреса: название региона графика целым словом. */
+export function cityInText(schedules: TripSchedule[], text: string): string | null {
+  const low = ` ${text.toLowerCase().replace(/[.,;()]/g, ' ')} `
+  return schedules.map(s => s.region).find(r => r && !/^[0-9a-f]{8}-/.test(r) && low.includes(` ${r.toLowerCase()} `)) ?? null
+}
 export interface SubmitDeps {
   store: CatalogStore
   clients: ClientStore
@@ -328,10 +343,12 @@ export type SubmitResult =
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Описание сделки для менеджера: всё, что пришло извне, — без BB-разметки. */
-export function dealComments(id: number, row: { address_text: string, delivery_from: string | null, delivery_to: string | null, comment: string }, cutoffAt?: string): string {
+export function dealComments(id: number, row: { address_guid?: string, address_text: string, delivery_from: string | null, delivery_to: string | null, comment: string }, cutoffAt?: string): string {
   return [
     `Заявка из личного кабинета №${id}.`,
-    `Адрес доставки: ${neutralizeBb(row.address_text)}`,
+    row.address_guid === ''
+      ? `Новый адрес доставки (нет в 1С, внесите его в карточку партнёра): ${neutralizeBb(row.address_text)}`
+      : `Адрес доставки: ${neutralizeBb(row.address_text)}`,
     row.delivery_from && row.delivery_to
       ? `Ближайший рейс: ${formatSlot({ arrivalFrom: row.delivery_from, arrivalTo: row.delivery_to })}${cutoffAt ? ` (приём до ${formatCutoff(cutoffAt)})` : ''}`
       : 'Ближайший рейс не найден — согласуйте дату с клиентом.',
@@ -354,8 +371,9 @@ export async function submitOrder(
   // Соглашение заявки — выбранное клиентом в корзине, если оно из его действующих, иначе основное (#46).
   const contract = client && !client.deleted ? chooseContract(client, pricing.contractGuid) : null
   if (!client || !contract) return { ok: false, status: 409, error: 'no_contract' }
-  const address = client.addresses.find(a => a.guid === input.addressGuid.toLowerCase())
-  if (!address) return { ok: false, status: 400, error: 'bad_address' }
+  const newAddress = input.addressGuid ? null : cleanNewAddress(input.newAddress)
+  const address = newAddress ? null : client.addresses.find(a => a.guid === input.addressGuid.toLowerCase())
+  if (!address && !newAddress) return { ok: false, status: 400, error: 'bad_address' }
 
   // Уже отправленная заявка с тем же requestId — ответ из базы, без пересчёта и без CRM.
   const existing = deps.orders.get(input.requestId)
@@ -367,7 +385,8 @@ export async function submitOrder(
   // Рейс — подсказка клиенту и менеджеру, а не условие: сбой «Рейсов» заявку не останавливает.
   let slot: DeliverySlot | null = null
   try {
-    slot = nextDelivery(await deps.schedules(), [address.city, client.regionGuid], now)
+    const schedules = await deps.schedules()
+    slot = nextDelivery(schedules, address ? [address.city, client.regionGuid] : [cityInText(schedules, newAddress!)], now)
   }
   catch (e) {
     console.error(`[orders] schedules: ${(e as Error).name}`)
@@ -375,7 +394,7 @@ export async function submitOrder(
 
   const draft: OrderDraft = {
     requestId: input.requestId, companyId: session.companyId, contactId: session.contactId, clientGuid: client.guid,
-    contractGuid: contract.guid, addressGuid: address.guid, addressText: addressLine(address.city, address.address), slot,
+    contractGuid: contract.guid, addressGuid: address?.guid ?? '', addressText: address ? addressLine(address.city, address.address) : newAddress!, slot,
     items: quote.lines.map(l => ({ guid: l.guid, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty, price: l.price!, vatRate: l.vatRate })),
     total: quote.total, currency: quote.currency!, comment: input.comment.trim(),
   }
