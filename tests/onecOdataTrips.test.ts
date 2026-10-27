@@ -137,4 +137,8 @@ describe('рейсы по OData: края', () => {
     const off = new OdataOnec(client(f), sqliteVersionStore(db), { ttlMs: 0 })
     expect((await off.orderStatus({})).items[0]!.tripGuid).toBeNull()
   })
+  it('без госномера — транспортное средство строкой; ссылку (GUID) не показываем', () => {
+    expect(mapTrip(doc({ АвтомобильГосударственныйНомер: undefined, ТранспортноеСредство: 'AI2292-1 Вольво FL6.19' }), orders, '')!.vehicle).toBe('AI2292-1 Вольво FL6.19')
+    expect(mapTrip(doc({ АвтомобильГосударственныйНомер: undefined, ТранспортноеСредство: G(5) }), orders, '')!.vehicle).toBe('')
+  })
 })

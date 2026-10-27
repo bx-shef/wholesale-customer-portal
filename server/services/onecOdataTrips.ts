@@ -28,6 +28,8 @@ export interface TripDocRow {
   ДатаВремяРейсаФактС?: string
   ДатаВремяРейсаФактПо?: string
   АвтомобильГосударственныйНомер?: string
+  /** В публикации 2026-10-27 — «ТранспортноеСредство» (строка); госномера отдельным полем может не быть. */
+  ТранспортноеСредство?: string
   Маршрут?: Array<{ Зона_Key?: string }>
   Распоряжения?: Array<{ Распоряжение?: string, Распоряжение_Type?: string }>
 }
@@ -42,6 +44,11 @@ const ref = (v: string | undefined) => {
 export function onecDateTime(v: string | undefined): string | null {
   if (!v || v.startsWith('0001')) return null
   return `${v.slice(0, 19)}${ONEC_TZ}`
+}
+
+/** «ТранспортноеСредство» бывает ссылкой (GUID) — её клиенту не показываем. */
+function vehicleText(v: string | undefined): string {
+  return v && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v) ? v : ''
 }
 
 /** Статус рейса по перечислению 1С; незнакомый — «формируется»: так рейс клиенту ничего не обещает. */
@@ -78,7 +85,7 @@ export function mapTrip(d: TripDocRow, orders: Map<string, { number: string, cli
     plannedEnd: onecDateTime(d.ДатаВремяРейсаПланПо),
     actualStart: onecDateTime(d.ДатаВремяРейсаФактС),
     actualEnd: onecDateTime(d.ДатаВремяРейсаФактПо),
-    vehicle: (d.АвтомобильГосударственныйНомер ?? '').trim(),
+    vehicle: (d.АвтомобильГосударственныйНомер || vehicleText(d.ТранспортноеСредство)).trim(),
     regionGuids: zones,
     orders: [...new Map(tripOrders.map(o => [o.orderGuid, o])).values()],
     changedAt,
@@ -96,7 +103,8 @@ export interface TripStats { read: number, noPlan: number, broken: number, order
 export async function readTrips(client: ODataClient, now: Date, stats: TripStats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }): Promise<Array<{ trip: TripT, version: string }>> {
   const at = (days: number) => new Date(now.getTime() + days * 86_400_000 + 3 * 3_600_000).toISOString().slice(0, 19)
   const docs = await listAll<TripDocRow>(client, TRIP_SET, {
-    $select: 'Ref_Key,Number,DataVersion,DeletionMark,Статус,ДатаВремяРейсаПланС,ДатаВремяРейсаПланПо,ДатаВремяРейсаФактС,ДатаВремяРейсаФактПо,АвтомобильГосударственныйНомер,Маршрут,Распоряжения',
+    // Без $select: состав полей документа в публикации менялся (госномер), а несуществующее поле
+    // в $select 1С отвергает целиком. Документов в окне — десятки, лишние поля не в тягость.
     $filter: `Posted eq true and ДатаВремяРейсаПланС ge datetime'${at(-TRIP_PAST_DAYS)}' and ДатаВремяРейсаПланС le datetime'${at(TRIP_AHEAD_DAYS)}'`,
   })
   stats.read = docs.length
