@@ -20,7 +20,6 @@ export default defineEventHandler(() => {
       b24App: db && Boolean(env.b24ClientId && env.b24ClientSecret) && Boolean(loadAppAuth(useDb())),
       onecMock: env.onecMock,
       onec: Boolean(env.onecUrl),
-      deepseek: Boolean(env.deepseekApiKey),
       session: Boolean(env.sessionSecret),
       mcpAdmin: Boolean(env.mcpAdminToken),
       db,

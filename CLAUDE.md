@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-23
+> Last reviewed: 2026-10-27
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -19,7 +19,7 @@ pnpm build            # сборка .output/server/index.mjs
 pnpm test:contract    # контрактные тесты 1С: мок; ONEC_CONTRACT_URL=… — тестовая база
 pnpm onec:openapi     # пересобрать contracts/onec.openapi.yaml из shared/onec/schemas.ts
 pnpm b24:setup        # план настройки коробки по B24_WEBHOOK_URL; --apply — записать (docs/TEST_STAND.md); на сервере — make b24-setup
-make help             # цели сервера (docs/DEPLOY.md); журнал ИИ — make ai-dialogs
+make help             # цели сервера (docs/DEPLOY.md)
 ```
 
 ## Карта
@@ -65,8 +65,6 @@ make help             # цели сервера (docs/DEPLOY.md); журнал �
 | `shared/contractChoice.ts`, `server/api/contract.post.ts`, `chooseContract`/`selectContract` в `clients.ts` | выбор соглашения в корзине (#46): cookie `lk_contract` — подсказка, сервер берёт только соглашение из действующих у клиента сессии; цены, заявка и профиль — по выбранному |
 | `shared/delivery.ts` | ближайший рейс в бизнес-регион клиента и окно прибытия по Минску (§8 спецификации) |
 | `server/utils/{delivery,deliverySync,deliveriesTab}.ts`, `server/tasks/sync/{schedule,trips}.ts`, `server/api/b24/deliveries.post.ts` | доставка ведётся только в 1С: график по регионам (раз в час) и задания на перевозку (раз в 10 минут) в базу ЛК; рейс заказа клиенту; вкладка «Ближайшие доставки» на странице приложения в коробке |
-| `server/utils/aiChat.ts`, `server/api/ai/chat.post.ts`, `app/components/AiChatPanel.vue` | ИИ-помощник панелью справа (AI SDK + B24ChatMessages, стрим): DeepSeek + инструменты каталога с ценами договора (`chatTools`: поиск, карточка, аналоги, сравнение, показ); карточки — из выхода `show_products`, не из текста модели |
-| `server/utils/aiJournal.ts`, `server/api/ai/rate.post.ts`, `server/mcp/handlers/admin/tools/ai_dialogs.ts` | журнал диалогов помощника и оценка 👍/👎; разбор — `make ai-dialogs` |
 | `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |
 | `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), стадии воронки, комментарий в ленте, дело «перезвонить» |
 | `server/utils/orderSync.ts`, `orderSyncRun.ts`, `server/tasks/sync/orders.ts` | раз в 2 минуты: досылка заявок без сделки, подтверждение менеджером → заказ 1С, статусы 1С → заявки и сделки; вручную — `sync_orders` |

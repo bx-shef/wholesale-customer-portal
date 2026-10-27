@@ -18,7 +18,6 @@ const route = useRoute()
 const headers = useRequestHeaders(['cookie'])
 const { data: me } = await useFetch('/api/auth/me', { headers, key: 'me' })
 const cart = useCart()
-const ai = useAiChat()
 const router = useRouter()
 const open = ref(false)
 const { logout, logoutError } = useLogout()
@@ -103,7 +102,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
 </script>
 
 <template>
-  <B24DashboardGroup v-if="withMenu" unit="px" :class="{ 'md:pr-[440px]': ai.open.value }" class="transition-[padding] duration-200">
+  <B24DashboardGroup v-if="withMenu" unit="px">
     <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :b24ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />

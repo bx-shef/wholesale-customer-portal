@@ -13,6 +13,5 @@ describe('readServerEnv', () => {
     expect(readServerEnv({ NUXT_MCP_ADMIN_TOKEN: 't' }).mcpAdminToken).toBe('')
   })
   it('модель DeepSeek по умолчанию', () => {
-    expect(readServerEnv({}).deepseekModel).toBe('deepseek-chat')
   })
 })

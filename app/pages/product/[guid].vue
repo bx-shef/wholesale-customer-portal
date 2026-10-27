@@ -18,8 +18,6 @@ const item = computed(() => data.value?.item)
 // Экран загрузки не мигает (#78): держится не меньше 3 секунд.
 const holding = useMinLoading(() => !item.value && status.value !== 'error')
 const cart = useCart()
-const ai = useAiChat()
-const { data: me } = useNuxtData<{ ai?: boolean }>('me')
 // Хлебные крошки: Каталог › раздел › подраздел — разделы уже загружены меню (ключ catalog-filters).
 const { data: filterOptions } = useNuxtData<{ sections: { guid: string, parentGuid: string | null, name: string }[] }>('catalog-filters')
 const crumbLink = (guid: string) => ({ path: '/', query: { section: guid } })
@@ -59,7 +57,6 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
                   <B24Button to="/cart" color="air-tertiary" label="Перейти в корзину" />
                 </template>
               </div>
-              <B24Button v-if="me?.ai" color="air-secondary-accent" class="self-start" label="Обсудить с ИИ" @click="ai.discuss({ guid: item.guid, name: item.name })" />
               <p class="text-sm">
                 Кратность: {{ formatQty(item.packQty, item.unit) }}, минимальный заказ {{ formatQty(Math.max(item.minQty, item.packQty), item.unit) }}
               </p>
