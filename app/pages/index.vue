@@ -1,8 +1,9 @@
 <!-- Каталог: поиск, фильтры в шторке, подгрузка при прокрутке, цены договора клиента. Состояние — в адресе. -->
 <script setup lang="ts">
 import ProductIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
-import { normalizeQty } from '~~/shared/cart'
+import { canOrder, maxOrderQty, normalizeQty } from '~~/shared/cart'
 import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
+const stockMode = useStockMode()
 
 useHead({ title: 'Каталог' })
 
@@ -238,9 +239,9 @@ function resetAll() {
                     <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }}</span></span>
                     <StockBadge :available="it.available" :unit="it.unit" />
                   </div>
-                  <div v-if="it.price && it.available > 0" class="flex items-center gap-2 pt-1">
+                  <div v-if="it.price && canOrder(it.available, stockMode)" class="flex items-center gap-2 pt-1">
                     <B24Button v-if="!cart.qtyOf(it.guid)" color="air-primary" size="sm" label="В корзину" @click="cart.setQty(it.guid, normalizeQty(it.minQty, it.packQty, it.minQty))" />
-                    <QtyStepper v-else :qty="cart.qtyOf(it.guid)" :pack-qty="it.packQty" :min-qty="it.minQty" :unit="it.unit" @update:qty="v => cart.setQty(it.guid, v)" />
+                    <QtyStepper v-else :qty="cart.qtyOf(it.guid)" :pack-qty="it.packQty" :min-qty="it.minQty" :unit="it.unit" :max="maxOrderQty(it.available, it.packQty, it.minQty, stockMode)" @update:qty="v => cart.setQty(it.guid, v)" />
                   </div>
                 </div>
               </div>

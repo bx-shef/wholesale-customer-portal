@@ -1,13 +1,14 @@
 <!-- Корзина: количество с кратностью, итог по ценам договора, адрес, ближайший рейс, комментарий, «Отправить заявку». -->
 <script setup lang="ts">
 import CartIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
-import { COMMENT_MAX } from '~~/shared/cart'
+import { COMMENT_MAX, maxOrderQty } from '~~/shared/cart'
 import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Корзина' })
+const stockMode = useStockMode()
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -85,6 +86,7 @@ const problemText: Record<NonNullable<QuoteLine['problem']>, string> = {
   no_price: 'Нет цены по вашему договору — уточните у менеджера.',
   bad_qty: 'Количество должно быть кратно упаковке.',
   out_of_stock: 'Нет в наличии — удалите товар из корзины.',
+  over_stock: 'Больше, чем есть в наличии.',
 }
 
 async function submit() {
@@ -164,14 +166,14 @@ async function submit() {
                 {{ l.sku }} · {{ l.price !== null && l.currency ? `${formatMoney(l.price, l.currency)} / ${l.unit}` : 'без цены' }}
               </p>
               <div v-if="l.problem !== 'not_found'" class="flex flex-wrap items-center justify-between gap-2">
-                <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" @update:qty="v => cart.setQty(l.guid, v)" />
+                <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" :max="maxOrderQty(l.available, l.packQty, l.minQty, stockMode)" @update:qty="v => cart.setQty(l.guid, v)" />
                 <span class="font-semibold">{{ l.currency ? formatMoney(l.total, l.currency) : '—' }}</span>
               </div>
-              <p v-if="l.problem !== 'not_found' && l.available < l.qty" class="text-sm">
+              <p v-if="stockMode !== 'stock' && l.problem !== 'not_found' && l.available < l.qty" class="text-sm">
                 На складах сейчас {{ formatQty(Math.max(l.available, 0), l.unit) }} — остальное менеджер согласует отдельно.
               </p>
               <B24Alert v-if="l.problem" color="air-primary-warning" :title="problemText[l.problem]">
-                <template v-if="l.problem === 'bad_qty'" #actions>
+                <template v-if="(l.problem === 'bad_qty' || l.problem === 'over_stock') && l.suggestedQty > 0" #actions>
                   <B24Button size="sm" color="air-secondary" :label="`Взять ${formatQty(l.suggestedQty, l.unit)}`" @click="cart.setQty(l.guid, l.suggestedQty)" />
                 </template>
               </B24Alert>

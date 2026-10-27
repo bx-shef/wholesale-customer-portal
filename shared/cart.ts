@@ -19,6 +19,28 @@ export function isValidQty(qty: number, packQty: number, minQty: number): boolea
   return Number.isFinite(qty) && qty > 0 && normalizeQty(qty, packQty, minQty) === roundQty(qty)
 }
 
+/**
+ * Можно ли заказывать сверх остатка (`ORDER_STOCK_MODE`, решение владельца 2026-10-27):
+ * `stock` — не больше, чем в наличии (по умолчанию); `over` — больше остатка можно, но не то, чего нет;
+ * `any` — можно и то, чего нет в наличии.
+ */
+export type StockMode = 'stock' | 'over' | 'any'
+export function parseStockMode(raw: string | undefined): StockMode {
+  const s = (raw ?? '').trim().toLowerCase()
+  return s === 'over' || s === 'any' ? s : 'stock'
+}
+
+/** Можно ли положить товар в корзину. */
+export const canOrder = (available: number, mode: StockMode) => mode === 'any' || available > 0
+
+/** Наибольшее количество к заказу: в режиме `stock` — остаток, вниз до упаковки (меньше минимума — 0). */
+export function maxOrderQty(available: number, packQty: number, minQty: number, mode: StockMode): number {
+  if (mode !== 'stock') return Infinity
+  const pack = Math.max(Math.round((packQty > 0 ? packQty : 1) * 1000), 1)
+  const top = (Math.floor(Math.round(Math.max(available, 0) * 1000) / pack) * pack) / 1000
+  return top >= normalizeQty(minQty, packQty, minQty) ? top : 0
+}
+
 /** Количество — до тысячных: сумма дробных упаковок не тянет хвост двоичной погрешности. */
 export const roundQty = (qty: number) => Math.round(qty * 1000) / 1000
 

@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceT } from '../../shared/onec/schemas'
-import { addressLine, CART_LINES_MAX, COMMENT_MAX, isValidQty, lineTotal, neutralizeBb, normalizeQty, roundQty, type CartLineInput } from '../../shared/cart'
+import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isValidQty, lineTotal, maxOrderQty, neutralizeBb, normalizeQty, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
 import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSchedule } from '../../shared/delivery'
 import type { CatalogStore } from './catalog'
 import type { ClientPricing, PriceSource } from './catalogView'
@@ -23,7 +23,7 @@ import { GUID_RE } from './catalogView'
 import { chooseContract, type ClientStore } from './clients'
 import type { B24Orders } from '../services/b24Orders'
 
-export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock'
+export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock'
 
 export interface QuoteLine {
   guid: string
@@ -67,7 +67,7 @@ export function parseCartLines(body: unknown): CartLineInput[] {
   return [...byGuid].map(([guid, qty]) => ({ guid, qty }))
 }
 
-export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pricing: ClientPricing, prices: PriceSource): Promise<Quote> {
+export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pricing: ClientPricing, prices: PriceSource, mode: StockMode = 'stock'): Promise<Quote> {
   const items = lines.map(l => ({ input: l, item: store.item(l.guid) }))
   const known = items.filter(i => i.item).map(i => i.item!.guid)
   let priceMap = new Map<string, PriceT>()
@@ -86,13 +86,15 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
     }
     const p = priceMap.get(item.guid)
     const valid = isValidQty(input.qty, item.packQty, item.minQty)
+    const max = maxOrderQty(item.available, item.packQty, item.minQty, mode)
+    const suggested = Math.min(normalizeQty(input.qty, item.packQty, item.minQty), max)
     return {
       guid: item.guid, sku: item.sku, name: item.name, unit: item.unit, packQty: item.packQty, minQty: item.minQty,
-      available: item.available, qty: input.qty, suggestedQty: normalizeQty(input.qty, item.packQty, item.minQty),
+      available: item.available, qty: input.qty, suggestedQty: suggested,
       price: p?.price ?? null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
       total: p ? lineTotal(p.price, input.qty) : 0,
-      // Нет на складе — не продаём (решение владельца 2026-10-26); больше остатка — можно, менеджер уточнит.
-      problem: item.available <= 0 ? 'out_of_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
+      // Сверх остатка — по ORDER_STOCK_MODE (решение владельца 2026-10-27): по умолчанию не больше наличия.
+      problem: !canOrder(item.available, mode) || (mode === 'stock' && max === 0) ? 'out_of_stock' : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
     }
   })
   const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))
@@ -300,6 +302,8 @@ export interface SubmitDeps {
   b24: Pick<B24Orders, 'createDeal'>
   schedules: () => Promise<TripSchedule[]>
   prices: PriceSource
+  /** Заказ сверх остатка (`ORDER_STOCK_MODE`); по умолчанию — не больше наличия. */
+  stockMode?: StockMode
   /** Название компании из карточки в CRM — им подписывается сделка (#77); нет — имя клиента из 1С. */
   companyTitle?: (companyId: number) => Promise<string | null>
   now?: () => Date
@@ -357,7 +361,7 @@ export async function submitOrder(
   const existing = deps.orders.get(input.requestId)
   if (existing && existing.company_id !== session.companyId) return { ok: false, status: 400, error: 'bad_request' }
 
-  const quote = await quoteCart(input.lines, deps.store, pricing, deps.prices)
+  const quote = await quoteCart(input.lines, deps.store, pricing, deps.prices, deps.stockMode)
   if (!quote.ok) return { ok: false, status: quote.priceStatus === 'unavailable' ? 503 : 422, error: 'cart_invalid', quote }
 
   // Рейс — подсказка клиенту и менеджеру, а не условие: сбой «Рейсов» заявку не останавливает.

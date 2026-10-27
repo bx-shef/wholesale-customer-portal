@@ -4,6 +4,7 @@
  * префикса запёк бы в образ на сборке. Читаем при каждом вызове — образ один на все серверы.
  */
 import { everyFromEnv, type AutoFlow } from './syncSchedule'
+import { parseStockMode, type StockMode } from '../../shared/cart'
 
 export interface ServerEnv {
   /** Ключи локального приложения коробки (карточка приложения → client_id / client_secret). */
@@ -58,6 +59,8 @@ export interface ServerEnv {
   deliverySchedule: string
   /** Характеристики, которые клиенту не показываем (`CATALOG_HIDDEN_PROPERTIES`, названия через запятую). */
   catalogHiddenProperties: string[]
+  /** Заказ сверх остатка (`ORDER_STOCK_MODE`: stock — не больше наличия, по умолчанию; over — больше можно; any — и то, чего нет). */
+  orderStockMode: StockMode
   /** Картинок за прогон потока `images` (`SYNC_IMAGES_BATCH`, 1–5000, по умолчанию 1000). */
   imagesBatch: number
 }
@@ -92,6 +95,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     commitSha: get('COMMIT_SHA'),
     syncEvery: everyFromEnv(get),
     catalogHiddenProperties: get('CATALOG_HIDDEN_PROPERTIES').split(',').map(s => s.trim()).filter(Boolean),
+    orderStockMode: parseStockMode(get('ORDER_STOCK_MODE')),
     deliverySchedule: get('DELIVERY_SCHEDULE'),
     catalogHiddenSections: get('CATALOG_HIDDEN_SECTIONS').split(',').map(s => s.trim()).filter(Boolean),
     imagesBatch: (n => (Number.isInteger(n) && n >= 1 && n <= 5000 ? n : 1000))(Number(get('SYNC_IMAGES_BATCH') || 1000)),
