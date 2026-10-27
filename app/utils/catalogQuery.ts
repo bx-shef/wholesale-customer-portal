@@ -1,3 +1,5 @@
+import { parseProps, propsToQuery, type PropFilters } from '../../shared/propFilter'
+
 /** Состояние каталога в адресе: ссылкой можно поделиться, «назад» возвращает к тем же фильтрам. */
 export interface CatalogFilters {
   q: string
@@ -6,11 +8,13 @@ export interface CatalogFilters {
   sub: string[]
   /** Бренды — несколько: товар любого из них. */
   brand: string[]
+  /** Характеристики (цвет, объём…): название → выбранные значения. */
+  props: PropFilters
   inStock: boolean
   sort: 'name' | 'sku' | 'available' | 'price' | 'price_desc'
 }
 
-export const DEFAULT_FILTERS: CatalogFilters = { q: '', section: '', sub: [], brand: [], inStock: true, sort: 'name' }
+export const DEFAULT_FILTERS: CatalogFilters = { q: '', section: '', sub: [], brand: [], props: {}, inStock: true, sort: 'name' }
 
 const BRANDS_MAX = 20
 const many = (v: unknown) => [...new Set((Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string' && x !== ''))].slice(0, BRANDS_MAX)
@@ -23,6 +27,7 @@ export function filtersFromQuery(query: Record<string, unknown>): CatalogFilters
     section: one(query.section),
     sub: many(query.sub),
     brand: many(query.brand),
+    props: parseProps(query.prop),
     // «Только в наличии» включено по умолчанию (решение владельца 2026-10-27): в адресе — только выключение.
     inStock: one(query.inStock) !== '0',
     sort: parseSort(sort),
@@ -36,6 +41,8 @@ export function filtersToQuery(f: CatalogFilters): Record<string, string | strin
   if (f.section) out.section = f.section
   if (f.section && f.sub.length) out.sub = f.sub
   if (f.brand.length) out.brand = f.brand
+  const props = propsToQuery(f.props ?? {})
+  if (props.length) out.prop = props
   if (!f.inStock) out.inStock = '0'
   if (f.sort !== 'name') out.sort = f.sort
   return out

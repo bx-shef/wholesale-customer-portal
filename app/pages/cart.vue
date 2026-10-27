@@ -1,13 +1,16 @@
 <!-- Корзина: количество с кратностью, итог по ценам договора, адрес, ближайший рейс, комментарий, «Отправить заявку». -->
 <script setup lang="ts">
 import CartIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
-import { COMMENT_MAX } from '~~/shared/cart'
+import { COMMENT_MAX, maxOrderQty } from '~~/shared/cart'
 import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
+// Длинное соглашение или адрес не вылезает за край: переносится, как и пункты списка (владелец 2026-10-27).
+const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', value: 'whitespace-normal break-words text-start', viewport: 'w-[min(32rem,calc(100vw-2rem))]', item: 'h-auto min-h-9 py-1.5 whitespace-normal', itemLabel: 'whitespace-normal break-words' }
 useHead({ title: 'Корзина' })
+const stockMode = useStockMode()
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -85,6 +88,7 @@ const problemText: Record<NonNullable<QuoteLine['problem']>, string> = {
   no_price: 'Нет цены по вашему договору — уточните у менеджера.',
   bad_qty: 'Количество должно быть кратно упаковке.',
   out_of_stock: 'Нет в наличии — удалите товар из корзины.',
+  over_stock: 'Больше, чем есть в наличии.',
 }
 
 async function submit() {
@@ -130,8 +134,8 @@ async function submit() {
 </script>
 
 <template>
-  <AppPage id="cart" title="Корзина">
-      <B24Container class="pt-4 pb-28 md:pb-4 flex flex-col gap-3 max-w-2xl">
+  <AppPage id="cart" title="Корзина" :bottom-bar="cart.lines.value.length > 0">
+      <B24Container class="pt-4 pb-4 flex flex-col gap-3 max-w-2xl">
         <B24Alert v-if="sent" color="air-primary-success" :title="`Заявка №${sent.orderId} отправлена`" :description="sent.deliveryFrom && sent.deliveryTo ? `Машина приедет: ${formatSlot({ arrivalFrom: sent.deliveryFrom, arrivalTo: sent.deliveryTo })}. Менеджер подтвердит заявку, статус — в разделе «Заявки».` : 'Менеджер подтвердит заявку и согласует дату доставки. Статус — в разделе «Заявки».'" />
 
         <!-- Пока корзина не прочитана с устройства, «пусто» не показываем: иначе оно мелькает (#77). -->
@@ -164,14 +168,14 @@ async function submit() {
                 {{ l.sku }} · {{ l.price !== null && l.currency ? `${formatMoney(l.price, l.currency)} / ${l.unit}` : 'без цены' }}
               </p>
               <div v-if="l.problem !== 'not_found'" class="flex flex-wrap items-center justify-between gap-2">
-                <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" @update:qty="v => cart.setQty(l.guid, v)" />
+                <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" :max="maxOrderQty(l.available, l.packQty, l.minQty, stockMode)" @update:qty="v => cart.setQty(l.guid, v)" />
                 <span class="font-semibold">{{ l.currency ? formatMoney(l.total, l.currency) : '—' }}</span>
               </div>
-              <p v-if="l.problem !== 'not_found' && l.available < l.qty" class="text-sm">
+              <p v-if="stockMode !== 'stock' && l.problem !== 'not_found' && l.available < l.qty" class="text-sm">
                 На складах сейчас {{ formatQty(Math.max(l.available, 0), l.unit) }} — остальное менеджер согласует отдельно.
               </p>
               <B24Alert v-if="l.problem" color="air-primary-warning" :title="problemText[l.problem]">
-                <template v-if="l.problem === 'bad_qty'" #actions>
+                <template v-if="(l.problem === 'bad_qty' || l.problem === 'over_stock') && l.suggestedQty > 0" #actions>
                   <B24Button size="sm" color="air-secondary" :label="`Взять ${formatQty(l.suggestedQty, l.unit)}`" @click="cart.setQty(l.guid, l.suggestedQty)" />
                 </template>
               </B24Alert>
@@ -181,11 +185,11 @@ async function submit() {
           <B24Card>
             <div class="flex flex-col gap-3">
               <B24FormField v-if="contractItems.length > 1" label="Соглашение" description="Цены и заявка — по выбранному соглашению.">
-                <B24Select v-model="contractGuid" :items="contractItems" class="w-full" />
+                <B24Select v-model="contractGuid" :items="contractItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
               </B24FormField>
               <B24Alert v-if="contractError" color="air-primary-alert" :title="contractError" />
               <B24FormField label="Адрес доставки">
-                <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full" />
+                <B24Select v-if="addressItems.length" v-model="addressGuid" :items="addressItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
                 <p v-else class="text-sm">
                   Адрес доставки не найден в учётной системе — обратитесь к менеджеру.
                 </p>

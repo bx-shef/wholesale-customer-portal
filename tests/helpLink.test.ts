@@ -67,3 +67,29 @@ describe('раскладка: выход, гидрация, чат (панель
     expect(src).not.toContain('useAiChat')
   })
 })
+
+describe('компания внизу меню (владелец 2026-10-27)', () => {
+  const src = readFileSync('app/layouts/default.vue', 'utf8')
+  it('название не обрезается и стоит по центру', () => {
+    expect(src).not.toContain('line-clamp')
+    expect(src).toContain("labelInner: 'whitespace-normal break-words text-center'")
+  })
+  it('аватар не синий', () => {
+    expect(src).not.toMatch(/avatar="\{[^}]*accent-main-primary/)
+  })
+})
+
+describe('подвал корзины не под плавающей панелью (владелец 2026-10-27)', () => {
+  it('корзина с товарами поднимает подвал над панелью на телефоне', () => {
+    expect(readFileSync('app/pages/cart.vue', 'utf8')).toContain(':bottom-bar="cart.lines.value.length > 0"')
+    expect(readFileSync('app/components/AppPage.vue', 'utf8')).toContain("<AppFooter :class=\"bottomBar ? 'pb-28 md:pb-6' : ''\" />")
+  })
+})
+
+describe('выпадающие списки корзины не вылезают за край (владелец 2026-10-27)', () => {
+  it('соглашение и адрес — с переносом', () => {
+    const src = readFileSync('app/pages/cart.vue', 'utf8')
+    expect(src.match(/:b24ui="WRAP_SELECT"/g)).toHaveLength(2)
+    expect(src).toContain("value: 'whitespace-normal break-words text-start'")
+  })
+})

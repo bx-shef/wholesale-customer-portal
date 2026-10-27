@@ -384,3 +384,42 @@ describe('очередь картинок', () => {
     expect(store.imageRefs().map(r => r.id)).toEqual([g(702), g(701), g(703)])
   })
 })
+
+describe('фильтр по характеристикам (владелец 2026-10-27)', () => {
+  const mk = (hidden: string[] = []) => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createCatalogStore(db, { filterProperties: () => ['Цвет', 'Объём', 'Секрет'], hiddenProperties: () => hidden })
+    store.saveCatalog([{ guid: g(900), parentGuid: null, name: 'Краски' }, { guid: g(901), parentGuid: null, name: 'Крепёж' }], [
+      item(1, { properties: { 'Цвет': 'Белый', 'Объём': '10 л', 'Секрет': 'а', 'Артикул поставщика': 'x' } }),
+      item(2, { properties: { 'Цвет': 'Белый', 'Объём': '2,5 л', 'Секрет': 'б' } }),
+      item(3, { properties: { 'Цвет': 'Серый', 'Объём': '10 л' } }),
+      item(4, { sectionGuid: g(901), properties: { 'Цвет': 'Чёрный' } }),
+    ])
+    return store
+  }
+
+  it('значения: только из списка, с подсчётом, по-человечески; одно значение — не фильтр', () => {
+    const f = mk().facets(g(900))
+    expect(f.map(x => x.name)).toEqual(['Цвет', 'Объём', 'Секрет'])
+    expect(f[1]!.values).toEqual([{ value: '2,5 л', count: 1 }, { value: '10 л', count: 2 }])
+    expect(f[0]!.values.map(v => v.value)).toEqual(['Белый', 'Серый'])
+  })
+
+  it('скрытая характеристика в фильтре не показывается и не фильтрует', () => {
+    const store = mk(['Секрет'])
+    expect(store.facets(g(900)).map(x => x.name)).not.toContain('Секрет')
+    expect(store.search({ props: { 'Секрет': ['а'] } }).total).toBe(4)
+  })
+
+  it('внутри характеристики — «или», между — «и»; не из списка — игнор', () => {
+    const store = mk()
+    expect(store.search({ props: { 'Цвет': ['Белый', 'Серый'] } }).items.map(i => i.guid)).toEqual([g(1), g(2), g(3)])
+    expect(store.search({ props: { 'Цвет': ['Белый'], 'Объём': ['10 л'] } }).items.map(i => i.guid)).toEqual([g(1)])
+    expect(store.search({ props: { 'Артикул поставщика': ['x'] } }).total).toBe(4)
+  })
+
+  it('адрес: prop=Название::Значение, кривое отбрасывается', () => {
+    expect(parseCatalogQuery({ prop: ['Цвет::Белый', 'Цвет::Серый', 'мусор', '::x', 'Объём::'] }).props).toEqual({ 'Цвет': ['Белый', 'Серый'] })
+  })
+})

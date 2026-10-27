@@ -151,6 +151,16 @@ describe('заявка', () => {
     expect(q.ok).toBe(false)
   })
 
+  it('ORDER_STOCK_MODE: stock — не больше наличия, over — больше можно, any — и то, чего нет', async () => {
+    const strict = await quoteCart([{ guid: g(1), qty: 110 }], deps.store, ok, deps.prices)
+    expect(strict.lines[0]).toMatchObject({ problem: 'over_stock', suggestedQty: 100 })
+    expect(strict.ok).toBe(false)
+    expect((await quoteCart([{ guid: g(1), qty: 100 }], deps.store, ok, deps.prices)).lines[0]!.problem).toBeNull()
+    expect((await quoteCart([{ guid: g(1), qty: 110 }], deps.store, ok, deps.prices, 'over')).lines[0]!.problem).toBeNull()
+    expect((await quoteCart([{ guid: g(3), qty: 1 }], deps.store, ok, deps.prices, 'over')).lines[0]!.problem).toBe('out_of_stock')
+    expect((await quoteCart([{ guid: g(3), qty: 1 }], deps.store, ok, deps.prices, 'any')).lines[0]!.problem).not.toBe('out_of_stock')
+  })
+
   it('без цены договора заявка не уходит', async () => {
     deps.prices = vi.fn(async () => new Map([[g(1), priceOf(g(1), 2.5)]]))
     const r = await submitOrder(session, ok, input(), deps)
