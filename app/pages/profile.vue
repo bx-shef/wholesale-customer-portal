@@ -73,7 +73,7 @@ async function requestCallback() {
                 {{ data.manager.email }}
               </p>
               <B24Button v-if="data.manager.phone" :to="`tel:${data.manager.phone}`" color="air-primary" block label="Позвонить" />
-              <!-- Тексты — позитивом: без «не указан», «не дозвонились» (замечание владельца 2026-10-27). -->
+              <!-- Тексты — позитивом, без указания на недоработку клиента (замечание владельца 2026-10-27). -->
               <p class="text-sm">
                 Закажите звонок — менеджер вам перезвонит.
               </p>
