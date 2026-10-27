@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { DEFAULT_FILTER_PROPERTIES, parsePropertyList } from '../shared/propFilter'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
@@ -421,5 +423,17 @@ describe('фильтр по характеристикам (владелец 202
 
   it('адрес: prop=Название::Значение, кривое отбрасывается', () => {
     expect(parseCatalogQuery({ prop: ['Цвет::Белый', 'Цвет::Серый', 'мусор', '::x', 'Объём::'] }).props).toEqual({ 'Цвет': ['Белый', 'Серый'] })
+  })
+})
+
+describe('фильтр характеристик: стенд 2026-10-27 (фильтр был пуст)', () => {
+  it('запрос характеристик объявлен после filters — иначе обращение до объявления', () => {
+    const src = readFileSync('app/pages/index.vue', 'utf8')
+    expect(src.indexOf("useLazyFetch<{ facets")).toBeGreaterThan(src.indexOf('const filters = computed('))
+  })
+  it('названия с запятой: из окружения через «;»', () => {
+    expect(parsePropertyList('Цвет; Длина, мм')).toEqual(['Цвет', 'Длина, мм'])
+    expect(parsePropertyList('Цвет, Вес')).toEqual(['Цвет', 'Вес'])
+    expect(DEFAULT_FILTER_PROPERTIES).toEqual(expect.arrayContaining(['Цвет', 'Степень блеска', 'Объем', 'Страна изготовления', 'Длина, мм']))
   })
 })

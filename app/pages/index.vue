@@ -20,11 +20,6 @@ const { error: meError } = await useFetch('/api/auth/me', { headers, key: 'me' }
 if (meError.value?.statusCode === 401) await navigateTo('/login')
 
 const { data: options } = await useFetch('/api/catalog/filters', { headers })
-// Характеристики для фильтра — по выбранному разделу: у красок блеск и объём, у крепежа — длина.
-const { data: facetData } = useLazyFetch<{ facets: Array<{ name: string, values: Array<{ value: string, count: number }> }> }>('/api/catalog/facets', {
-  headers, server: false, query: computed(() => (filters.value.section ? { section: filters.value.section } : {})),
-})
-const facets = computed(() => facetData.value?.facets ?? [])
 const facetItems = (f: { values: Array<{ value: string, count: number }> }) => f.values.map(v => ({ label: `${v.value} (${v.count})`, value: v.value }))
 function setProp(name: string, v: unknown) {
   const list = Array.isArray(v) ? v.map(String) : []
@@ -34,6 +29,12 @@ function setProp(name: string, v: unknown) {
 
 // Адрес — источник правды: «назад» и ссылка с фильтрами работают без отдельной синхронизации.
 const filters = computed(() => filtersFromQuery(route.query))
+// После `filters`: запрос характеристик читает раздел из него (раньше — обращение до объявления, фильтр пустел).
+// Характеристики для фильтра — по выбранному разделу: у красок блеск и объём, у крепежа — длина.
+const { data: facetData } = useLazyFetch<{ facets: Array<{ name: string, values: Array<{ value: string, count: number }> }> }>('/api/catalog/facets', {
+  headers, server: false, query: computed(() => (filters.value.section ? { section: filters.value.section } : {})),
+})
+const facets = computed(() => facetData.value?.facets ?? [])
 function setFilters(patch: Partial<CatalogFilters>) {
   router.push({ query: filtersToQuery({ ...filters.value, ...patch }) })
 }

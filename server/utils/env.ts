@@ -5,7 +5,7 @@
  */
 import { everyFromEnv, type AutoFlow } from './syncSchedule'
 import { parseStockMode, type StockMode } from '../../shared/cart'
-import { DEFAULT_FILTER_PROPERTIES } from '../../shared/propFilter'
+import { DEFAULT_FILTER_PROPERTIES, parsePropertyList } from '../../shared/propFilter'
 
 export interface ServerEnv {
   /** Ключи локального приложения коробки (карточка приложения → client_id / client_secret). */
@@ -99,7 +99,7 @@ export function readServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEn
     syncEvery: everyFromEnv(get),
     catalogHiddenProperties: get('CATALOG_HIDDEN_PROPERTIES').split(',').map(s => s.trim()).filter(Boolean),
     orderStockMode: parseStockMode(get('ORDER_STOCK_MODE')),
-    catalogFilterProperties: ((l: string[]) => (l.length ? l : DEFAULT_FILTER_PROPERTIES))(get('CATALOG_FILTER_PROPERTIES').split(',').map(s => s.trim()).filter(Boolean)),
+    catalogFilterProperties: ((l: string[]) => (l.length ? l : DEFAULT_FILTER_PROPERTIES))(parsePropertyList(get('CATALOG_FILTER_PROPERTIES'))),
     deliverySchedule: get('DELIVERY_SCHEDULE'),
     catalogHiddenSections: get('CATALOG_HIDDEN_SECTIONS').split(',').map(s => s.trim()).filter(Boolean),
     imagesBatch: (n => (Number.isInteger(n) && n >= 1 && n <= 5000 ? n : 1000))(Number(get('SYNC_IMAGES_BATCH') || 1000)),

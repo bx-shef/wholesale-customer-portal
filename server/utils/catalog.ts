@@ -176,7 +176,7 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
     const order = [...allowed]
     return [...byName].filter(([, v]) => v.length > 1)
       .sort(([a], [b]) => order.indexOf(a.trim().toLowerCase()) - order.indexOf(b.trim().toLowerCase()))
-      .map(([name, values]) => ({ name, values: values.sort((a, b) => compareValues(a.value, b.value)).slice(0, FACET_VALUES_MAX) }))
+      .map(([name, values]) => ({ name, values: values.sort((a, b) => b.count - a.count).slice(0, FACET_VALUES_MAX).sort((a, b) => compareValues(a.value, b.value)) }))
   }
 
   const facetCache = new Map<string, { at: number, facets: Facet[] }>()
