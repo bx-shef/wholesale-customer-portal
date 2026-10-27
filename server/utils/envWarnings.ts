@@ -5,9 +5,11 @@
  * с комментарием дал «Invalid URL», а `ONEC_MODE` не применился). Значений в тексте нет — только
  * имя переменной: среди них пароли и токены.
  */
+import { parseScheduleEnv } from '../../shared/delivery'
+
 const FLAGS = ['ONEC_MOCK', 'ONEC_ODATA_ORDERS', 'ONEC_ODATA_TRIPS', 'ONEC_ODATA_IMAGES', 'AI_ASSISTANT']
 const URLS = ['ONEC_URL', 'PUBLIC_URL']
-const KNOWN = /^(B24_|ONEC_|AI_|DEEPSEEK_|SESSION_|MCP_|TELEGRAM_|PUBLIC_URL$|SYNC_|CATALOG_|DATA_DIR$|TRUST_PROXY$)/
+const KNOWN = /^(B24_|ONEC_|AI_|DEEPSEEK_|SESSION_|MCP_|TELEGRAM_|PUBLIC_URL$|SYNC_|CATALOG_|DELIVERY_|DATA_DIR$|TRUST_PROXY$)/
 
 export function envWarnings(source: Record<string, string | undefined>): string[] {
   const out: string[] = []
@@ -31,6 +33,7 @@ export function envWarnings(source: Record<string, string | undefined>): string[
       out.push(`${u}: не адрес (ожидается https://…)`)
     }
   }
+  if (v('DELIVERY_SCHEDULE')) for (const w of parseScheduleEnv(v('DELIVERY_SCHEDULE')).warnings) out.push(`DELIVERY_SCHEDULE: ${w}`)
   for (const [name, raw] of Object.entries(source)) {
     if (/^SYNC_\w+$/.test(name) && raw?.trim() && !/^\d+$/.test(raw.trim())) out.push(`${name}: ожидается целое число — сейчас взято значение по умолчанию`)
   }

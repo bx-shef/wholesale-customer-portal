@@ -76,13 +76,18 @@ const atMinutes = (date: string, minutes: number) => new Date(minskMidnight(date
 
 const sameRegion = (a: string, b: string) => a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е')
 
-/** Ближайший рейс в регион, на который заявка ещё успевает. Нет региона, графика или рейсов на 4 недели — null. */
-export function nextDelivery(schedules: TripSchedule[], region: string | null | undefined, now: Date): DeliverySlot | null {
-  if (!region) return null
+/**
+ * Ближайший рейс, на который заявка ещё успевает. `region` — ключ графика или несколько кандидатов:
+ * бизнес-регион 1С (GUID) или город адреса (график из env, `parseScheduleEnv`). Нет региона, графика
+ * или рейсов на 4 недели — null.
+ */
+export function nextDelivery(schedules: TripSchedule[], region: string | null | undefined | (string | null | undefined)[], now: Date): DeliverySlot | null {
+  const keys = (Array.isArray(region) ? region : [region]).filter((r): r is string => !!r && !!r.trim())
+  if (!keys.length) return null
   const today = minskDate(now.getTime())
   let best: DeliverySlot | null = null
   for (const s of schedules) {
-    if (!sameRegion(s.region, region) || s.weekdays.length === 0) continue
+    if (!keys.some(k => sameRegion(s.region, k)) || s.weekdays.length === 0) continue
     for (let d = 0; d <= LOOKAHEAD_DAYS; d++) {
       const date = minskDate(minskMidnight(today) + d * DAY_MS + 12 * 3_600_000)
       if (!s.weekdays.includes(isoWeekday(date)) || s.exceptions.includes(date)) continue
@@ -111,10 +116,45 @@ export function scheduleFromOnec(row: { regionGuid: string, weekdays: number[], 
   }
 }
 
-/** «пт, 16 октября, 10:00–14:00» — как в docs/spec.md §8. */
+/**
+ * График доставки из env (решение владельца 2026-10-27, табличка логиста): дни через «;», город
+ * через запятую — «Пн: Ивацевичи, Береза; Вт: Жабинка, …». Рейс — в город адреса доставки; времени
+ * прибытия и отсечки в табличке нет: заявка едет ближайшим днём после сегодняшнего.
+ */
+export function parseScheduleEnv(text: string): { schedules: TripSchedule[], warnings: string[] } {
+  const byCity = new Map<string, { city: string, days: Set<number> }>()
+  const warnings: string[] = []
+  for (const part of text.split(';').map(p => p.trim()).filter(Boolean)) {
+    const m = /^([^:]+):(.*)$/.exec(part)
+    const day = m ? parseWeekdays(m[1]!)[0] : undefined
+    if (!m || !day) {
+      warnings.push(`не понят день в «${part.slice(0, 20)}» — ожидается «Пн: Город, Город»`)
+      continue
+    }
+    for (const city of m[2]!.split(',').map(c => c.trim()).filter(Boolean)) {
+      const key = city.toLowerCase().replace(/ё/g, 'е')
+      const e = byCity.get(key) ?? { city, days: new Set<number>() }
+      e.days.add(day)
+      byCity.set(key, e)
+    }
+  }
+  const schedules = [...byCity.values()].map(e => ({
+    region: e.city,
+    weekdays: [...e.days].sort(),
+    cutoffDaysBefore: 1,
+    cutoffMinutes: 24 * 60 - 1,
+    arrivalFromMinutes: 0,
+    arrivalToMinutes: 0,
+    exceptions: [],
+  }))
+  return { schedules, warnings }
+}
+
+/** «пт, 16 октября, 10:00–14:00» — как в docs/spec.md §8; без окна прибытия — только день. */
 export function formatSlot(slot: Pick<DeliverySlot, 'arrivalFrom' | 'arrivalTo'>): string {
   const opts = { timeZone: 'Europe/Minsk' } as const
   const day = new Date(slot.arrivalFrom).toLocaleDateString('ru-RU', { ...opts, weekday: 'short', day: 'numeric', month: 'long' })
+  if (slot.arrivalFrom === slot.arrivalTo) return day
   const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { ...opts, hour: '2-digit', minute: '2-digit' })
   return `${day}, ${time(slot.arrivalFrom)}–${time(slot.arrivalTo)}`
 }

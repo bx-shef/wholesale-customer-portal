@@ -131,8 +131,9 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
         }
         // Дата — на момент подтверждения: менеджер мог подтвердить уже после отсечки.
         if (schedules === undefined) schedules = await deps.schedules().catch(() => null)
-        const region = deps.clients.get(row.client_guid)?.regionGuid
-        const slot = schedules ? nextDelivery(schedules, region, now) : null
+        const client = deps.clients.get(row.client_guid)
+        const city = client?.addresses.find(a => a.guid === row.address_guid)?.city
+        const slot = schedules ? nextDelivery(schedules, [city, client?.regionGuid], now) : null
         const from = slot?.arrivalFrom ?? null
         const items = JSON.parse(row.items) as OrderItem[]
         const created = await deps.createOnecOrder({
