@@ -13,7 +13,7 @@ import { shouldPruneStock } from './odataSnapshot'
 
 let store: CatalogStore | undefined
 export function useCatalog(): CatalogStore {
-  store ??= createCatalogStore(useDb())
+  store ??= createCatalogStore(useDb(), { hiddenSections: () => readServerEnv().catalogHiddenSections, hiddenProperties: () => readServerEnv().catalogHiddenProperties })
   return store
 }
 
