@@ -38,7 +38,7 @@ export type CatalogSort = typeof SORTS[number]
 export interface CatalogQuery {
   q?: string
   section?: string
-  brand?: string
+  brand?: string[]
   inStock?: boolean
   sort?: CatalogSort
   /** Вид цен соглашения клиента — для сортировки по цене (#86); нет — сортировка по названию. */
@@ -160,6 +160,10 @@ export function createCatalogStore(db: DatabaseSync) {
     stockSections(): string[] {
       return (db.prepare(`SELECT DISTINCT i.section_guid AS guid FROM catalog_item i WHERE ${AVAILABLE} > 0`).all() as { guid: string }[]).map(r => r.guid)
     },
+    /** Разделы, где есть хоть один товар — пустые меню не показывает. */
+    itemSections(): string[] {
+      return (db.prepare('SELECT DISTINCT section_guid AS guid FROM catalog_item').all() as { guid: string }[]).map(r => r.guid)
+    },
     brands(): string[] {
       return (db.prepare('SELECT DISTINCT brand FROM catalog_item WHERE brand <> \'\' ORDER BY brand').all() as { brand: string }[]).map(r => r.brand)
     },
@@ -180,9 +184,9 @@ export function createCatalogStore(db: DatabaseSync) {
         where.push(`i.section_guid IN (${ids.map(() => '?').join(',')})`)
         params.push(...ids)
       }
-      if (query.brand) {
-        where.push('i.brand = ?')
-        params.push(query.brand)
+      if (query.brand?.length) {
+        where.push(`i.brand IN (${query.brand.map(() => '?').join(',')})`)
+        params.push(...query.brand)
       }
       if (query.inStock) where.push(`${AVAILABLE} > 0`)
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''

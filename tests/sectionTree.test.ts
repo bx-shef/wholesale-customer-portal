@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pruneTree, sectionPath, sectionTree } from '../app/utils/sectionTree'
+import { pruneTree, sectionPath, sectionTrail, sectionTree } from '../app/utils/sectionTree'
 
 const S = [
   { guid: 'B', parentGuid: null, name: 'Сантехника' },
@@ -29,5 +29,11 @@ describe('sectionTree', () => {
     expect(t.map(n => n.guid)).toEqual(['A'])
     expect(t[0]!.children.map(n => n.guid)).toEqual(['A2'])
     expect(pruneTree(sectionTree(S), [])).toEqual([])
+  })
+  it('крошки товара — от корня до раздела; петля в данных не вешает', () => {
+    expect(sectionTrail(S, 'a2').map(t => t.name)).toEqual(['Крепёж', 'Шурупы'])
+    expect(sectionTrail(S, 'нет')).toEqual([])
+    const loop = [{ guid: 'L1', parentGuid: 'L2', name: '1' }, { guid: 'L2', parentGuid: 'L1', name: '2' }]
+    expect(sectionTrail(loop, 'L1').map(t => t.name)).toEqual(['2', '1'])
   })
 })

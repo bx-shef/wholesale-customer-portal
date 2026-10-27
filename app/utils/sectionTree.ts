@@ -55,3 +55,19 @@ export function sectionPath(roots: SectionNode[], guid: string): string[] {
   }
   return want ? walk(roots, []) ?? [] : []
 }
+
+/**
+ * Хлебные крошки товара: разделы от корня до раздела товара по `parentGuid`.
+ * Защита от петли в данных 1С — не больше 20 шагов; неизвестный раздел — пустой путь.
+ */
+export function sectionTrail(sections: { guid: string, parentGuid: string | null, name: string }[], guid: string): { guid: string, name: string }[] {
+  const byGuid = new Map(sections.map(s => [s.guid.toLowerCase(), s]))
+  const trail: { guid: string, name: string }[] = []
+  let cur = byGuid.get(guid.toLowerCase())
+  while (cur && trail.length < 20) {
+    trail.unshift({ guid: cur.guid, name: cur.name })
+    cur = cur.parentGuid ? byGuid.get(cur.parentGuid.toLowerCase()) : undefined
+    if (cur && trail.some(t => t.guid === cur!.guid)) break
+  }
+  return trail
+}

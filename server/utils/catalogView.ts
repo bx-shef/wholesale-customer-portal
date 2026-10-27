@@ -47,6 +47,12 @@ export function createCompanyGuidResolver(
 
 export const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** Бренды из адреса: повтор параметра — несколько брендов; не больше 20, каждый до 100 знаков. */
+function brands(v: unknown): string[] | undefined {
+  const list = [...new Set((Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string' && x !== '').map(x => x.slice(0, 100)))].slice(0, 20)
+  return list.length ? list : undefined
+}
+
 /** Параметры списка из строки запроса: всё лишнее и кривое отбрасывается, а не падает. */
 export function parseCatalogQuery(q: Record<string, unknown>): CatalogQuery {
   const str = (v: unknown) => (typeof v === 'string' ? v : Array.isArray(v) && typeof v[0] === 'string' ? v[0] : undefined)
@@ -59,7 +65,7 @@ export function parseCatalogQuery(q: Record<string, unknown>): CatalogQuery {
   return {
     q: str(q.q)?.slice(0, 100),
     section: section && GUID_RE.test(section) ? section : undefined,
-    brand: str(q.brand)?.slice(0, 100) || undefined,
+    brand: brands(q.brand),
     inStock: str(q.inStock) === '1',
     sort: (SORTS as readonly string[]).includes(sort ?? '') ? sort as CatalogQuery['sort'] : undefined,
     offset: int(q.offset, 0),

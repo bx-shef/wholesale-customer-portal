@@ -4,11 +4,13 @@
   коробки (/b24) меню нет — только страница.
 -->
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
+import type { DropdownMenuItem, NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
 import ProductsCubeIcon from '@bitrix24/b24icons-vue/outline/ProductsCubeIcon'
 import ShoppingCartIcon from '@bitrix24/b24icons-vue/outline/ShoppingCartIcon'
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
 import QuestionIcon from '@bitrix24/b24icons-vue/outline/QuestionIcon'
+import PersonIcon from '@bitrix24/b24icons-vue/outline/PersonIcon'
+import ChevronTopSIcon from '@bitrix24/b24icons-vue/outline/ChevronTopSIcon'
 import LogOutIcon from '@bitrix24/b24icons-vue/outline/LogOutIcon'
 import HamburgerMenuIcon from '@bitrix24/b24icons-vue/outline/HamburgerMenuIcon'
 
@@ -32,17 +34,20 @@ const sections = computed<NavigationMenuItem[]>(() => [
   // поэтому разметка совпадает при гидрации.
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
   { label: 'Заявки', icon: DeliveryIcon, to: '/orders', onSelect: close },
-  { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
 ])
 // Разделы каталога деревом и «Только в наличии» — в меню. Фильтры живут в адресе каталога:
 // вне каталога переход открывает его с чистыми фильтрами.
 const { data: filterOptions } = useLazyFetch('/api/catalog/filters', { headers, server: false, immediate: false, key: 'catalog-filters' })
 watch(withMenu, (v) => { if (v && !filterOptions.value) refreshNuxtData('catalog-filters') }, { immediate: true })
-const catalogFilters = computed(() => filtersFromQuery(route.path === '/' ? route.query : {}))
+// «Только в наличии» помним и вне каталога: в карточке, корзине и профиле меню показывает то же.
+const inStockKept = useState('catalog-in-stock', () => false)
+watch(() => route.path === '/' ? filtersFromQuery(route.query).inStock : null, (v) => { if (v !== null) inStockKept.value = v }, { immediate: true })
+const catalogFilters = computed(() => route.path === '/' ? filtersFromQuery(route.query) : { ...filtersFromQuery({}), inStock: inStockKept.value })
 const tree = computed(() => {
   const all = sectionTree(filterOptions.value?.sections ?? [])
   // При «Только в наличии» пустые папки не показываем.
-  return catalogFilters.value.inStock ? pruneTree(all, filterOptions.value?.stockSections ?? []) : all
+  // Пустые разделы (без товаров) не показываем; при «Только в наличии» — без товаров в наличии.
+  return pruneTree(all, (catalogFilters.value.inStock ? filterOptions.value?.stockSections : filterOptions.value?.itemSections) ?? [])
 })
 const openPath = computed(() => new Set(sectionPath(tree.value, catalogFilters.value.section).map(g => g.toLowerCase())))
 function sectionLink(guid: string) {
@@ -50,11 +55,13 @@ function sectionLink(guid: string) {
 }
 function toItem(n: SectionNode): NavigationMenuItem {
   const active = route.path === '/' && n.guid.toLowerCase() === catalogFilters.value.section.toLowerCase()
-  if (!n.children.length) return { label: n.name, to: sectionLink(n.guid), active, onSelect: close }
+  // value — guid: раскрытие держится за раздел, а не за номер строки (список меняется от «В наличии»).
+  if (!n.children.length) return { label: n.name, value: n.guid, to: sectionLink(n.guid), active, onSelect: close }
   return {
     label: n.name,
+    value: n.guid,
     defaultOpen: openPath.value.has(n.guid.toLowerCase()),
-    children: [{ label: 'Все товары раздела', to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
+    children: [{ label: 'Все товары раздела', value: `${n.guid}:all`, to: sectionLink(n.guid), active, onSelect: close }, ...n.children.map(toItem)],
   }
 }
 const sectionItems = computed<NavigationMenuItem[]>(() => tree.value.map(toItem))
@@ -62,8 +69,14 @@ function setInStock(v: boolean) {
   router.push({ path: '/', query: filtersToQuery({ ...catalogFilters.value, inStock: v }) })
 }
 
-const actions = computed<NavigationMenuItem[]>(() => [
-  { label: 'Выйти', icon: LogOutIcon, onSelect: () => { close(); logout() } },
+// Меню компании внизу — как меню пользователя в templates-dashboard: профиль, справка, выход.
+const companyMenu = computed<DropdownMenuItem[][]>(() => [
+  [{ type: 'label', label: me.value?.company.title || '' }],
+  [
+    { label: 'Профиль', icon: PersonIcon, to: '/profile', onSelect: close },
+    { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
+  ],
+  [{ label: 'Выйти', icon: LogOutIcon, onSelect: () => { close(); logout() } }],
 ])
 
 function bindCompany(id: number) {
@@ -77,7 +90,7 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
 
 <template>
   <B24DashboardGroup v-if="withMenu" unit="px" :class="{ 'md:pr-[440px]': ai.open.value }" class="transition-[padding] duration-200">
-    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
+    <B24DashboardSidebar id="lk" v-model:open="open" mode="slideover" collapsible class="border-e-1" :b24ui="{ header: 'h-auto min-h-(--b24ui-header-height) flex-wrap py-2' }">
       <template #header="{ collapsed }">
         <B24DashboardSidebarCollapse :icon="HamburgerMenuIcon" class="size-9 px-2" />
         <!-- Логотип и название — не ссылка: в каталог ведёт пункт меню. -->
@@ -93,24 +106,25 @@ watch(me, (v) => { if (v) bindCompany(v.company.id) })
           <B24NavigationMenu
             :items="sectionItems"
             orientation="vertical"
-            :ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
+            :b24ui="{ link: 'items-start py-1.5', linkLabel: 'whitespace-normal text-start leading-snug', childLink: 'items-start', childLinkLabel: 'whitespace-normal text-start leading-snug', linkTrailing: 'mt-0.5' }"
           />
         </div>
-        <B24NavigationMenu :collapsed="collapsed" :items="actions" orientation="vertical" class="mt-auto" />
       </template>
       <template #footer="{ collapsed }">
         <!-- Компания клиента — вход в профиль, как пользователь внизу меню в templates-dashboard. -->
-        <B24Button
-          to="/profile"
-          color="air-tertiary"
-          :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
-          :title="me?.company.title"
-          :avatar="{ text: (me?.company.title || '?').slice(0, 1) }"
-          :active="route.path === '/profile'"
-          block
-          class="mb-1 justify-start truncate"
-          @click="close"
-        />
+        <B24DropdownMenu :items="companyMenu" :content="{ side: 'top', align: 'start' }" class="w-full">
+          <B24Button
+            color="air-tertiary"
+            :label="collapsed ? undefined : (me?.company.title || 'Профиль')"
+            :title="me?.company.title"
+            :avatar="{ text: initials(me?.company.title || ''), size: 'md', class: 'bg-(--ui-color-accent-main-primary) text-white font-semibold' }"
+            :trailing-icon="collapsed ? undefined : ChevronTopSIcon"
+            :active="route.path === '/profile' || route.path === '/help'"
+            block
+            class="mb-1 justify-start truncate"
+            :b24ui="{ trailingIcon: 'ms-auto' }"
+          />
+        </B24DropdownMenu>
       </template>
     </B24DashboardSidebar>
     <slot />

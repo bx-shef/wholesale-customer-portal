@@ -46,9 +46,11 @@ describe('индекс каталога', () => {
     store.saveStock([{ itemGuid: g(2), warehouseGuid: g(500), warehouseName: 'Минск', available: 5, changedAt: at }])
     expect(store.search({ section: g(900) }).total).toBe(2)
     expect(store.search({ section: g(901) }).total).toBe(1)
-    expect(store.search({ brand: 'Other' }).items.map(i => i.guid)).toEqual([g(2)])
+    expect(store.search({ brand: ['Other'] }).items.map(i => i.guid)).toEqual([g(2)])
+    expect(store.search({ brand: ['Other', 'Acme'] }).total).toBe(3)
     expect(store.search({ inStock: true }).items.map(i => i.guid)).toEqual([g(2)])
     expect(store.stockSections()).toEqual([g(901)])
+    expect(store.itemSections().sort()).toEqual([g(900), g(901), g(999)].sort())
   })
 
   it('остатки суммируются по складам, обновляются, удалённый товар уходит вместе с остатками', () => {
@@ -290,7 +292,7 @@ describe('сортировка по цене соглашения (#86)', () => 
   it('вместе с фильтром: параметры JOIN и WHERE не путаются, total — по фильтру', () => {
     const store = setup()
     store.saveCatalog([], [item(5, { name: 'Д', brand: 'Other' })])
-    const r = store.search({ sort: 'price', priceType: pt, brand: 'Acme', limit: 2, offset: 1 })
+    const r = store.search({ sort: 'price', priceType: pt, brand: ['Acme'], limit: 2, offset: 1 })
     expect(r.items.map(i => i.name)).toEqual(['В', 'А'])
     expect(r.total).toBe(4)
   })
