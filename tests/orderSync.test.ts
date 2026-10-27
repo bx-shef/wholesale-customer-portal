@@ -257,3 +257,13 @@ describe('синхронизация заявок', () => {
     expect(deliveryDateFor(null, new Date('2026-10-12T22:00:00Z'))).toBe('2026-10-14')
   })
 })
+
+describe('причина ошибки 1С в журнале (стенд 2026-10-27: «OnecError» без причины не чинится)', () => {
+  it('у ошибки 1С — вид, статус и текст; у прочих — только класс', async () => {
+    const { errKind } = await import('../server/utils/orderSync')
+    const { OnecError } = await import('../server/services/onec')
+    expect(errKind(new OnecError('contract', '1C OData order:\n delivery address not found'))).toBe('OnecError(contract): 1C OData order: delivery address not found')
+    expect(errKind(new OnecError('http', 'x', 400))).toBe('OnecError(http 400): x')
+    expect(errKind(new TypeError('секрет'))).toBe('TypeError')
+  })
+})
