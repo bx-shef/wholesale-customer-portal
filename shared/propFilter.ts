@@ -53,3 +53,9 @@ export const propCount = (p: PropFilters) => Object.values(p).reduce((s, l) => s
 
 /** Значения по-человечески: «2,5 л» раньше «10 л». */
 export const compareValues = (a: string, b: string) => a.localeCompare(b, 'ru', { numeric: true, sensitivity: 'base' })
+
+/** Подпись выбора в поле фильтра: «По бетону», «По бетону и ещё 3» — поле не растягивается списком (замечание владельца 2026-10-27). */
+export function selectedSummary(values: readonly string[]): string {
+  if (!values.length) return ''
+  return values.length === 1 ? values[0]! : `${values[0]} и ещё ${values.length - 1}`
+}

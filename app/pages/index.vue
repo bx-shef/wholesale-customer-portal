@@ -3,7 +3,7 @@
 import ProductIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
 import { canOrder, maxOrderQty, normalizeQty } from '~~/shared/cart'
 import type { CatalogItemView, CatalogPageView } from '~~/shared/catalogView'
-import { propCount } from '~~/shared/propFilter'
+import { propCount, selectedSummary } from '~~/shared/propFilter'
 const stockMode = useStockMode()
 
 useHead({ title: 'Каталог' })
@@ -176,6 +176,7 @@ function toggleSub(guid: string) {
   const cur = filters.value.sub
   setFilters({ sub: cur.includes(guid) ? cur.filter(g => g !== guid) : [...cur, guid] })
 }
+const asList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [])
 const brandsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : [])
 
 /** «Сбросить» в фильтрах — только то, что в них: бренды и сортировка. Раздел и наличие задаёт меню. */
@@ -285,9 +286,14 @@ function resetAll() {
               multiple
               placeholder="Все бренды"
               :search-input="{ placeholder: 'Найти бренд…' }"
-              class="w-full"
+              class="w-full min-w-0"
               @update:model-value="v => setFilters({ brand: brandsOf(v) })"
-            />
+            >
+              <template #default="{ modelValue }">
+                <span v-if="selectedSummary(asList(modelValue))" class="truncate">{{ selectedSummary(asList(modelValue)) }}</span>
+                <span v-else class="truncate text-(--ui-color-design-plain-na-content-secondary)">Все бренды</span>
+              </template>
+            </B24SelectMenu>
           </B24FormField>
           <B24FormField v-for="f in facets" :key="f.name" :label="f.name">
             <B24SelectMenu
@@ -297,9 +303,14 @@ function resetAll() {
               multiple
               :placeholder="`Любой`"
               :search-input="f.values.length > 8 ? { placeholder: 'Найти…' } : false"
-              class="w-full"
+              class="w-full min-w-0"
               @update:model-value="v => setProp(f.name, v)"
-            />
+            >
+              <template #default="{ modelValue }">
+                <span v-if="selectedSummary(asList(modelValue))" class="truncate">{{ selectedSummary(asList(modelValue)) }}</span>
+                <span v-else class="truncate text-(--ui-color-design-plain-na-content-secondary)">Любой</span>
+              </template>
+            </B24SelectMenu>
           </B24FormField>
           <B24FormField label="Сортировка">
             <B24Select :model-value="filters.sort" :items="sortItems" class="w-full" @update:model-value="v => setFilters({ sort: parseSort(v) })" />
