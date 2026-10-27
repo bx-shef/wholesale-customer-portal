@@ -310,3 +310,11 @@ describe('readClientSourcesFor — один клиент по GUID', () => {
     await expect(api.clientByGuid("x' or 1 eq 1")).rejects.toThrow()
   })
 })
+
+describe('рейсы по OData включены по умолчанию (владелец 2026-10-27: руками не грузим)', () => {
+  it('пустой ONEC_ODATA_TRIPS — включено, false — выключено', async () => {
+    const { readServerEnv: readEnv } = await import('../server/utils/env')
+    expect(readEnv({}).onecOdataTrips).toBe(true)
+    expect(readEnv({ ONEC_ODATA_TRIPS: 'false' }).onecOdataTrips).toBe(false)
+  })
+})
