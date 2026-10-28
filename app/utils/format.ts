@@ -16,6 +16,8 @@ export function orderStatus(status: string): { label: string, color: 'air-primar
   const map: Record<string, { label: string, color: 'air-primary' | 'air-primary-success' | 'air-primary-warning' | 'air-primary-alert' }> = {
     pending: { label: 'Не отправлена', color: 'air-primary-alert' },
     sent: { label: 'Новая', color: 'air-primary' },
+    // Заказ создан в 1С и ждёт проведения менеджером (стенд 2026-10-28: показывалось «new»).
+    new: { label: 'Принята', color: 'air-primary' },
     confirmed: { label: 'Подтверждена', color: 'air-primary' },
     assembled: { label: 'Собрана', color: 'air-primary' },
     shipped: { label: 'В пути', color: 'air-primary-warning' },
