@@ -20,7 +20,8 @@ const { error: meError } = await useFetch('/api/auth/me', { headers, key: 'me' }
 if (meError.value?.statusCode === 401) await navigateTo('/login')
 
 const { data: options } = await useFetch('/api/catalog/filters', { headers })
-const facetItems = (f: { values: Array<{ value: string, count: number }> }) => f.values.map(v => ({ label: `${v.value} (${v.count})`, value: v.value }))
+// Без числа товаров: оно не учитывает «Только в наличии» и сбивает с толку (владелец 2026-10-28).
+const facetItems = (f: { values: Array<{ value: string, count: number }> }) => f.values.map(v => ({ label: v.value, value: v.value }))
 function setProp(name: string, v: unknown) {
   const list = Array.isArray(v) ? v.map(String) : []
   const props = Object.fromEntries(Object.entries(filters.value.props).filter(([k]) => k !== name))

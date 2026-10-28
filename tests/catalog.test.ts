@@ -457,3 +457,9 @@ describe('короткие характеристики — галочками (
     expect(src).toMatch(/<B24SelectMenu\s+v-else/)
   })
 })
+
+describe('значения фильтра без числа товаров (владелец 2026-10-28)', () => {
+  it('подпись — только значение', () => {
+    expect(readFileSync('app/pages/index.vue', 'utf8')).toContain('f.values.map(v => ({ label: v.value, value: v.value }))')
+  })
+})
