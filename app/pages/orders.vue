@@ -39,7 +39,8 @@ const STEPS = [
   { key: 'shipped', label: 'В пути' },
   { key: 'delivered', label: 'Доставлена' },
 ]
-const stepIndex = (status: string) => STEPS.findIndex(s => s.key === status)
+// «new» — заказ уже в 1С, но не проведён: шаг «Принята».
+const stepIndex = (status: string) => STEPS.findIndex(s => s.key === (status === 'new' ? 'sent' : status))
 const open = ref<number | null>(null)
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
