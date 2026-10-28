@@ -81,6 +81,8 @@ export function syncImages(): Promise<SyncRun> {
       const result = await fetchMissingImages(useCatalog().imageRefs(), {
         fs: {
           exists: name => access(join(dir, name)).then(() => true, () => false),
+          skipped: name => access(join(dir, `.${name}.skip`)).then(() => true, () => false),
+          markSkipped: (name, reason) => writeFile(join(dir, `.${name}.skip`), reason.slice(0, 300)),
           // Сначала во временный файл: оборванная запись не станет «готовой» картинкой.
           write: async (name, bytes) => {
             const tmp = join(dir, `.${name}.tmp`)
@@ -91,12 +93,14 @@ export function syncImages(): Promise<SyncRun> {
         load: id => onec.image(id),
         limit: env.imagesBatch,
       })
-      console.info(`[sync:images] saved ${result.saved}, failed ${result.failed.length}, left ${result.left}`)
+      console.info(`[sync:images] saved ${result.saved}, failed ${result.failed.length}, skipped ${result.skipped}, left ${result.left}`)
       for (const f of result.failed.slice(0, 5)) console.warn(`[sync:images] ${f.id}: ${f.reason}`)
       // Все попытки неудачны — сбой потока (видно на «Состоянии системы»); единичные пустые файлы — нет.
       const failed = result.saved === 0 && result.failed.length > 0
       const done: SyncRun = { ...run, status: failed ? 'failed' : 'done', finishedAt: new Date().toISOString(), received: result.saved,
-        error: failed ? `${result.failed.length} не скачано: ${result.failed[0]!.reason}`.slice(0, 300) : result.left ? `осталось ${result.left}` : null }
+        error: failed
+          ? `${result.failed.length} не скачано: ${result.failed[0]!.reason}`.slice(0, 300)
+          : [result.skipped && `пропущено ${result.skipped} (слишком большие или не картинки)`, result.left && `осталось ${result.left}`].filter(Boolean).join(', ') || null }
       await runs.saveRun(done)
       return done
     }
