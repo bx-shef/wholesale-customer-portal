@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createMockState } from '../server/mocks/onec/mock'
 import { mockFetch } from '../server/mocks/onec/fetch'
 import { basicCredentials, onecTestAllowed } from '../server/utils/onecTestAuth'
@@ -98,11 +98,30 @@ describe('картинки из 1С (§2.8)', () => {
     )
     expect(res.saved).toBe(1)
     expect(files.has('new.h9')).toBe(true)
-    expect(res.failed).toEqual([{ id: 'bad', reason: 'не JPEG, PNG или WebP' }, { id: 'png', reason: 'contentType image/png, а файл — image/jpeg' }])
+    // Не картинка — повтором не лечится: пропуск, а не сбой потока.
+    expect(res.failed).toEqual([])
+    expect(res.skipped).toBe(2)
     expect(refFromUrl(imageUrl({ id: 'a-1', hash: 'f0' }))).toEqual({ id: 'a-1', hash: 'f0' })
     expect(refFromUrl('https://algena.by/x.jpg')).toBeNull()
     expect(refFromUrl('/images/../etc.passwd')).toBeNull()
     expect(sniffImage(Buffer.from('RIFF0000WEBP'))).toBe('image/webp')
+  })
+
+  it('слишком большой файл помечается и больше не запрашивается; сбой связи — повторяется (стенд 2026-10-28)', async () => {
+    const { fetchMissingImages } = await import('../server/utils/imageStore')
+    const { OnecError } = await import('../server/services/onec')
+    const marks = new Map<string, string>()
+    const fs = { exists: async () => false, write: async () => {}, skipped: async (n: string) => marks.has(n), markSkipped: async (n: string, r: string) => { marks.set(n, r) } }
+    const load = vi.fn(async (id: string) => {
+      throw id === 'big' ? new OnecError('contract', 'response is larger than 8 MB') : new OnecError('network', 'reset')
+    })
+    const refs = [{ id: 'big', hash: 'h1' }, { id: 'net', hash: 'h2' }]
+    const first = await fetchMissingImages(refs, { fs, load })
+    expect(first).toMatchObject({ saved: 0, skipped: 1, failed: [{ id: 'net', reason: 'reset' }] })
+    expect(marks.get('big.h1')).toContain('8 MB')
+    load.mockClear()
+    await fetchMissingImages(refs, { fs, load })
+    expect(load.mock.calls.map(c => c[0])).toEqual(['net'])
   })
 
   it('мок отдаёт картинку каталога в base64, и она проходит проверку ЛК', async () => {

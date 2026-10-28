@@ -46,6 +46,17 @@ export function decodeImage(file: ImageFileT, expected: ImageRefT): DecodeResult
 export interface ImageFs {
   exists: (name: string) => Promise<boolean>
   write: (name: string, bytes: Buffer) => Promise<void>
+  /**
+   * Пометка «не картинка / слишком большая» (стенд 2026-10-28: 104 файла больше 8 МБ скачивались
+   * заново каждый прогон и красили поток ошибкой). Имя включает хеш — новый файл в 1С пометку снимает.
+   */
+  skipped?: (name: string) => Promise<boolean>
+  markSkipped?: (name: string, reason: string) => Promise<void>
+}
+
+/** Сбой, который повтором не лечится: файл больше предела, не картинка, нарушен контракт. */
+export function isPermanentImageError(e: unknown): boolean {
+  return (e as { kind?: string })?.kind === 'contract'
 }
 
 /** Сколько картинок докачивать за прогон: остальные — в следующий час, каталог не ждёт. */
@@ -58,32 +69,38 @@ export const IMAGES_PER_RUN = 300
 export async function fetchMissingImages(
   refs: ImageRefT[],
   deps: { fs: ImageFs, load: (id: string) => Promise<ImageFileT>, limit?: number },
-): Promise<{ saved: number, failed: { id: string, reason: string }[], left: number }> {
+): Promise<{ saved: number, failed: { id: string, reason: string }[], skipped: number, left: number }> {
   const todo: ImageRefT[] = []
   const seen = new Set<string>()
   for (const ref of refs) {
     const name = imageName(ref)
     if (seen.has(name)) continue
     seen.add(name)
-    if (!(await deps.fs.exists(name))) todo.push(ref)
+    if (!(await deps.fs.exists(name)) && !(await deps.fs.skipped?.(name))) todo.push(ref)
   }
   const limit = deps.limit ?? IMAGES_PER_RUN
   let saved = 0
   const failed: { id: string, reason: string }[] = []
+  let skipped = 0
+  const skip = async (ref: ImageRefT, reason: string) => {
+    skipped++
+    await deps.fs.markSkipped?.(imageName(ref), reason)
+  }
   for (const ref of todo.slice(0, limit)) {
     try {
       const file = await deps.load(ref.id)
       const decoded = decodeImage(file, ref)
       if (!decoded.ok) {
-        failed.push({ id: ref.id, reason: decoded.reason })
+        await skip(ref, decoded.reason)
         continue
       }
       await deps.fs.write(imageName({ id: ref.id, hash: file.hash }), decoded.bytes)
       saved++
     }
     catch (e) {
-      failed.push({ id: ref.id, reason: (e as Error).message })
+      if (isPermanentImageError(e)) await skip(ref, (e as Error).message)
+      else failed.push({ id: ref.id, reason: (e as Error).message })
     }
   }
-  return { saved, failed, left: Math.max(0, todo.length - limit) }
+  return { saved, failed, skipped, left: Math.max(0, todo.length - limit) }
 }
