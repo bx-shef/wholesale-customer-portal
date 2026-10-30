@@ -39,6 +39,12 @@ watch(() => route.path, () => {
   if (mounted.value && active.value && (!data.value || failed.value) && !pending.value) load()
 })
 const view = computed(() => clientDataView(data.value))
+// Предупреждение («данные на …», «договор не подключён») показывает AppPage внутри страницы: над
+// раскладкой оно налезало на заголовок — панель кабинета закреплена на весь экран (стенд 2026-10-30).
+const notice = useState<string>('client-data-notice', () => '')
+watchEffect(() => {
+  notice.value = mounted.value && active.value && !failed.value && !view.value.block ? view.value.message : ''
+})
 // Экран загрузки не мигает (#78): держится не меньше 3 секунд.
 const holding = useMinLoading(() => pending.value || !data.value)
 </script>
@@ -56,7 +62,6 @@ const holding = useMinLoading(() => pending.value || !data.value)
     <B24Alert v-if="logoutError" color="air-primary-alert" :title="logoutError" />
   </div>
   <template v-else>
-    <B24Alert v-if="mounted && active && !failed && view.message" color="air-primary-warning" :title="view.message" class="rounded-none" />
     <slot />
     <div v-if="mounted && active && !failed && holding" class="fixed inset-0 z-50 bg-white dark:bg-gray-950 p-6 overflow-auto">
       <BuildLoader title="Загружаем ваши данные из учётной системы…" />

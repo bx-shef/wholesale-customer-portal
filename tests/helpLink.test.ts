@@ -105,3 +105,12 @@ describe('«Заказать звонок» выключается окруже�
     expect(readFileSync('server/api/callback.post.ts', 'utf8')).toContain('if (!readServerEnv().callbackEnabled) throw createError({ statusCode: 404')
   })
 })
+
+describe('предупреждение о данных клиента не налезает на заголовок (стенд 2026-10-30)', () => {
+  it('гейт отдаёт текст в AppPage, сам над раскладкой его не рисует', () => {
+    const gate = readFileSync('app/components/ClientDataGate.vue', 'utf8')
+    expect(gate).not.toContain('color="air-primary-warning" :title="view.message"')
+    expect(gate).toContain("useState<string>('client-data-notice'")
+    expect(readFileSync('app/components/AppPage.vue', 'utf8')).toContain('<B24Alert v-if="notice" color="air-primary-warning" :title="notice"')
+  })
+})
