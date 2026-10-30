@@ -203,6 +203,24 @@ function pickContracts(active: AgreementRow[], contracts: Map<string, ContractRo
 }
 
 /** Все строки набора страницами по `ODATA_PAGE` (упорядочено по `orderby`, чтобы `$skip` был устойчив). */
+/**
+ * Необязательный набор: сегменты партнёров (запрет отгрузки) выпадали из публикации OData
+ * (стенд 2026-10-30) — и из-за них не грузился ни один клиент. Нет набора (404) — пусто и
+ * предупреждение в лог: клиент работает без запрета отгрузки. Прочие сбои — как были.
+ */
+export async function optionalSet<T>(read: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await read()
+  }
+  catch (e) {
+    if (e instanceof OnecError && e.status === 404) {
+      console.warn(`[onec:odata] optional set missing: ${e.message.slice(0, 120)}`)
+      return []
+    }
+    throw e
+  }
+}
+
 export async function listAll<T>(client: ODataClient, set: string, query: Record<string, string>, orderby = 'Ref_Key', maxPages = ODATA_MAX_PAGES): Promise<T[]> {
   const out: T[] = []
   for (let page = 0; page < maxPages; page++) {
@@ -235,11 +253,11 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
   const currencies = await client.currencies()
   if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
-  const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' })
+  const segments = await optionalSet(() => client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' }))
   const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
   let blocked = new Set<string>()
   if (stop.size) {
-    const members = await listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber')
+    const members = await optionalSet(() => listAll<{ Ref_Key: string, Партнер_Key?: string }>(client, 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key' }, 'Ref_Key,LineNumber'))
     blocked = new Set(members.filter(m => stop.has(m.Ref_Key.toLowerCase())).flatMap(m => (ref(m.Партнер_Key) ? [ref(m.Партнер_Key)!] : [])))
   }
   // Пустой набор соглашений при живых партнёрах — сбой чтения, а не «у всех истекло»: иначе все
@@ -271,10 +289,10 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
   const currencies = await client.currencies()
   if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
-  const members = await client.list<{ Ref_Key: string, Партнер_Key?: string }>('Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key', ...byPartner })
+  const members = await optionalSet(() => client.list<{ Ref_Key: string, Партнер_Key?: string }>('Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key', ...byPartner }))
   let blocked = new Set<string>()
   if (members.length) {
-    const segments = await client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark', $filter: 'ЗапретОтгрузки eq true' })
+    const segments = await optionalSet(() => client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark', $filter: 'ЗапретОтгрузки eq true' }))
     const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
     if (members.some(m => stop.has(m.Ref_Key.toLowerCase()))) blocked = new Set([partnerGuid.toLowerCase()])
   }
