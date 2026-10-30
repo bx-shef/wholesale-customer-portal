@@ -4,6 +4,8 @@ import ArrowLeftLIcon from '@bitrix24/b24icons-vue/outline/ArrowLeftLIcon'
 
 /** `bottomBar` — внизу экрана телефона плавающая панель (корзина): подвал поднимаем над ней. */
 defineProps<{ id: string, title: string, back?: string, bottomBar?: boolean }>()
+// Предупреждение о данных клиента (ClientDataGate) — первой строкой тела страницы, а не поверх заголовка.
+const notice = useState<string>('client-data-notice', () => '')
 </script>
 
 <template>
@@ -24,6 +26,7 @@ defineProps<{ id: string, title: string, back?: string, bottomBar?: boolean }>()
     </template>
     <template #body>
       <div class="flex min-h-full flex-col">
+        <B24Alert v-if="notice" color="air-primary-warning" :title="notice" class="mb-2" />
         <div class="flex-1">
           <slot />
         </div>
