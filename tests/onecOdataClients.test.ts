@@ -187,9 +187,17 @@ describe('readClientSources и OdataOnec.clients', () => {
     expect([...src.blocked]).toEqual([G(1)])
   })
 
-  it('всё обязательно: не прочиталось — прогон падает, запрет отгрузки молча не снимается', async () => {
-    for (const set of ['Catalog_СегментыПартнеров', 'Catalog_СегментыПартнеров_ПартнерыПоСегменту', 'Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
+  it('обязательные наборы: не прочитались — прогон падает', async () => {
+    for (const set of ['Catalog_Партнеры', 'Catalog_Контрагенты', 'Catalog_СоглашенияСКлиентами', 'Catalog_ДоговорыКонтрагентов', 'Catalog_Партнеры_КонтактнаяИнформация', 'Catalog_ЗоныДоставки', 'Catalog_Валюты'])
       await expect(readClientSources(client(fake([set]))), set).rejects.toBeInstanceOf(Error)
+  })
+
+  it('сегменты убраны из публикации (404) — клиенты грузятся без запрета отгрузки (стенд 2026-10-30)', async () => {
+    for (const set of ['Catalog_СегментыПартнеров', 'Catalog_СегментыПартнеров_ПартнерыПоСегменту']) {
+      const r = await readClientSources(client(fake([set])))
+      expect(r.blocked.size, set).toBe(0)
+      expect(r.partners.length, set).toBeGreaterThan(0)
+    }
   })
 
   it('пустой набор соглашений при живых партнёрах — сбой, а не «все удалены»', async () => {
@@ -316,5 +324,15 @@ describe('рейсы по OData включены по умолчанию (вла
     const { readServerEnv: readEnv } = await import('../server/utils/env')
     expect(readEnv({}).onecOdataTrips).toBe(true)
     expect(readEnv({ ONEC_ODATA_TRIPS: 'false' }).onecOdataTrips).toBe(false)
+  })
+})
+
+describe('сегменты партнёров необязательны (стенд 2026-10-30: выпали из публикации)', () => {
+  it('404 — пусто, прочий сбой — пробрасывается', async () => {
+    const { optionalSet } = await import('../server/services/onecOdataClients')
+    const { OnecError } = await import('../server/services/onec')
+    expect(await optionalSet(async () => { throw new OnecError('http', 'not found', 404) })).toEqual([])
+    await expect(optionalSet(async () => { throw new OnecError('http', 'boom', 500) })).rejects.toThrow('boom')
+    expect(await optionalSet(async () => [1])).toEqual([1])
   })
 })
