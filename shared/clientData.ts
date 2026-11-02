@@ -13,7 +13,7 @@ export interface ClientDataResponse {
 
 /** Страницы клиента, которым нужны его данные из 1С. Вход, справка и коробка — без них. */
 export function isClientRoute(path: string): boolean {
-  return path === '/' || path === '/cart' || path === '/orders' || path === '/profile' || path.startsWith('/product/')
+  return path === '/' || path === '/cart' || path === '/orders' || path === '/delivery' || path === '/profile' || path.startsWith('/product/')
 }
 
 export const NO_CONTRACT_MESSAGE = 'Цены и заказ недоступны: нет действующего соглашения. Обратитесь к менеджеру.'

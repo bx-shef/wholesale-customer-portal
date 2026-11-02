@@ -11,14 +11,15 @@
 import { z } from 'zod'
 import { normalizeHost, type UserCall } from './managerTab'
 import type { UpcomingTrip } from './delivery'
+import type { CalendarDay } from '../../shared/delivery'
 
 export const deliveriesRequestSchema = z.object({
   domain: z.string().min(1).max(253),
   authId: z.string().min(1).max(256),
 })
 
-/** Окно вкладки: с начала сегодняшнего дня по Минску на 7 дней вперёд. */
-export const DELIVERIES_DAYS = 7
+/** Окно вкладки: с начала сегодняшнего дня по Минску на 14 дней вперёд — календарь на две недели (#79). */
+export const DELIVERIES_DAYS = 14
 const MINSK_OFFSET_MS = 3 * 3_600_000
 
 export function deliveriesWindow(now: Date): { from: Date, to: Date } {
@@ -28,12 +29,12 @@ export function deliveriesWindow(now: Date): { from: Date, to: Date } {
 }
 
 export type DeliveriesResult =
-  | { status: 200, body: { trips: UpcomingTrip[], from: string, to: string } }
+  | { status: 200, body: { trips: UpcomingTrip[], calendar: CalendarDay[], from: string, to: string } }
   | { status: 403, body: { error: string } }
 
 export async function readDeliveries(
   req: z.infer<typeof deliveriesRequestSchema>,
-  deps: { allowedHosts: string[], userCall: UserCall, upcoming: (from: Date, to: Date) => UpcomingTrip[] },
+  deps: { allowedHosts: string[], userCall: UserCall, upcoming: (from: Date, to: Date) => UpcomingTrip[], calendar?: (now: Date) => Promise<CalendarDay[]> },
   now = new Date(),
 ): Promise<DeliveriesResult> {
   const denied = { status: 403 as const, body: { error: 'Откройте вкладку из портала Битрикс24' } }
@@ -49,5 +50,7 @@ export async function readDeliveries(
     return denied
   }
   const { from, to } = deliveriesWindow(now)
-  return { status: 200, body: { trips: deps.upcoming(from, to), from: from.toISOString(), to: to.toISOString() } }
+  // График по городам — сбой чтения не прячет рейсы: календарь без городов.
+  const calendar = deps.calendar ? await deps.calendar(now).catch(() => []) : []
+  return { status: 200, body: { trips: deps.upcoming(from, to), calendar, from: from.toISOString(), to: to.toISOString() } }
 }

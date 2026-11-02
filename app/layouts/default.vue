@@ -8,6 +8,7 @@ import type { DropdownMenuItem, NavigationMenuItem } from '@bitrix24/b24ui-nuxt'
 import ProductsCubeIcon from '@bitrix24/b24icons-vue/outline/ProductsCubeIcon'
 import ShoppingCartIcon from '@bitrix24/b24icons-vue/outline/ShoppingCartIcon'
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
+import CalendarIcon from '@bitrix24/b24icons-vue/outline/CalendarIcon'
 import QuestionIcon from '@bitrix24/b24icons-vue/outline/QuestionIcon'
 import PersonIcon from '@bitrix24/b24icons-vue/outline/PersonIcon'
 import ChevronTopSIcon from '@bitrix24/b24icons-vue/outline/ChevronTopSIcon'
@@ -33,6 +34,7 @@ const sections = computed<NavigationMenuItem[]>(() => [
   // поэтому разметка совпадает при гидрации.
   { label: 'Корзина', icon: ShoppingCartIcon, to: '/cart', badge: cart.loaded.value && cart.count.value ? String(cart.count.value) : undefined, onSelect: close },
   { label: 'Заявки', icon: DeliveryIcon, to: '/orders', onSelect: close },
+  { label: 'Доставка', icon: CalendarIcon, to: '/delivery', onSelect: close },
 ])
 // В теме b24ui у пунктов меню фиксированная высота (h-9.5, у подписи h-5.5) и строка без переноса:
 // перенесённое длинное название наезжало на соседний пункт. Высота — по содержимому; раскрытая
