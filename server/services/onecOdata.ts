@@ -183,9 +183,7 @@ export class ODataClient {
     }
     if (!res.ok) {
       // Текст ошибки 1С — про запрос, а не про данные; режем до 200 знаков, чтобы стенд показал причину.
-      const body = await res.json().catch(() => null) as { 'odata.error'?: { message?: { value?: string } } } | null
-      const why = body?.['odata.error']?.message?.value?.replace(/\s+/g, ' ').slice(0, 200)
-      throw new OnecError('http', `1C OData ${set}: HTTP ${res.status}${why ? ` — ${why}` : ''}`, res.status)
+      throw new OnecError('http', `1C OData ${set}: HTTP ${res.status}${await errorDetail(res, query)}`, res.status)
     }
     // Предел ответа — до разбора: огромный ответ кладёт процесс ЛК по памяти (502, 2026-10-21).
     const tooBig = () => new OnecError('contract', `1C OData ${set}: response is larger than ${Math.round(maxBytes / 1048576)} MB`, res.status)
@@ -504,6 +502,25 @@ export class ODataClient {
 export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклатуры'] as const
 /** Строк за один запрос OData (каталог, срез цен) и предел страниц: 500 × 5000 = 2,5 млн строк. */
 export const ODATA_PAGE = 5000
+
+/**
+ * Причина отказа 1С для журнала: текст `odata.error`, а если ответ не JSON (404 без текста от
+ * веб-сервера, стенд 2026-11-02) — начало тела и какие параметры запроса были. Без значений отбора:
+ * только имена параметров и длина адреса.
+ */
+export async function errorDetail(res: Response, query: Record<string, string | number> = {}): Promise<string> {
+  const text = await res.text().catch(() => '')
+  let raw: string
+  try {
+    raw = (JSON.parse(text) as { 'odata.error'?: { message?: { value?: string } } })?.['odata.error']?.message?.value ?? ''
+  }
+  catch {
+    raw = text.replace(/<[^>]+>/g, ' ')
+  }
+  const why = raw.replace(/\s+/g, ' ').trim().slice(0, 200)
+  const params = Object.keys(query).join(',')
+  return why ? ` — ${why}` : ` — пустой ответ (параметры: ${params || 'нет'})`
+}
 /** Предел одного ответа OData и ответа с картинкой (base64 до 5 МБ файла — около 7 МБ строки). */
 export const ODATA_MAX_RESPONSE = 64 * 1024 * 1024
 export const IMAGE_MAX_RESPONSE = 8 * 1024 * 1024
