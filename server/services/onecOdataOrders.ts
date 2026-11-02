@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto'
 import { OrderCreated, OrderRequest, type OrderStatusRowT, type OrderStatusT } from '../../shared/onec/schemas'
 import type { z } from 'zod'
 import { OnecError } from './onec'
-import { assertGuid, EMPTY_REF, ONEC_TZ, type ODataClient } from './onecOdata'
+import { assertGuid, EMPTY_REF, ONEC_TZ, orFilters, type ODataClient } from './onecOdata'
 import { addressGuid, agreementActive, listAll, type ContactRow } from './onecOdataClients'
 
 export const ORDER_SET = 'Document_ЗаказКлиента'
@@ -181,15 +181,16 @@ export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof Or
   if (!row) throw new OnecError('contract', '1C OData order: delivery address not found')
   const vat = new Map<string, string>()
   const items = [...new Set(o.items.map(i => assertGuid(i.itemGuid).toLowerCase()))]
-  for (let i = 0; i < items.length; i += 40) {
-    const rows = await client.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', {
-      $select: 'Ref_Key,СтавкаНДС_Key',
-      $filter: items.slice(i, i + 40).map(g => `Ref_Key eq guid'${g}'`).join(' or '),
-    })
-    for (const r of rows) if (ref(r.СтавкаНДС_Key)) vat.set(r.Ref_Key.toLowerCase(), r.СтавкаНДС_Key!)
-    const missing = items.slice(i, i + 40).filter(g => !rows.some(r => r.Ref_Key.toLowerCase() === g))
-    if (missing.length) throw new OnecError('contract', `1C OData order: items not found: ${missing.length}`)
+  const found = new Set<string>()
+  for (const $filter of orFilters(items.map(g => `Ref_Key eq guid'${g}'`))) {
+    const rows = await client.list<{ Ref_Key: string, СтавкаНДС_Key?: string }>('Catalog_Номенклатура', { $select: 'Ref_Key,СтавкаНДС_Key', $filter })
+    for (const r of rows) {
+      found.add(r.Ref_Key.toLowerCase())
+      if (ref(r.СтавкаНДС_Key)) vat.set(r.Ref_Key.toLowerCase(), r.СтавкаНДС_Key!)
+    }
   }
+  const missing = items.filter(g => !found.has(g))
+  if (missing.length) throw new OnecError('contract', `1C OData order: items not found: ${missing.length}`)
   return { agreement, counterparty, warehouse, zone: ref(p?.ЗонаДоставки_Key), address: (row.Представление ?? '').trim(), vat }
 }
 
@@ -253,7 +254,6 @@ export const ORDER_IN_WORK = new Set(['КВыполнению', 'КОтгруз�
 const STATE_READY = new Set(['ГотовКЗакрытию'])
 const ISSUE_READY = 'КОтгрузке'
 const TRIP_CLOSED = 'Закрыто'
-const BATCH = 20
 const orderRef = (g: string) => `cast(guid'${assertGuid(g)}', 'Document_ЗаказКлиента')`
 
 /**
@@ -266,21 +266,15 @@ export async function readDeliveryConfirmed(client: ODataClient, orders: string[
   if (!orders.length) return out
   // 1. Состояние заказа — регистр сведений, ключ — заказ.
   const ready: string[] = []
-  for (let i = 0; i < orders.length; i += BATCH) {
-    const rows = await client.list<{ Заказ?: string, Состояние?: string }>('InformationRegister_СостоянияЗаказовКлиентов', {
-      $select: 'Заказ,Состояние',
-      $filter: orders.slice(i, i + BATCH).map(g => `Заказ eq ${orderRef(g)}`).join(' or '),
-    })
+  for (const $filter of orFilters(orders.map(g => `Заказ eq ${orderRef(g)}`))) {
+    const rows = await client.list<{ Заказ?: string, Состояние?: string }>('InformationRegister_СостоянияЗаказовКлиентов', { $select: 'Заказ,Состояние', $filter })
     for (const r of rows) if (r.Заказ && STATE_READY.has((r.Состояние ?? '').trim())) ready.push(r.Заказ.toLowerCase())
   }
   if (!ready.length) return out
   // 2. Расходные ордера по заказу — строки «Товары по распоряжениям».
   const issueOf = new Map<string, Set<string>>()
-  for (let i = 0; i < ready.length; i += BATCH) {
-    const rows = await client.list<{ Ref_Key: string, Распоряжение?: string }>('Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям', {
-      $select: 'Ref_Key,Распоряжение',
-      $filter: ready.slice(i, i + BATCH).map(g => `Распоряжение eq ${orderRef(g)}`).join(' or '),
-    })
+  for (const $filter of orFilters(ready.map(g => `Распоряжение eq ${orderRef(g)}`))) {
+    const rows = await client.list<{ Ref_Key: string, Распоряжение?: string }>('Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям', { $select: 'Ref_Key,Распоряжение', $filter })
     for (const r of rows) {
       const g = (r.Распоряжение ?? '').toLowerCase()
       if (!issueOf.has(g)) issueOf.set(g, new Set())
@@ -291,11 +285,8 @@ export async function readDeliveryConfirmed(client: ODataClient, orders: string[
   if (!issues.length) return out
   // 3. Ордер «К отгрузке», проведён и с заданием на перевозку.
   const tripOfIssue = new Map<string, string>()
-  for (let i = 0; i < issues.length; i += BATCH) {
-    const rows = await client.list<{ Ref_Key: string, Статус?: string, Posted?: boolean, DeletionMark?: boolean, ЗаданиеНаПеревозку_Key?: string }>('Document_РасходныйОрдерНаТовары', {
-      $select: 'Ref_Key,Статус,Posted,DeletionMark,ЗаданиеНаПеревозку_Key',
-      $filter: issues.slice(i, i + BATCH).map(g => `Ref_Key eq guid'${assertGuid(g)}'`).join(' or '),
-    })
+  for (const $filter of orFilters(issues.map(g => `Ref_Key eq guid'${assertGuid(g)}'`))) {
+    const rows = await client.list<{ Ref_Key: string, Статус?: string, Posted?: boolean, DeletionMark?: boolean, ЗаданиеНаПеревозку_Key?: string }>('Document_РасходныйОрдерНаТовары', { $select: 'Ref_Key,Статус,Posted,DeletionMark,ЗаданиеНаПеревозку_Key', $filter })
     for (const r of rows) {
       const trip = (r.ЗаданиеНаПеревозку_Key ?? '').toLowerCase()
       if (r.Posted && !r.DeletionMark && (r.Статус ?? '').trim() === ISSUE_READY && trip && trip !== EMPTY_REF) tripOfIssue.set(r.Ref_Key.toLowerCase(), trip)
@@ -305,11 +296,8 @@ export async function readDeliveryConfirmed(client: ODataClient, orders: string[
   if (!trips.length) return out
   // 4. Задание на перевозку «Закрыто».
   const closed = new Set<string>()
-  for (let i = 0; i < trips.length; i += BATCH) {
-    const rows = await client.list<{ Ref_Key: string, Статус?: string, DeletionMark?: boolean }>('Document_ЗаданиеНаПеревозку', {
-      $select: 'Ref_Key,Статус,DeletionMark',
-      $filter: trips.slice(i, i + BATCH).map(g => `Ref_Key eq guid'${assertGuid(g)}'`).join(' or '),
-    })
+  for (const $filter of orFilters(trips.map(g => `Ref_Key eq guid'${assertGuid(g)}'`))) {
+    const rows = await client.list<{ Ref_Key: string, Статус?: string, DeletionMark?: boolean }>('Document_ЗаданиеНаПеревозку', { $select: 'Ref_Key,Статус,DeletionMark', $filter })
     for (const r of rows) if (!r.DeletionMark && (r.Статус ?? '').trim() === TRIP_CLOSED) closed.add(r.Ref_Key.toLowerCase())
   }
   for (const [order, set] of issueOf) if ([...set].some(i => closed.has(tripOfIssue.get(i) ?? ''))) out.add(order)

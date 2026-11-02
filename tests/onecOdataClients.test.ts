@@ -345,3 +345,15 @@ describe('причина отказа 1С в журнале (стенд 2026-11-
     expect(await errorDetail(new Response('', { status: 404 }), { $filter: "x eq 'секрет'", $top: 1 })).toBe(' — пустой ответ (параметры: $filter,$top)')
   })
 })
+
+describe('отбор «или» пачками по длине адреса (стенд 2026-11-02: IIS 404.15)', () => {
+  it('каждая пачка после кодирования не длиннее предела, ничего не теряется', async () => {
+    const { orFilters, FILTER_MAX_ENCODED } = await import('../server/services/onecOdata')
+    const terms = Array.from({ length: 60 }, (_, i) => `Заказ eq cast(guid'00000000-0000-4000-8000-${String(i).padStart(12, '0')}', 'Document_ЗаказКлиента')`)
+    const parts = orFilters(terms)
+    expect(parts.length).toBeGreaterThan(1)
+    for (const p of parts) expect(encodeURIComponent(p).length).toBeLessThanOrEqual(FILTER_MAX_ENCODED)
+    expect(parts.join(' or ')).toBe(terms.join(' or '))
+    expect(orFilters([])).toEqual([])
+  })
+})

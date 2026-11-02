@@ -7,7 +7,7 @@
  */
 import { Trip, type TripT } from '../../shared/onec/schemas'
 import { OnecError } from './onec'
-import { EMPTY_REF, ONEC_TZ, type ODataClient } from './onecOdata'
+import { EMPTY_REF, ONEC_TZ, orFilters, type ODataClient } from './onecOdata'
 import { listAll } from './onecOdataClients'
 
 export const TRIP_SET = 'Document_ЗаданиеНаПеревозку'
@@ -110,11 +110,9 @@ export async function readTrips(client: ODataClient, now: Date, stats: TripStats
   if (docs.length && docs.every(d => d.Маршрут === undefined && d.Распоряжения === undefined)) throw new OnecError('contract', `1C OData ${TRIP_SET}: tabular parts Маршрут/Распоряжения not returned`)
   const want = [...new Set(docs.flatMap(d => (d.Распоряжения ?? []).flatMap(r => (isClientOrder(r.Распоряжение_Type) && ref(r.Распоряжение) ? [ref(r.Распоряжение)!] : []))))]
   const orders = new Map<string, { number: string, clientGuid: string }>()
-  for (let i = 0; i < want.length; i += 40) {
-    const rows = await client.list<{ Ref_Key: string, Number?: string, Партнер_Key?: string }>('Document_ЗаказКлиента', {
-      $select: 'Ref_Key,Number,Партнер_Key',
-      $filter: want.slice(i, i + 40).map(g => `Ref_Key eq guid'${g}'`).join(' or '),
-    })
+  // Пачками по длине адреса: IIS перед 1С отвергает строку запроса длиннее ~2 КБ (404.15).
+  for (const $filter of orFilters(want.map(g => `Ref_Key eq guid'${g}'`))) {
+    const rows = await client.list<{ Ref_Key: string, Number?: string, Партнер_Key?: string }>('Document_ЗаказКлиента', { $select: 'Ref_Key,Number,Партнер_Key', $filter })
     for (const r of rows) {
       const partner = ref(r.Партнер_Key)
       if (partner) orders.set(r.Ref_Key.toLowerCase(), { number: (r.Number ?? '').trim() || r.Ref_Key, clientGuid: partner })

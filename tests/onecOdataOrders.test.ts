@@ -82,11 +82,13 @@ describe('заказ по OData: запись', () => {
     expect((await createOdataOrder(onec({ agreementPartner: PARTNER.toUpperCase() }).client, req(), opts)).orderGuid).toBe(G(77))
   })
 
-  it('НДС — пачками по 40 товаров', async () => {
+  it('НДС — пачками по длине адреса (IIS режет строку длиннее ~2 КБ)', async () => {
     const items = Array.from({ length: 41 }, (_, i) => G(100 + i))
     const t = onec({ items })
     await createOdataOrder(t.client, req({ items: items.map(g => ({ itemGuid: g, qty: 1, price: 1 })) }), opts)
-    expect(t.calls.filter(c => c.url.includes('Catalog_Номенклатура'))).toHaveLength(2)
+    const calls = t.calls.filter(c => c.url.includes('Catalog_Номенклатура'))
+    expect(calls.length).toBeGreaterThan(1)
+    for (const c of calls) expect(encodeURI(c.url).split('?')[1]!.length).toBeLessThan(2048)
   })
 
   it('чужой заказ с тем же номером заявки, чужое соглашение, нет адреса или товара — отказ без записи', async () => {
