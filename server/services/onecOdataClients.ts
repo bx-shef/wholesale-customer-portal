@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 import { Client, type ClientT, type ContractT, type DeliveryAddress } from '../../shared/onec/schemas'
 import type { z } from 'zod'
 import { OnecError } from './onec'
-import { assertGuid, EMPTY_REF, ODATA_MAX_PAGES, ODATA_PAGE, type ODataClient } from './onecOdata'
+import { assertGuid, EMPTY_REF, ODATA_MAX_PAGES, ODATA_PAGE, orFilters, type ODataClient } from './onecOdata'
 
 export interface PartnerRow {
   Ref_Key: string
@@ -281,9 +281,10 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
     $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key', ...byPartner,
   })
   const contractKeys = [...new Set(agreements.flatMap(a => (ref(a.Договор_Key) ? [ref(a.Договор_Key)!] : [])))].slice(0, 40) // у клиента их единицы (стенд: максимум 31 соглашение)
-  const contracts = contractKeys.length
-    ? await client.list<ContractRow>('Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности', $filter: contractKeys.map(k => `Ref_Key eq guid'${assertGuid(k)}'`).join(' or ') })
-    : []
+  const contracts: ContractRow[] = []
+  for (const $filter of orFilters(contractKeys.map(k => `Ref_Key eq guid'${assertGuid(k)}'`))) {
+    contracts.push(...await client.list<ContractRow>('Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности', $filter }))
+  }
   const contacts = await client.list<ContactRow>('Catalog_Партнеры_КонтактнаяИнформация', { $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город', $filter: `Ref_Key eq ${g}` })
   const zones = await client.names('Catalog_ЗоныДоставки')
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)

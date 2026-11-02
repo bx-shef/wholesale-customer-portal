@@ -94,7 +94,7 @@ describe('рейсы по OData: края', () => {
     expect(q).not.toContain('1 eq 1')
   })
 
-  it('заказы пачками по 40; сломанный рейс пропущен; пустой DataVersion — версия пустая; нет табличных частей — ошибка', async () => {
+  it('заказы пачками по длине адреса; сломанный рейс пропущен; пустой DataVersion — версия пустая; нет табличных частей — ошибка', async () => {
     const many = Array.from({ length: 41 }, (_, i) => ({ Распоряжение: G(200 + i), Распоряжение_Type: ORDER_TYPE }))
     const seen: string[] = []
     const docs = [doc({ Распоряжения: many }), doc({ Ref_Key: G(2), DataVersion: '', Number: 'ЗП-2' }), doc({ Ref_Key: G(3), АвтомобильГосударственныйНомер: undefined, Маршрут: [{ Зона_Key: G(50) }], Статус: 'Отправлено', ДатаВремяРейсаПланС: 'кривая' })]
@@ -107,7 +107,9 @@ describe('рейсы по OData: края', () => {
     }
     const stats = { read: 0, noPlan: 0, broken: 0, ordersMissing: 0 }
     const rows = await readTrips(client(f), new Date('2026-10-21T09:00:00Z'), stats)
-    expect(seen.filter(u => u.includes('Document_ЗаказКлиента'))).toHaveLength(2)
+    const orderCalls = seen.filter(u => u.includes('Document_ЗаказКлиента'))
+    expect(orderCalls.length).toBeGreaterThan(1)
+    for (const u of orderCalls) expect(encodeURI(u).split('?')[1]!.length).toBeLessThan(2048)
     expect(rows.find(r => r.trip.guid === G(1))!.trip.orders).toHaveLength(41)
     expect(rows.find(r => r.trip.guid === G(2))!.version).toBe('')
     expect(stats).toMatchObject({ read: 3, broken: 1 })

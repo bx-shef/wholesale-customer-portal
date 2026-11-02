@@ -504,6 +504,31 @@ export const PRICE_REGISTERS = ['InformationRegister_ЦеныНоменклат�
 export const ODATA_PAGE = 5000
 
 /**
+ * Предел `$filter` в адресе (после кодирования). IIS перед 1С режет строку запроса длиннее ~2 КБ
+ * ответом «404.15» (стенд 2026-11-02: 40 ссылок через `or` — а кириллица в адресе в 6 раз длиннее).
+ */
+export const FILTER_MAX_ENCODED = 1200
+
+/** Условия `a or b or …` пачками, чтобы закодированный `$filter` не превысил предел IIS. */
+export function orFilters(terms: string[], max = FILTER_MAX_ENCODED): string[] {
+  const out: string[] = []
+  let cur: string[] = []
+  let len = 0
+  for (const t of terms) {
+    const add = encodeURIComponent(cur.length ? ` or ${t}` : t).length
+    if (cur.length && len + add > max) {
+      out.push(cur.join(' or '))
+      cur = []
+      len = 0
+    }
+    len += encodeURIComponent(cur.length ? ` or ${t}` : t).length
+    cur.push(t)
+  }
+  if (cur.length) out.push(cur.join(' or '))
+  return out
+}
+
+/**
  * Причина отказа 1С для журнала: текст `odata.error`, а если ответ не JSON (404 без текста от
  * веб-сервера, стенд 2026-11-02) — начало тела и какие параметры запроса были. Без значений отбора:
  * только имена параметров и длина адреса.
