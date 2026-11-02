@@ -131,3 +131,42 @@ describe('график доставки из env (табличка логист�
     expect(formatSlot({ arrivalFrom: '2026-11-01T21:00:00.000Z', arrivalTo: '2026-11-01T21:00:00.000Z' })).not.toMatch(/\d{2}:\d{2}/)
   })
 })
+
+describe('календарь доставок (#79)', () => {
+  it('по дням — города графика и отсечка; города клиента; регионы-GUID не показываются', async () => {
+    const { deliveryCalendar, parseScheduleEnv } = await import('../shared/delivery')
+    const { schedules } = parseScheduleEnv('Пн: Брест, Береза; Ср: Минск')
+    const guid = { ...schedules[0]!, region: '00000000-0000-4000-8000-000000000001', weekdays: [1, 2, 3, 4, 5, 6, 7] }
+    // Пн 2 ноября 2026, 10:00 по Минску.
+    const cal = deliveryCalendar([...schedules, guid], new Date('2026-11-02T07:00:00Z'), 14)
+    expect(cal).toHaveLength(14)
+    expect(cal[0]).toMatchObject({ date: '2026-11-02', cities: [{ city: 'Береза', open: false }, { city: 'Брест', open: false }] })
+    expect(cal[2]!.cities.map(c => c.city)).toEqual(['Минск'])
+    expect(cal[2]!.cities[0]!.open).toBe(true)
+    expect(cal[1]!.cities).toEqual([])
+    const mine = deliveryCalendar(schedules, new Date('2026-11-02T07:00:00Z'), 14, ['брест'])
+    expect(mine.flatMap(d => d.cities.map(c => c.city))).toEqual(['Брест', 'Брест'])
+  })
+})
+
+describe('вкладка «Ближайшие доставки» — календарь на две недели (#79)', () => {
+  it('ответ несёт календарь; сбой графика не прячет рейсы', async () => {
+    const userCall = vi.fn(async (_h: string, _t: string, m: string) => (m === 'user.current' ? { ID: 1, UF_DEPARTMENT: [1] } : null))
+    const ok = await readDeliveries({ domain: 'crm.algena.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall, upcoming: () => [], calendar: async () => [{ date: '2026-11-02', cities: [] }] })
+    expect(ok).toMatchObject({ status: 200, body: { calendar: [{ date: '2026-11-02' }] } })
+    const broken = await readDeliveries({ domain: 'crm.algena.by', authId: 't' }, { allowedHosts: ['crm.algena.by'], userCall, upcoming: () => [], calendar: async () => { throw new Error('x') } })
+    expect(broken).toMatchObject({ status: 200, body: { calendar: [] } })
+  })
+})
+
+describe('раздел «Доставка» для клиента (#79)', () => {
+  it('пункт меню, страница, только города адресов клиента', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { isClientRoute } = await import('../shared/clientData')
+    expect(readFileSync('app/layouts/default.vue', 'utf8')).toContain("{ label: 'Доставка', icon: CalendarIcon, to: '/delivery'")
+    expect(isClientRoute('/delivery')).toBe(true)
+    const api = readFileSync('server/api/delivery-calendar.get.ts', 'utf8')
+    expect(api).toContain('deliveryCalendar(schedules, new Date(), CLIENT_CALENDAR_DAYS, cities)')
+    expect(api).toContain('client.addresses.map(a => a.city.trim())')
+  })
+})

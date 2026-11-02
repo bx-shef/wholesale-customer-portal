@@ -150,6 +150,38 @@ export function parseScheduleEnv(text: string): { schedules: TripSchedule[], war
   return { schedules, warnings }
 }
 
+/** День календаря доставок: какие города едут в этот день и до какого времени принимается заявка. */
+export interface CalendarDay {
+  /** `ГГГГ-ММ-ДД` по Минску. */
+  date: string
+  cities: Array<{ city: string, cutoffAt: string, open: boolean }>
+}
+
+/**
+ * Календарь доставок по графику на `days` дней с сегодняшнего (#79): по дням — города и отсечка.
+ * `only` — города клиента (без учёта регистра и «ё»); пусто — все. Регионы 1С без названия (GUID)
+ * не показываются — показать их нечем. `open` — заявка на этот рейс ещё успевает.
+ */
+export function deliveryCalendar(schedules: TripSchedule[], now: Date, days = 14, only?: string[]): CalendarDay[] {
+  const today = minskDate(now.getTime())
+  const keep = only?.filter(c => c && c.trim())
+  const out: CalendarDay[] = []
+  for (let d = 0; d < days; d++) {
+    const date = minskDate(minskMidnight(today) + d * DAY_MS + 12 * 3_600_000)
+    const cities = schedules
+      .filter(s => !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s.region) && s.weekdays.includes(isoWeekday(date)) && !s.exceptions.includes(date))
+      .filter(s => !keep || keep.some(k => sameRegion(s.region, k)))
+      .map((s) => {
+        const cutoffDate = minskDate(minskMidnight(date) - s.cutoffDaysBefore * DAY_MS + 12 * 3_600_000)
+        const cutoffAt = atMinutes(cutoffDate, s.cutoffMinutes)
+        return { city: s.region, cutoffAt, open: Date.parse(cutoffAt) > now.getTime() }
+      })
+      .sort((a, b) => a.city.localeCompare(b.city, 'ru'))
+    out.push({ date, cities })
+  }
+  return out
+}
+
 /** «пт, 16 октября, 10:00–14:00» — как в docs/spec.md §8; без окна прибытия — только день. */
 export function formatSlot(slot: Pick<DeliverySlot, 'arrivalFrom' | 'arrivalTo'>): string {
   const opts = { timeZone: 'Europe/Minsk' } as const

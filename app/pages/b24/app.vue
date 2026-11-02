@@ -20,6 +20,8 @@ interface Trip {
   orders: { orderGuid: string, number: string, clientName: string | null }[]
 }
 
+interface CalendarDay { date: string, cities: Array<{ city: string, cutoffAt: string, open: boolean }> }
+
 const tabs = [{ label: 'Подключение', slot: 'about' as const, value: 'about' }, { label: 'Ближайшие доставки', slot: 'trips' as const, value: 'trips' }]
 const TRIP_STATUS: Record<Trip['status'], { label: string, color: 'air-secondary' | 'air-primary' | 'air-primary-warning' | 'air-primary-success' }> = {
   forming: { label: 'Формируется', color: 'air-secondary' },
@@ -29,19 +31,18 @@ const TRIP_STATUS: Record<Trip['status'], { label: string, color: 'air-secondary
 }
 let frame: B24Frame | null = null
 const trips = ref<Trip[] | null>(null)
+const calendar = ref<CalendarDay[]>([])
 const tripsError = ref('')
 const day = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long' })
 const time = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Minsk', hour: '2-digit', minute: '2-digit' })
-/** Рейсы по дням: сотруднику проще читать «сегодня, завтра…», чем общий список. */
-const byDay = computed(() => {
-  const out: { day: string, trips: Trip[] }[] = []
-  for (const t of trips.value ?? []) {
-    const d = day(t.plannedStart)
-    if (out.at(-1)?.day !== d) out.push({ day: d, trips: [] })
-    out.at(-1)!.trips.push(t)
-  }
-  return out
-})
+const minskDate = (iso: string) => new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10)
+/**
+ * Календарь на две недели (#79): по дням — города по графику (с отсечкой приёма заявок) и рейсы из
+ * заданий на перевозку 1С. Дни без городов и рейсов не показываем.
+ */
+const byDay = computed(() => calendar.value
+  .map(c => ({ date: c.date, day: day(`${c.date}T09:00:00Z`), cities: c.cities, trips: (trips.value ?? []).filter(t => minskDate(t.plannedStart) === c.date) }))
+  .filter(d => d.cities.length || d.trips.length))
 
 async function loadTrips() {
   tripsError.value = ''
@@ -51,7 +52,9 @@ async function loadTrips() {
     return
   }
   try {
-    trips.value = (await $fetch<{ trips: Trip[] }>('/api/b24/deliveries', { method: 'POST', body: { domain: auth.domain, authId: auth.access_token } })).trips
+    const r = await $fetch<{ trips: Trip[], calendar: CalendarDay[] }>('/api/b24/deliveries', { method: 'POST', body: { domain: auth.domain, authId: auth.access_token } })
+    calendar.value = r.calendar
+    trips.value = r.trips
   }
   catch (e) {
     tripsError.value = (e as { data?: { message?: string } }).data?.message || 'Не удалось загрузить рейсы'
@@ -117,19 +120,29 @@ onMounted(() => {
       <template #trips>
         <div class="flex flex-col gap-3 pt-4">
           <p class="text-sm">
-            Рейсы на сегодня и неделю вперёд — из заданий на перевозку 1С. Править график и рейсы — в 1С.
+            Две недели вперёд: города по графику доставки и рейсы из заданий на перевозку 1С. График — в
+            DELIVERY_SCHEDULE на сервере, рейсы — в 1С.
           </p>
           <B24Alert v-if="tripsError" color="air-primary-alert" :title="tripsError" />
           <p v-else-if="trips === null" class="text-sm">
             Загружаем…
           </p>
-          <p v-else-if="trips.length === 0" class="text-sm">
-            Рейсов на ближайшую неделю нет.
+          <p v-else-if="byDay.length === 0" class="text-sm">
+            На две недели вперёд доставок нет.
           </p>
-          <div v-for="d in byDay" :key="d.day" class="flex flex-col gap-2">
+          <div v-for="d in byDay" :key="d.date" class="flex flex-col gap-2">
             <p class="font-semibold">
               {{ d.day }}
             </p>
+            <div v-if="d.cities.length" class="flex flex-wrap gap-1.5">
+              <B24Badge
+                v-for="c in d.cities"
+                :key="c.city"
+                :color="c.open ? 'air-primary' : 'air-secondary'"
+                :label="c.city"
+                :title="c.open ? `Заявки до ${time(c.cutoffAt)} ${day(c.cutoffAt)}` : 'Приём заявок на этот рейс закрыт'"
+              />
+            </div>
             <B24Card v-for="t in d.trips" :key="t.guid">
               <div class="flex flex-col gap-1 text-sm">
                 <div class="flex flex-wrap items-center gap-2">
