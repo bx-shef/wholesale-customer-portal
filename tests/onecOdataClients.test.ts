@@ -336,3 +336,12 @@ describe('сегменты партнёров необязательны (сте
     expect(await optionalSet(async () => [1])).toEqual([1])
   })
 })
+
+describe('причина отказа 1С в журнале (стенд 2026-11-02: 404 без текста)', () => {
+  it('JSON — текст 1С; не JSON — начало тела; пусто — имена параметров', async () => {
+    const { errorDetail } = await import('../server/services/onecOdata')
+    expect(await errorDetail(Response.json({ 'odata.error': { message: { value: 'Сущность не найдена' } } }, { status: 404 }))).toBe(' — Сущность не найдена')
+    expect(await errorDetail(new Response('<html><h1>Not Found</h1></html>', { status: 404 }))).toBe(' — Not Found')
+    expect(await errorDetail(new Response('', { status: 404 }), { $filter: "x eq 'секрет'", $top: 1 })).toBe(' — пустой ответ (параметры: $filter,$top)')
+  })
+})
