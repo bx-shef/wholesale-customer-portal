@@ -1,0 +1,77 @@
+# Правила уровня ревью wholesale-customer-portal. Формат и движок — tools/review-tier.sh (копия эталона; здесь правят только этот файл).
+# Первое подходящее правило выигрывает: исключения стоят выше общих. Не подошло ничего — уровень 1.
+
+# --- уровень 0: версия в манифесте пакета ---
+0 package.json only:^[[:space:]]*"version":   # правка одной строки version
+
+# --- уровень 2: исполняемые скрипты среди документов агента ---
+2 .claude/*.sh                          # хук сессии
+
+# --- уровень 2 раньше *.md: выкладка и CI целиком, включая их документы ---
+0 .github/pull_request_template.md
+2 .github/*|deploy/*
+
+# --- уровень 0: без ревью, только основная проверка ---
+0 .gitattributes
+0 .claude/*|docs/*|content/*|tests/*
+0 *.md
+
+# --- уровень 2: панель из пяти ---
+2 tools/review-tier.*
+2 package.json|pnpm-lock.yaml
+2 Dockerfile|docker-compose*|Makefile|.env.example
+2 server/utils/session.ts|server/utils/accessKeys.ts|server/utils/login.ts|server/utils/clientSession.ts
+2 server/utils/bearer.ts|server/utils/b24AppAuth.ts|server/utils/clientIp.ts|server/utils/rateLimit.ts|server/utils/env.ts
+2 server/mcp/*|server/api/auth/*|server/api/b24/*
+2 shared/cart.ts|server/utils/prices.ts|server/utils/orders.ts|server/utils/orderSync.ts|server/utils/orderApi.ts
+2 server/services/onecOdataOrders.ts
+2 shared/onec/schemas.ts|contracts/*
+2 server/db/*
+
+# --- таблица случаев для --self-test ---
+case 0 README.md
+case 0 CLAUDE.md
+case 0 docs/AGENT_RULES.md
+case 0 content/help/index.md
+case 0 tests/repoGuards.test.ts
+case 0 .claude/skills/review-panel/SKILL.md
+case 0 .claude/settings.json
+case 0 .gitattributes
+case 1 app/pages/cart.vue
+case 1 server/utils/catalog.ts
+case 1 shared/delivery.ts
+case 1 scripts/b24-setup.ts
+case 2 .claude/hooks/session-start.sh
+case 2 tools/review-tier.sh
+case 2 tools/review-tier.rules
+case 2 package.json
+case 2 pnpm-lock.yaml
+case 2 .github/workflows/ci.yml
+case 0 .github/pull_request_template.md
+case 2 Dockerfile
+case 2 docker-compose.prod.yml
+case 2 Makefile
+case 2 deploy/bitrixvm/docroot/index.php
+case 2 deploy/bitrixvm/README.md
+case 2 .env.example
+case 2 server/utils/session.ts
+case 2 server/utils/accessKeys.ts
+case 2 server/utils/login.ts
+case 2 server/utils/clientSession.ts
+case 2 server/utils/bearer.ts
+case 2 server/utils/b24AppAuth.ts
+case 2 server/utils/clientIp.ts
+case 2 server/utils/rateLimit.ts
+case 2 server/utils/env.ts
+case 2 server/mcp/handlers/admin/tools/issue_access_key.ts
+case 2 server/api/auth/login.post.ts
+case 2 server/api/b24/company-tab.post.ts
+case 2 shared/cart.ts
+case 2 server/utils/prices.ts
+case 2 server/utils/orders.ts
+case 2 server/utils/orderSync.ts
+case 2 server/utils/orderApi.ts
+case 2 server/services/onecOdataOrders.ts
+case 2 shared/onec/schemas.ts
+case 2 contracts/onec.openapi.yaml
+case 2 server/db/sqlite.ts
