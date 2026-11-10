@@ -110,7 +110,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
                   </div>
                   <div class="text-right shrink-0">
                     <p class="font-semibold">
-                      {{ a.price ? formatMoney(a.price.value, a.price.currency) : '—' }}
+                      {{ a.price ? `${formatMoney(a.price.value, a.price.currency)} с НДС` : '—' }}
                     </p>
                     <StockBadge :available="a.available" :unit="a.unit" />
                   </div>

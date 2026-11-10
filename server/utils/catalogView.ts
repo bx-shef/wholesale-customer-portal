@@ -1,4 +1,3 @@
-import { grossPrice } from '../../shared/vat'
 /**
  * Каталог глазами клиента: индекс + цены его договора. Чистые функции с внедряемыми
  * зависимостями — проверяются без сервера (tests/catalog.test.ts).
@@ -6,6 +5,7 @@ import { grossPrice } from '../../shared/vat'
  * Граница данных: GUID клиента в 1С берётся только по компании из сессии; из запроса — никогда.
  */
 import { parseProps } from '../../shared/propFilter'
+import { grossPrice } from '../../shared/vat'
 import type { PriceT } from '../../shared/onec/schemas'
 import type { CatalogItem, CatalogItemDetails, CatalogQuery, CatalogStore } from './catalog'
 import { SORTS } from './catalog'

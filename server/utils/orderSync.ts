@@ -159,7 +159,7 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
           ...(isNew ? { deliveryAddressText: row.address_text } : {}),
           deliveryDate: deliveryDateFor(from, now),
           comment: row.comment,
-          items: items.map(i => ({ itemGuid: i.guid, qty: i.qty, price: i.price, vatRate: i.vatRate ?? 0 })),
+          items: items.map(i => ({ itemGuid: i.guid, qty: i.qty, price: i.price, vatRate: i.vatRate })),
         })
         if (deps.orders.setOnecOrder(row.id, created.orderGuid, created.number, created.status, { from, to: slot?.arrivalTo ?? null }, iso)) {
           summary.ordered++

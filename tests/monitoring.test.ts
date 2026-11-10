@@ -216,5 +216,6 @@ describe('состояние системы из базы', () => {
     expect(s.onec.pausedUntil).not.toBeNull()
     expect(s.alerts.map(x => x.kind).sort()).toEqual(['onec-paused', 'sync-failed'])
     expect(readSystemStatus(db, { guard: { failures: 0, pausedUntil: T0 - 1 }, mode: 'mock', commit: 'abc', telegram: false, now: T0 }).onec.pausedUntil).toBeNull()
+    expect(readSystemStatus(db, { guard: { failures: 0, pausedUntil: 0 }, mode: 'mock', commit: 'abc', telegram: false, now: T0, notes: ['n'] }).notes).toEqual(['n'])
   })
 })

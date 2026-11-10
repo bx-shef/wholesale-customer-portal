@@ -4,7 +4,7 @@
  * Транспорт — `call(method, params)` (B24Hook), в тестах — подделка.
  */
 import { DEAL_CATEGORY_NAME } from '../../shared/b24Setup'
-import { grossPrice } from '../../shared/vat'
+import { lineAmounts, sumMoney } from '../../shared/vat'
 import { isNotFound, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
@@ -64,7 +64,8 @@ export function createB24Orders(call: B24Call) {
             COMPANY_ID: input.companyId,
             CONTACT_IDS: [input.contactId],
             COMMENTS: input.comments,
-            OPPORTUNITY: input.total,
+            // Итог — сумма итогов строк (НДС с суммы строки, как в корзине и 1С), а не цена × количество.
+            OPPORTUNITY: sumMoney(input.rows.map(r => lineAmounts(r.price, r.qty, r.vatRate).total)),
             CURRENCY_ID: input.currency,
             ORIGINATOR_ID: DEAL_ORIGINATOR,
             ORIGIN_ID: input.requestId,
@@ -77,10 +78,11 @@ export function createB24Orders(call: B24Call) {
         rows: input.rows.map((r, i) => ({
           PRODUCT_ID: 0,
           PRODUCT_NAME: r.name,
-          // Прайс 1С — без НДС, налог сверху (TAX_INCLUDED N). По документации crm.deal.productrows.set
-          // PRICE — «итоговая стоимость за единицу», то есть с налогом; без налога — PRICE_EXCLUSIVE
-          // и PRICE_NETTO (скидок нет). Передаём все три, чтобы портал не пересчитывал по-своему.
-          PRICE: grossPrice(r.price, r.vatRate),
+          // Прайс 1С — без НДС, налог сверху (TAX_INCLUDED N). PRICE по документации — цена за единицу
+          // с налогом; берём итог строки / количество без округления до копеек: портал умножит обратно и
+          // получит итог корзины и 1С (НДС с суммы строки). Округлённая цена ед. × количество разошлась бы:
+          // 0.33 × 1000 при 20% — 400.00 вместо 396.00. Без налога — PRICE_EXCLUSIVE и PRICE_NETTO.
+          PRICE: lineAmounts(r.price, r.qty, r.vatRate).total / r.qty,
           PRICE_EXCLUSIVE: r.price,
           PRICE_NETTO: r.price,
           QUANTITY: r.qty,

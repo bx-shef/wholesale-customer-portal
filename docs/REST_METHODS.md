@@ -1,6 +1,6 @@
 # Исходящие вызовы REST Битрикс24
 
-> Last reviewed: 2026-10-22
+> Last reviewed: 2026-11-10
 
 Реестр каждого метода, который зовёт ЛК. Добавили вызов в код — добавьте строку сюда:
 `tests/repoGuards.test.ts` сверяет имена методов в `app/`, `server/`, `shared/`, `scripts/` с этим
@@ -35,7 +35,7 @@
 | `user.get` | `server/utils/profile.ts` | приложение | 📄 | менеджер компании по `ASSIGNED_BY_ID` для профиля |
 | `crm.deal.list` | `server/services/b24Orders.ts` | приложение | 📄 | поиск сделки по `ORIGINATOR_ID` + `ORIGIN_ID` — повторная отправка заявки не плодит сделок; совпадение перепроверяем |
 | `crm.deal.add` | `server/services/b24Orders.ts` | приложение | 📄 | заявка: воронка «Заявки ЛК», `COMPANY_ID`, `CONTACT_IDS`; `COMMENTS` поддерживает BB-коды — текст клиента обезврежен (`neutralizeBb`) |
-| `crm.deal.productrows.set` | `server/services/b24Orders.ts` | приложение | 📄 | товары без каталога Б24 (`PRODUCT_ID: 0`), цена 1С с НДС — `TAX_INCLUDED: 'Y'`; перезаписывает строки целиком, повтор безопасен |
+| `crm.deal.productrows.set` | `server/services/b24Orders.ts` | приложение | 📄 | товары без каталога Б24 (`PRODUCT_ID: 0`), прайс 1С без НДС — `TAX_INCLUDED: 'N'`, `PRICE` — с налогом (итог строки / количество, без округления: итог совпадает с корзиной и 1С), `PRICE_EXCLUSIVE`/`PRICE_NETTO` — без налога; метод помечен устаревшим; перезаписывает строки целиком, повтор безопасен |
 | `crm.activity.todo.add` | `server/services/b24Orders.ts` | приложение | 📄 | «Заказать звонок»: дело на компании (`ownerTypeId: 4`) ответственному, срок +1 ч; ответ `{ id }` |
 | `crm.status.list` | `server/services/b24Orders.ts` | приложение | 📄 | стадии воронки «Заявки ЛК»: `ENTITY_ID: DEAL_STAGE_<id воронки>`, семантика из `SEMANTICS` / `EXTRA.SEMANTICS` (рабочая, успех, провал) — по ней, а не по шаблону ID стадии, решаем «подтверждена» и «закрыта» |
 | `crm.timeline.comment.add` | `server/services/b24Orders.ts` | приложение | 📄 | комментарий в ленте сделки: заказ 1С создан, статус из 1С (`ENTITY_TYPE: 'deal'`) |

@@ -144,6 +144,7 @@ describe('заявка', () => {
     expect(q.ok).toBe(false)
     const good = await quoteCart([{ guid: g(1), qty: 10 }, { guid: g(2), qty: 3 }], deps.store, ok, deps.prices)
     expect(good).toMatchObject({ ok: true, total: 66, currency: 'BYN' })
+    expect(good.lines.map(l => l.grossPrice)).toEqual([3, 12])
   })
 
   it('товара нет в наличии — строка с проблемой, заявку не пускаем', async () => {
@@ -337,6 +338,14 @@ describe('сделка в CRM', () => {
     expect(await createB24Orders(f.call).createDeal(deal)).toBe(77)
     expect(f.calls.find(c => c.method === 'crm.deal.add')!.params.fields).toMatchObject({ CATEGORY_ID: 9, COMPANY_ID: 7, CONTACT_IDS: [5], ORIGINATOR_ID: DEAL_ORIGINATOR, ORIGIN_ID: REQ })
     expect(f.calls.find(c => c.method === 'crm.deal.productrows.set')!.params).toMatchObject({ id: 77, rows: [{ PRODUCT_NAME: 'A', PRICE: 12, PRICE_EXCLUSIVE: 10, PRICE_NETTO: 10, TAX_RATE: 20, TAX_INCLUDED: 'N' }] })
+  })
+
+  it('итог сделки = итог корзины и 1С: PRICE — итог строки / количество, без округления цены ед.', async () => {
+    const f = fake()
+    await createB24Orders(f.call).createDeal({ ...deal, rows: [{ name: 'A', price: 0.33, qty: 1000, unit: 'шт', vatRate: 20 }] })
+    const row = (f.calls.find(c => c.method === 'crm.deal.productrows.set')!.params.rows as { PRICE: number, QUANTITY: number }[])[0]!
+    expect(row.PRICE * row.QUANTITY).toBeCloseTo(396, 6)
+    expect(f.calls.find(c => c.method === 'crm.deal.add')!.params.fields).toMatchObject({ OPPORTUNITY: 396 })
   })
 
   it('повтор находит прежнюю сделку по ORIGIN_ID и не создаёт новую; чужой ORIGIN_ID не считается', async () => {

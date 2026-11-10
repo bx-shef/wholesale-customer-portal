@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isIndividualAgreement, readAgreements } from '../server/services/onecOdataClients'
+import { isIndividualAgreement, readAgreements, typicalAgreementFieldMissing } from '../server/services/onecOdataClients'
 
 const EMPTY = '00000000-0000-0000-0000-000000000000'
 
@@ -20,6 +20,7 @@ describe('только индивидуальные соглашения', () =>
     expect(await readAgreements(read)).toEqual([{ Ref_Key: 'x' }])
     expect(read).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledTimes(1)
+    expect(typicalAgreementFieldMissing()).toBe(true)
     warn.mockRestore()
   })
 
@@ -27,6 +28,7 @@ describe('только индивидуальные соглашения', () =>
     const ok = vi.fn(async () => [{ Ref_Key: 'x', ТиповоеСоглашение_Key: EMPTY }])
     await readAgreements(ok)
     expect(ok).toHaveBeenCalledTimes(1)
+    expect(typicalAgreementFieldMissing()).toBe(false)
     expect(ok.mock.calls[0]![0]).toContain('ТиповоеСоглашение_Key')
     const first = new Error('first')
     let n = 0

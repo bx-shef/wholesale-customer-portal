@@ -236,6 +236,9 @@ export async function listAll<T>(client: ODataClient, set: string, query: Record
 const AGREEMENT_FIELDS = 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key'
 let typicalFieldWarned = false
 
+/** Поле `ТиповоеСоглашение_Key` не прочиталось в последнем чтении — для «Состояния системы». */
+export const typicalAgreementFieldMissing = () => typicalFieldWarned
+
 /**
  * Клиенту — только индивидуальные соглашения (замечание клиента 2026-11-10): у них пустой
  * `ТиповоеСоглашение_Key`. Поля нет в ответе (нет в метаданных) — не фильтруем, как раньше.
@@ -251,13 +254,15 @@ export function isIndividualAgreement(a: AgreementRow): boolean {
  */
 export async function readAgreements(read: (fields: string) => Promise<AgreementRow[]>): Promise<AgreementRow[]> {
   try {
-    return await read(`${AGREEMENT_FIELDS},ТиповоеСоглашение_Key`)
+    const rows = await read(`${AGREEMENT_FIELDS},ТиповоеСоглашение_Key`)
+    typicalFieldWarned = false
+    return rows
   }
   catch (e) {
     // Без поля тоже не прочиталось — сбой не в поле: пробрасываем исходную ошибку.
     const rows = await read(AGREEMENT_FIELDS).catch(() => { throw e })
     if (!typicalFieldWarned) console.warn('[onec:clients] Catalog_СоглашенияСКлиентами без ТиповоеСоглашение_Key: типовые соглашения не отсекаются')
-    typicalFieldWarned = true
+    typicalFieldWarned = true // предупреждение в журнал — один раз, пока поле не появится
     return rows
   }
 }

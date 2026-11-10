@@ -6,6 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { activeFlows, flowHealth, FLOWS, healthAlerts, type FlowHealth, type FlowRunRow } from './syncHealth'
 import { readAutoSyncPaused, staleMsFor } from './syncSchedule'
+import { typicalAgreementFieldMissing } from '../services/onecOdataClients'
 
 const STARTED_AT = Date.now()
 
@@ -21,13 +22,15 @@ export interface SystemStatus {
   /** Кривые значения окружения (`envWarnings`): только имена и что не так, без значений. */
   config: string[]
   telegram: boolean
+  /** Отметки об обмене с 1С без ПДн (например, фильтр не применяется — нет поля в 1С). */
+  notes: string[]
   /** Названия потоков по-русски — один источник (`FLOWS`) для таблицы потоков и журнала запусков. */
   labels: Record<string, string>
   /** Автосинхронизация: на паузе ли (кнопкой) и частота по потокам, минут (0 — только вручную). */
   autoSync: { paused: boolean, since: string | null, every: Record<string, number> }
 }
 
-export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number>, config?: string[] }): SystemStatus {
+export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number>, config?: string[], notes?: string[] }): SystemStatus {
   const now = deps.now ?? Date.now()
   const runsOf = db.prepare(`SELECT flow, status, started_at AS startedAt, finished_at AS finishedAt, received, error
     FROM sync_run WHERE flow = ? ORDER BY id DESC LIMIT 10`)
@@ -61,6 +64,7 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     alerts: healthAlerts(flows, deps.guard, now, auto.paused),
     config: deps.config ?? [],
     telegram: deps.telegram,
+    notes: deps.notes ?? [],
     labels: Object.fromEntries(Object.entries(FLOWS).map(([k, v]) => [k, v.label])),
     autoSync: { ...auto, every },
   }
@@ -78,5 +82,6 @@ export function currentSystemStatus(): SystemStatus {
     telegram: resolveTelegramConfig() !== null,
     every: env.syncEvery,
     config: envWarnings(process.env),
+    notes: typicalAgreementFieldMissing() ? ['Индивидуальные соглашения: фильтр не применяется — нет поля в 1С'] : [],
   })
 }

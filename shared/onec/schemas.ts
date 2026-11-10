@@ -139,7 +139,9 @@ export const OrderRequest = z.object({
   test: z.boolean().optional(),
   /**
    * `price` — цена без НДС (вид цен «Прайс»), `vatRate` — ставка НДС товара в процентах; 1С считает
-   * строку сама: сумма = цена × количество, НДС с суммы. Без `vatRate` 1С берёт ставку товара.
+   * строку так же: сумма = цена × количество, НДС с суммы. ЛК передаёт ставку из заявки всегда, когда
+   * она сохранена; без `vatRate` (старая заявка) ЛК отдаёт только цену и сумму — НДС и итог 1С
+   * считает сама по ставке товара, ЛК их не заполняет.
    */
   items: z.array(z.object({ itemGuid: Guid, qty: z.number().positive(), price: Money, vatRate: z.number().nonnegative().max(100).optional() })).min(1).max(PAGE_SIZE_MAX),
 })
