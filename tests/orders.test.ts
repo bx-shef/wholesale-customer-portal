@@ -379,3 +379,24 @@ describe('«Точно приедет» в «Моих заявках» (реше
     expect(readFileSync('app/pages/orders.vue', 'utf8')).toContain('`Точно приедет: ${date(o.confirmedDate)}`')
   })
 })
+
+describe('количество с клавиатуры', async () => {
+  const { parseQtyInput } = await import('../shared/qtyInput')
+  it('вверх до упаковки, не меньше минимума', () => {
+    expect(parseQtyInput('7', 5, 5)).toBe(10)
+    expect(parseQtyInput('1', 1, 3)).toBe(3)
+    expect(parseQtyInput('0,25', 0.1, 0.1)).toBe(0.3)
+  })
+  it('нецифры игнорируются, пусто и ноль — 0', () => {
+    expect(parseQtyInput('1a2 шт', 1, 1)).toBe(12)
+    expect(parseQtyInput('', 1, 1)).toBeNull()
+    expect(parseQtyInput('шт', 1, 1)).toBeNull()
+    expect(parseQtyInput('0', 1, 1)).toBe(0)
+    expect(parseQtyInput('1.2.3', 1, 1)).toBe(2)
+  })
+  it('не больше остатка — вниз до упаковки', () => {
+    expect(parseQtyInput('100', 12, 12, 24)).toBe(24)
+    expect(parseQtyInput('100', 12, 12, 0)).toBe(0)
+    expect(parseQtyInput('20', 12, 12, 24)).toBe(24)
+  })
+})

@@ -3,6 +3,7 @@
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
 import { grossPrice, lineAmounts } from '~~/shared/vat'
 import { formatSlot } from '~~/shared/delivery'
+import { ORDER_STEPS, orderStepIndex } from '~/utils/format'
 
 useHead({ title: 'Заявки' })
 
@@ -31,16 +32,6 @@ if (error.value?.statusCode === 401) await navigateTo('/login')
 const TRIP_STATUS = { forming: 'рейс формируется', loading: 'готовится к погрузке', sent: 'машина в пути', closed: 'рейс завершён' } as const
 const tripDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long' })
 
-/** Путь заявки: где она сейчас — от «Новая» до «Доставлена». */
-const STEPS = [
-  { key: 'sent', label: 'Принята' },
-  { key: 'confirmed', label: 'Подтверждена' },
-  { key: 'assembled', label: 'Собрана' },
-  { key: 'shipped', label: 'В пути' },
-  { key: 'delivered', label: 'Доставлена' },
-]
-// «new» — заказ уже в 1С, но не проведён: шаг «Принята».
-const stepIndex = (status: string) => STEPS.findIndex(s => s.key === (status === 'new' ? 'sent' : status))
 const open = ref<number | null>(null)
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk', day: 'numeric', month: 'long' })
@@ -66,7 +57,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
               <B24Badge :color="orderStatus(o.status).color" :label="orderStatus(o.status).label" />
             </div>
             <p class="text-sm">
-              {{ o.items.length }} {{ plural(o.items.length, 'позиция', 'позиции', 'позиций') }} · {{ formatMoney(o.total, o.currency) }}
+              {{ o.items.length }} {{ plural(o.items.length, 'позиция', 'позиции', 'позиций') }} на сумму <b class="whitespace-nowrap">{{ formatMoney(o.total, o.currency) }}</b>
               <template v-if="o.onecNumber">
                 · заказ {{ o.onecNumber }}
               </template>
@@ -98,23 +89,23 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
             />
             <template v-if="open === o.id">
               <ol v-if="o.status !== 'cancelled' && o.status !== 'pending'" class="flex flex-wrap gap-1 text-xs" aria-label="Статус доставки">
-                <li v-for="(s, i) in STEPS" :key="s.key">
-                  <B24Badge :color="i <= stepIndex(o.status) ? 'air-primary-success' : 'air-secondary'" :label="s.label" />
+                <li v-for="(s, i) in ORDER_STEPS" :key="s.key">
+                  <B24Badge :color="i <= orderStepIndex(o.status) ? 'air-primary-success' : 'air-secondary'" :label="s.label" />
                 </li>
               </ol>
-              <table class="w-full text-sm">
+              <table class="w-full text-sm tabular-nums">
                 <thead>
                   <tr class="text-left text-xs text-(--ui-color-design-plain-na-content-secondary)">
                     <th class="py-1 font-normal">
                       Товар
                     </th>
-                    <th class="py-1 font-normal text-right">
+                    <th class="py-1 pl-4 font-normal text-right whitespace-nowrap">
                       Кол-во
                     </th>
-                    <th class="py-1 font-normal text-right">
+                    <th class="py-1 pl-4 font-normal text-right whitespace-nowrap">
                       Цена
                     </th>
-                    <th class="py-1 font-normal text-right">
+                    <th class="py-1 pl-4 font-normal text-right whitespace-nowrap">
                       Сумма
                     </th>
                   </tr>
@@ -124,13 +115,13 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
                     <td class="py-1 pr-2">
                       {{ it.name }}
                     </td>
-                    <td class="py-1 text-right whitespace-nowrap">
+                    <td class="py-1 pl-4 text-right whitespace-nowrap">
                       {{ it.qty }} {{ it.unit }}
                     </td>
-                    <td class="py-1 text-right whitespace-nowrap">
+                    <td class="py-1 pl-4 text-right whitespace-nowrap">
                       {{ formatMoney(grossPrice(it.price, it.vatRate), o.currency) }}
                     </td>
-                    <td class="py-1 text-right whitespace-nowrap">
+                    <td class="py-1 pl-4 text-right whitespace-nowrap">
                       {{ formatMoney(lineAmounts(it.price, it.qty, it.vatRate).total, o.currency) }}
                     </td>
                   </tr>
