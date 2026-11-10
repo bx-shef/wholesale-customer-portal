@@ -204,6 +204,8 @@ export const MIGRATIONS: string[] = [
   `DROP TABLE IF EXISTS ai_dialog;`,
   // Доставка подтверждена в 1С по четырём статусам (решение клиента 2026-10-27): «точно приедет».
   `ALTER TABLE order_request ADD COLUMN delivery_confirmed INTEGER NOT NULL DEFAULT 0;`,
+  // Упаковка товара для справки клиенту — «уп (12 шт)» из справочника упаковок 1С.
+  `ALTER TABLE catalog_item ADD COLUMN pack_label TEXT NOT NULL DEFAULT '';`,
 ]
 
 export function openDatabase(path: string): DatabaseSync {

@@ -92,6 +92,8 @@ export const Item = z.object({
   brand: z.string(),
   unit: z.string(),
   packQty: z.number().positive(),
+  /** Упаковка для справки клиенту — «уп (12 шт)» из справочника упаковок 1С; на заказ не влияет. */
+  packLabel: z.string().optional(),
   minQty: z.number().positive(),
   description: z.string(),
   properties: z.record(z.string(), z.string()),

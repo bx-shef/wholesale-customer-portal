@@ -13,6 +13,8 @@ export interface CatalogItemView {
   unit: string
   packQty: number
   minQty: number
+  /** Упаковка для справки — «уп (12 шт)»; пусто — не показываем. */
+  packLabel: string
   available: number
   image: string | null
   price: ItemPriceView | null

@@ -10,6 +10,7 @@ import { mockFetch } from '../mocks/onec/fetch'
 import { OnecClient, type OnecApi } from '../services/onec'
 import { DEFAULT_STOCK_WAREHOUSES, ODataClient } from '../services/onecOdata'
 import { OdataOnec, unsupportedFlowsFor } from '../services/onecOdataSource'
+import { storedPackLabels } from './catalog'
 import { sqliteVersionStore } from './odataVersions'
 import { createOnecGuard } from './onecGuard'
 
@@ -78,6 +79,7 @@ export function useOnec(): OnecApi {
         fetch: guard.wrap(fetch),
         timeoutMs: 120_000,
         stockWarehouses: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES,
+        previousPackLabels: () => storedPackLabels(useDb()),
       })
       odata = { key, api: new OdataOnec(client, sqliteVersionStore(useDb()), { priceTypeNames: env.onecPriceTypes, warehouseNames: env.onecStockWarehouses.length ? env.onecStockWarehouses : DEFAULT_STOCK_WAREHOUSES, ordersEnabled: env.onecOdataOrders, tripsEnabled: env.onecOdataTrips, log: line => console.info(line) }) }
     }
