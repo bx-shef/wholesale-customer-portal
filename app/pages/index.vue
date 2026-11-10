@@ -256,7 +256,10 @@ function resetAll() {
                     {{ it.sku }} · {{ it.brand }}
                   </p>
                   <div class="flex items-center justify-between gap-2 pt-1">
-                    <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }} с НДС</span></span>
+                    <span class="flex flex-wrap items-center gap-x-2">
+                      <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }} с НДС</span></span>
+                      <B24Badge v-if="it.packLabel" color="air-secondary" size="sm" :label="it.packLabel" />
+                    </span>
                     <StockBadge :available="it.available" :unit="it.unit" />
                   </div>
                   <div v-if="it.price && canOrder(it.available, stockMode)" class="flex items-center gap-2 pt-1">

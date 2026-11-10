@@ -19,6 +19,8 @@ export interface CatalogItem {
   unit: string
   packQty: number
   minQty: number
+  /** Упаковка для справки — «уп (12 шт)»; пусто — не показываем. */
+  packLabel: string
   /** Сумма остатков по складам. */
   available: number
   /** Первая картинка — для списка; все картинки — в карточке. */
@@ -104,12 +106,13 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)
   const upsertItem = db.prepare(`INSERT INTO catalog_item
-      (guid, sku, name, section_guid, brand, unit, pack_qty, min_qty, description, properties, images, analogs, search, name_sort, changed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (guid, sku, name, section_guid, brand, unit, pack_qty, min_qty, description, properties, images, analogs, search, name_sort, changed_at, pack_label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET sku = excluded.sku, name = excluded.name, section_guid = excluded.section_guid,
       brand = excluded.brand, unit = excluded.unit, pack_qty = excluded.pack_qty, min_qty = excluded.min_qty,
       description = excluded.description, properties = excluded.properties, images = excluded.images,
-      analogs = excluded.analogs, search = excluded.search, name_sort = excluded.name_sort, changed_at = excluded.changed_at`)
+      analogs = excluded.analogs, search = excluded.search, name_sort = excluded.name_sort, changed_at = excluded.changed_at,
+      pack_label = excluded.pack_label`)
   const deleteItem = db.prepare('DELETE FROM catalog_item WHERE guid = ?')
   const deleteItemStock = db.prepare('DELETE FROM stock WHERE item_guid = ?')
   const itemExists = db.prepare('SELECT 1 FROM catalog_item WHERE guid = ?')
@@ -119,7 +122,7 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
 
   const AVAILABLE = '(SELECT COALESCE(SUM(available), 0) FROM stock s WHERE s.item_guid = i.guid)'
   const COLUMNS = `i.guid, i.sku, i.name, i.section_guid AS sectionGuid, i.brand, i.unit,
-    i.pack_qty AS packQty, i.min_qty AS minQty, ${AVAILABLE} AS available, json_extract(i.images, '$[0]') AS image`
+    i.pack_qty AS packQty, i.min_qty AS minQty, i.pack_label AS packLabel, ${AVAILABLE} AS available, json_extract(i.images, '$[0]') AS image`
 
   /** Раздел включает подразделы: клиент выбирает «Крепёж», а товары лежат в «Крепёж / Болты». */
   function sectionWithChildren(guid: string): string[] {
@@ -211,7 +214,7 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
           }
           upsertItem.run(guid, i.sku, i.name, lower(i.sectionGuid), i.brand, i.unit, i.packQty, i.minQty, i.description,
             JSON.stringify(i.properties), JSON.stringify(i.images.map(imageUrl)), JSON.stringify(i.analogs.slice(0, ANALOGS_STORED_MAX).map(lower)),
-            searchText(`${i.name} ${i.sku}`), searchText(i.name), i.changedAt)
+            searchText(`${i.name} ${i.sku}`), searchText(i.name), i.changedAt, i.packLabel ?? '')
         }
       })
     },

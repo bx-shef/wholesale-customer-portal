@@ -106,6 +106,48 @@ export function mapSection(row: { Ref_Key: string, Description?: string, Parent_
   return { guid: row.Ref_Key, parentGuid: ref(row.Parent_Key), name: (row.Description ?? '').trim() }
 }
 
+/** Строка `Catalog_УпаковкиЕдиницыИзмерения` (КА 2.5). Имена полей — типовые, на живой 1С не сверены. */
+export interface PackRow {
+  Ref_Key?: string
+  /** Владелец: одним типом — `Owner_Key`, составным (номенклатура или набор упаковок) — `Owner` + `Owner_Type`. */
+  Owner?: string
+  Owner_Key?: string
+  Owner_Type?: string
+  Description?: string
+  DeletionMark?: boolean
+  Коэффициент?: number
+  Числитель?: number
+  Знаменатель?: number
+}
+
+/** Сколько единиц в упаковке: `Коэффициент`, иначе `Числитель / Знаменатель`; не прочиталось — 0. */
+export function packFactor(r: PackRow): number {
+  if (typeof r.Коэффициент === 'number' && r.Коэффициент > 0) return r.Коэффициент
+  if (typeof r.Числитель === 'number' && typeof r.Знаменатель === 'number' && r.Знаменатель > 0) return r.Числитель / r.Знаменатель
+  return 0
+}
+
+/**
+ * Подпись упаковки товара (GUID в нижнем регистре → «уп (12 шт)»). Упаковок у товара несколько —
+ * берём самую большую с коэффициентом больше 1. Упаковки наборов (не номенклатуры), помеченные на
+ * удаление и без названия — пропускаем: подпись только для справки, без неё товар не хуже.
+ */
+export function packLabels(rows: PackRow[]): Map<string, string> {
+  const best = new Map<string, { factor: number, label: string }>()
+  for (const r of rows) {
+    if (r.DeletionMark) continue
+    if (r.Owner_Type && !r.Owner_Type.includes('Номенклатура')) continue
+    const owner = ref(r.Owner_Key ?? r.Owner)
+    const label = (r.Description ?? '').trim()
+    const factor = packFactor(r)
+    if (!owner || !label || factor <= 1) continue
+    const key = owner.toLowerCase()
+    const cur = best.get(key)
+    if (!cur || factor > cur.factor) best.set(key, { factor, label })
+  }
+  return new Map([...best].map(([k, v]) => [k, v.label]))
+}
+
 /**
  * Товар контракта из строки номенклатуры. Чего OData пока не даёт — запасные значения:
  * единица «шт», кратность и минимум 1, свойств и аналогов нет (docs/onec-odata.md).
@@ -300,12 +342,39 @@ export class ODataClient {
   }
 
   /**
+   * Упаковки всех товаров — страницами по `ODATA_PAGE`: так запросов меньше, чем отбором по товарам.
+   * Без `$select`: поля, которых нет в этой 1С, просто не придут. Набор не опубликован (404) или
+   * 1С не поняла запрос (400) — каталог без подписей упаковок, предупреждение в лог.
+   */
+  async packLabels(): Promise<Map<string, string>> {
+    const set = 'Catalog_УпаковкиЕдиницыИзмерения'
+    const rows: PackRow[] = []
+    try {
+      for (let page = 0; ; page++) {
+        if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData ${set}: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
+        const part = await this.list<PackRow>(set, { $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
+        rows.push(...part)
+        if (part.length < ODATA_PAGE) break
+      }
+    }
+    catch (e) {
+      if (e instanceof OnecError && (e.status === 404 || e.status === 400)) {
+        console.warn(`[onec:odata] packages skipped: ${e.message.slice(0, 120)}`)
+        return new Map()
+      }
+      throw e
+    }
+    return packLabels(rows)
+  }
+
+  /**
    * Каталог целиком — для синхронизации: разделы и все товары с версией объекта (`DataVersion`),
    * страницами по `ODATA_PAGE` строк. Момент изменения проставляет вызывающий по версии.
    */
   async catalogSnapshot(): Promise<{ sections: SectionT[], items: Array<{ item: ItemT, version: string }> }> {
     const look = await this.catalogLookups()
     const sections = await this.sections()
+    const packs = await this.packLabels()
     const select = NOMENCLATURE_FIELDS.join(',')
     const items: Array<{ item: ItemT, version: string }> = []
     for (let page = 0; ; page++) {
@@ -313,9 +382,11 @@ export class ODataClient {
       const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
       for (const r of rows) {
         const item = mapItem(r, look, '')
-        // Характеристики — часть версии: переименовали значение в справочнике 1С, а товар не трогали —
+        const packLabel = packs.get(r.Ref_Key.toLowerCase())
+        if (packLabel) item.packLabel = packLabel
+        // Характеристики и упаковка — часть версии: поменяли справочник 1С, а товар не трогали —
         // карточка всё равно обновится.
-        items.push({ item, version: `${r.DataVersion ?? ''}|${createHash('sha1').update(JSON.stringify(item.properties)).digest('hex').slice(0, 12)}` })
+        items.push({ item, version: `${r.DataVersion ?? ''}|${createHash('sha1').update(JSON.stringify([item.properties, packLabel ?? ''])).digest('hex').slice(0, 12)}` })
       }
       if (rows.length < ODATA_PAGE) break
     }

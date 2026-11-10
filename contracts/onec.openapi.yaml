@@ -899,6 +899,8 @@ components:
         packQty:
           type: number
           exclusiveMinimum: 0
+        packLabel:
+          type: string
         minQty:
           type: number
           exclusiveMinimum: 0
@@ -998,6 +1000,8 @@ components:
               packQty:
                 type: number
                 exclusiveMinimum: 0
+              packLabel:
+                type: string
               minQty:
                 type: number
                 exclusiveMinimum: 0
