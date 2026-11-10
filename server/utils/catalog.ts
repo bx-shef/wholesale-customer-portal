@@ -102,6 +102,12 @@ export function visibleProperties(props: Record<string, string>, hidden: readonl
   return drop.size ? Object.fromEntries(Object.entries(props).filter(([k]) => !drop.has(k.trim().toLowerCase()))) : props
 }
 
+/** Подписи упаковок в базе (GUID → подпись) — когда справочник упаковок 1С прочитать не удалось. */
+export function storedPackLabels(db: DatabaseSync): Map<string, string> {
+  const rows = db.prepare(`SELECT guid, pack_label AS label FROM catalog_item WHERE pack_label <> ''`).all() as { guid: string, label: string }[]
+  return new Map(rows.map(r => [r.guid.toLowerCase(), r.label]))
+}
+
 export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: () => readonly string[], hiddenProperties?: () => readonly string[], filterProperties?: () => readonly string[] } = {}) {
   const upsertSection = db.prepare(`INSERT INTO catalog_section (guid, parent_guid, name) VALUES (?, ?, ?)
     ON CONFLICT (guid) DO UPDATE SET parent_guid = excluded.parent_guid, name = excluded.name`)

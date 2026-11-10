@@ -33,6 +33,11 @@ export interface ODataOptions {
   stockWarehouses?: string[]
   /** Журнал запросов (стенд): что спросили, сколько шло, сколько строк или какая ошибка. Без данных. */
   onRequest?: (e: { label: string, ms: number, rows?: number, error?: string }) => void
+  /**
+   * Подписи упаковок, уже лежащие в базе ЛК (GUID в нижнем регистре → подпись). Берутся, когда
+   * справочник упаковок прочитать не удалось: подписи не стираются и версии товаров не меняются.
+   */
+  previousPackLabels?: () => Map<string, string>
 }
 
 /** Склады по умолчанию для остатков клиенту (решение владельца 2026-10-21). */
@@ -127,25 +132,53 @@ export function packFactor(r: PackRow): number {
   return 0
 }
 
+/** Поля справочника упаковок, которые читаем (`$select`): остальные 1С не отдаёт. */
+export const PACK_FIELDS = ['Ref_Key', 'Owner_Key', 'Owner_Type', 'Description', 'DeletionMark', 'Коэффициент', 'Числитель', 'Знаменатель'] as const
+
+/** Предел длины подписи упаковки: справка клиенту, а не описание. */
+export const PACK_LABEL_MAX = 60
+
+/** Упаковка-кандидат товара: коэффициент и подпись. */
+export interface PackCandidate { factor: number, label: string }
+
 /**
- * Подпись упаковки товара (GUID в нижнем регистре → «уп (12 шт)»). Упаковок у товара несколько —
- * берём самую большую с коэффициентом больше 1. Упаковки наборов (не номенклатуры), помеченные на
- * удаление и без названия — пропускаем: подпись только для справки, без неё товар не хуже.
+ * Добавляет упаковки страницы к кандидатам (GUID товара в нижнем регистре → упаковки с
+ * коэффициентом больше 1). Упаковки наборов (не номенклатуры), помеченные на удаление и без
+ * названия — пропускаем: подпись только для справки, без неё товар не хуже.
  */
-export function packLabels(rows: PackRow[]): Map<string, string> {
-  const best = new Map<string, { factor: number, label: string }>()
+export function foldPackRows(acc: Map<string, PackCandidate[]>, rows: PackRow[]): Map<string, PackCandidate[]> {
   for (const r of rows) {
     if (r.DeletionMark) continue
-    if (r.Owner_Type && !r.Owner_Type.includes('Номенклатура')) continue
+    if (r.Owner_Type && !r.Owner_Type.endsWith('Catalog_Номенклатура')) continue
     const owner = ref(r.Owner_Key ?? r.Owner)
-    const label = (r.Description ?? '').trim()
+    const label = (r.Description ?? '').trim().slice(0, PACK_LABEL_MAX).trim()
     const factor = packFactor(r)
     if (!owner || !label || factor <= 1) continue
-    const key = owner.toLowerCase()
-    const cur = best.get(key)
-    if (!cur || factor > cur.factor) best.set(key, { factor, label })
+    const list = acc.get(owner)
+    if (list) list.push({ factor, label })
+    else acc.set(owner, [{ factor, label }])
   }
-  return new Map([...best].map(([k, v]) => [k, v.label]))
+  return acc
+}
+
+/**
+ * Подпись упаковки товара: упаковка с коэффициентом, равным кратности товара, иначе самая
+ * большая. При равенстве — первая по названию, чтобы подпись не менялась от порядка строк 1С.
+ */
+export function choosePack(cands: PackCandidate[] | undefined, packQty: number): string | undefined {
+  if (!cands?.length) return undefined
+  const sorted = [...cands].sort((x, y) => (x.label < y.label ? -1 : x.label > y.label ? 1 : 0))
+  const exact = sorted.find(c => c.factor === packQty)
+  if (exact) return exact.label
+  let best = sorted[0]!
+  for (const c of sorted) if (c.factor > best.factor) best = c
+  return best.label
+}
+
+/** Подписи упаковок сразу по строкам (GUID в нижнем регистре → подпись); кратность — `packQtyOf`. */
+export function packLabels(rows: PackRow[], packQtyOf: (guid: string) => number = () => 1): Map<string, string> {
+  const acc = foldPackRows(new Map(), rows)
+  return new Map([...acc].map(([k, v]) => [k, choosePack(v, packQtyOf(k))!]))
 }
 
 /**
@@ -343,28 +376,38 @@ export class ODataClient {
 
   /**
    * Упаковки всех товаров — страницами по `ODATA_PAGE`: так запросов меньше, чем отбором по товарам.
-   * Без `$select`: поля, которых нет в этой 1С, просто не придут. Набор не опубликован (404) или
-   * 1С не поняла запрос (400) — каталог без подписей упаковок, предупреждение в лог.
+   * Читаем только `PACK_FIELDS`; 1С не поняла `$select` (400 на первой странице) — читаем без него.
+   * Страницы сворачиваются в кандидатов сразу, все строки в памяти не держим. Любой сбой (набор не
+   * опубликован, 5xx, таймаут, слишком много страниц) — `null`: «упаковки неизвестны», а не «нет»;
+   * каталог из-за справки не падает.
    */
-  async packLabels(): Promise<Map<string, string>> {
+  async loadPackLabels(): Promise<Map<string, PackCandidate[]> | null> {
     const set = 'Catalog_УпаковкиЕдиницыИзмерения'
-    const rows: PackRow[] = []
+    const maxPages = this.options.maxPages ?? ODATA_MAX_PAGES
+    const acc = new Map<string, PackCandidate[]>()
+    let select: string | undefined = PACK_FIELDS.join(',')
     try {
       for (let page = 0; ; page++) {
-        if (page >= (this.options.maxPages ?? ODATA_MAX_PAGES)) throw new OnecError('contract', `1C OData ${set}: more than ${this.options.maxPages ?? ODATA_MAX_PAGES} pages`)
-        const part = await this.list<PackRow>(set, { $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
-        rows.push(...part)
+        if (page >= maxPages) throw new OnecError('contract', `1C OData ${set}: more than ${maxPages} pages`)
+        const query = { $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE }
+        let part: PackRow[]
+        try {
+          part = await this.list<PackRow>(set, select ? { ...query, $select: select } : query)
+        }
+        catch (e) {
+          if (!(select && page === 0 && e instanceof OnecError && e.status === 400)) throw e
+          select = undefined
+          part = await this.list<PackRow>(set, query)
+        }
+        foldPackRows(acc, part)
         if (part.length < ODATA_PAGE) break
       }
     }
     catch (e) {
-      if (e instanceof OnecError && (e.status === 404 || e.status === 400)) {
-        console.warn(`[onec:odata] packages skipped: ${e.message.slice(0, 120)}`)
-        return new Map()
-      }
-      throw e
+      console.warn(`[onec:odata] packages unknown: ${(e as Error).message.slice(0, 120)}`)
+      return null
     }
-    return packLabels(rows)
+    return acc
   }
 
   /**
@@ -374,7 +417,9 @@ export class ODataClient {
   async catalogSnapshot(): Promise<{ sections: SectionT[], items: Array<{ item: ItemT, version: string }> }> {
     const look = await this.catalogLookups()
     const sections = await this.sections()
-    const packs = await this.packLabels()
+    const packs = await this.loadPackLabels()
+    // Упаковки неизвестны — прежние подписи из базы: не стираем и версии не трогаем.
+    const previous = packs ? null : (this.options.previousPackLabels?.() ?? new Map<string, string>())
     const select = NOMENCLATURE_FIELDS.join(',')
     const items: Array<{ item: ItemT, version: string }> = []
     for (let page = 0; ; page++) {
@@ -382,11 +427,14 @@ export class ODataClient {
       const rows = await this.list<NomenclatureRow>('Catalog_Номенклатура', { $select: select, $filter: 'IsFolder eq false', $orderby: 'Ref_Key', $top: ODATA_PAGE, $skip: page * ODATA_PAGE })
       for (const r of rows) {
         const item = mapItem(r, look, '')
-        const packLabel = packs.get(r.Ref_Key.toLowerCase())
+        const guid = r.Ref_Key.toLowerCase()
+        const packLabel = packs ? choosePack(packs.get(guid), item.packQty) : previous!.get(guid)
         if (packLabel) item.packLabel = packLabel
         // Характеристики и упаковка — часть версии: поменяли справочник 1С, а товар не трогали —
-        // карточка всё равно обновится.
-        items.push({ item, version: `${r.DataVersion ?? ''}|${createHash('sha1').update(JSON.stringify([item.properties, packLabel ?? ''])).digest('hex').slice(0, 12)}` })
+        // карточка всё равно обновится. Без упаковки хеш прежний (только характеристики): выкат
+        // подписей не пересохраняет весь каталог.
+        const hashed = packLabel ? [item.properties, packLabel] : item.properties
+        items.push({ item, version: `${r.DataVersion ?? ''}|${createHash('sha1').update(JSON.stringify(hashed)).digest('hex').slice(0, 12)}` })
       }
       if (rows.length < ODATA_PAGE) break
     }
