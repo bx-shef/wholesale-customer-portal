@@ -22,14 +22,12 @@ function inc() {
 }
 
 // Набранный текст живёт в поле до подтверждения: округлять на каждой клавише значило бы мешать набору.
-const text = ref(String(props.qty))
-watch(() => props.qty, (v) => { text.value = String(v) })
-function onInput(v: string | number) {
-  text.value = String(v).replace(/[^\d.,]/g, '')
-}
+const show = (v: number) => String(v).replace('.', ',')
+const text = ref(show(props.qty))
+watch(() => props.qty, (v) => { text.value = show(v) })
 function commit() {
-  const v = parseQtyInput(text.value, props.packQty, props.minQty, props.max)
-  text.value = String(v)
+  const v = parseQtyInput(text.value, props.packQty, props.minQty, props.max) ?? props.qty
+  text.value = show(v)
   if (v !== props.qty) emit('update:qty', v)
 }
 </script>
@@ -43,9 +41,9 @@ function commit() {
       class="w-24"
       :ui="{ base: 'text-center font-medium' }"
       :aria-label="`Количество, ${unit}`"
-      @update:model-value="onInput"
+      @update:model-value="v => text = String(v)"
       @blur="commit"
-      @keydown.enter="commit"
+      @keydown.enter="(e: KeyboardEvent) => (e.target as HTMLInputElement).blur()"
     >
       <template #trailing>
         <span class="text-xs">{{ unit }}</span>

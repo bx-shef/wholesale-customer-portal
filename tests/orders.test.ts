@@ -389,13 +389,14 @@ describe('количество с клавиатуры', async () => {
   })
   it('нецифры игнорируются, пусто и ноль — 0', () => {
     expect(parseQtyInput('1a2 шт', 1, 1)).toBe(12)
-    expect(parseQtyInput('', 1, 1)).toBe(0)
+    expect(parseQtyInput('', 1, 1)).toBeNull()
+    expect(parseQtyInput('шт', 1, 1)).toBeNull()
     expect(parseQtyInput('0', 1, 1)).toBe(0)
     expect(parseQtyInput('1.2.3', 1, 1)).toBe(2)
   })
   it('не больше остатка — вниз до упаковки', () => {
-    expect(parseQtyInput('100', 12, 12, 30)).toBe(24)
-    expect(parseQtyInput('100', 12, 12, 10)).toBe(0)
-    expect(parseQtyInput('20', 12, 12, 30)).toBe(24)
+    expect(parseQtyInput('100', 12, 12, 24)).toBe(24)
+    expect(parseQtyInput('100', 12, 12, 0)).toBe(0)
+    expect(parseQtyInput('20', 12, 12, 24)).toBe(24)
   })
 })
