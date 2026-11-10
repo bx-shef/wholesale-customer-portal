@@ -35,3 +35,16 @@ export function plural(n: number, one: string, few: string, many: string): strin
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
   return many
 }
+
+/** Шаги заявки на шкале: «Новая» — отправлена в CRM, «Принята» — заказ уже в 1С. */
+export const ORDER_STEPS = [
+  { key: 'sent', label: 'Новая' },
+  { key: 'new', label: 'Принята' },
+  { key: 'confirmed', label: 'Подтверждена' },
+  { key: 'assembled', label: 'Собрана' },
+  { key: 'shipped', label: 'В пути' },
+  { key: 'delivered', label: 'Доставлена' },
+] as const
+
+/** Номер текущего шага заявки; -1 — заявка вне шкалы (не отправлена, отменена). */
+export const orderStepIndex = (status: string) => ORDER_STEPS.findIndex(s => s.key === status)
