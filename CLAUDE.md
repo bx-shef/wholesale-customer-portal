@@ -1,13 +1,13 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-10-27
+> Last reviewed: 2026-11-10
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Инструкция менеджерам — `docs/STAFF_GUIDE.md`. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
 
 **Правила процесса — [`docs/AGENT_RULES.md`](docs/AGENT_RULES.md): они главнее этого файла.**
-Коротко: в `main` только через PR; собрал или доработал PR — `/code-review` и панель из пяти
-(навык `review-panel`); мерж — по навыку `merge-pr`. Этот файл — карта и конвенции, держим коротким.
+Коротко: в `main` только через PR; собрал или доработал PR — ревью по уровню из `tools/review-tier.sh --action`
+(0 — без ревью, 1 — `/code-review medium --max-findings 5`, 2 — панель из пяти; навык `review-panel`, `AGENT_RULES.md` §3); мерж — по навыку `merge-pr`. Этот файл — карта и конвенции, держим коротким.
 
 ## Команды
 
@@ -76,6 +76,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `server/api/health.get.ts` | живость, коммит сборки, что задано (без секретов) |
 | `shared/b24Setup.ts` | что ЛК нужно в CRM и чего не хватает — чистый планировщик |
 | `shared/b24SetupRun.ts` | прогон настройки CRM: при установке приложения, `b24_setup` в `/mcp/admin` (`make b24-setup`), `scripts/b24-setup.ts` — вебхуком на тестовом стенде |
+| `tools/review-tier.{sh,rules}`, `tests/reviewTier.test.ts` | уровень ревью PR по путям: движок — побайтная копия эталона bx-shef/toolsai, правила — свои; сверка — в `pnpm check` |
 | `tests/` | vitest; `repoGuards` — гарды репозитория (штампы, CI, выкат, реестр REST) |
 | `Dockerfile`, `docker-compose*.yml`, `Makefile` | выкат — `docs/DEPLOY.md` |
 

@@ -1,6 +1,6 @@
 # Настройки репозитория (разово, владельцу)
 
-> Last reviewed: 2026-10-11
+> Last reviewed: 2026-11-10
 
 Перенесено из `bx-shef/invoice-from-tasks` (а туда — из эталона `client-bank-alfa-by`). Делается в интерфейсе GitHub один раз; агент
 этого сделать не может и не должен (`docs/AGENT_RULES.md` §5.8).
@@ -63,7 +63,7 @@ Settings → Code security: alerts, security updates, version updates — вкл
 
 ## 5. Жизненный цикл изменения
 
-ветка от `main` → код + тесты + документация одним PR → `/code-review` + панель из пяти →
+ветка от `main` → код + тесты + документация одним PR → ревью по уровню PR (`tools/review-tier.sh --action`) →
 исправления в том же PR → зелёные `ci` и `docker-build` → squash-мерж → удаление ветки →
 комментарий в issue.
 Подробно — `docs/AGENT_RULES.md`.
