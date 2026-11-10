@@ -143,7 +143,7 @@ describe('заявка', () => {
     expect(q.lines[0]!.suggestedQty).toBe(10)
     expect(q.ok).toBe(false)
     const good = await quoteCart([{ guid: g(1), qty: 10 }, { guid: g(2), qty: 3 }], deps.store, ok, deps.prices)
-    expect(good).toMatchObject({ ok: true, total: 55, currency: 'BYN' })
+    expect(good).toMatchObject({ ok: true, total: 66, currency: 'BYN' })
   })
 
   it('товара нет в наличии — строка с проблемой, заявку не пускаем', async () => {
@@ -188,14 +188,14 @@ describe('заявка', () => {
     const r = await submitOrder(session, ok, input(), deps)
     expect(r).toMatchObject({ ok: true, dealId: 501, deliveryFrom: '2026-10-14T07:00:00.000Z', deliveryTo: '2026-10-14T11:00:00.000Z' })
     const deal = deps.b24.createDeal.mock.calls[0]![0]
-    expect(deal).toMatchObject({ requestId: REQ, companyId: 7, contactId: 5, total: 55, currency: 'BYN' })
+    expect(deal).toMatchObject({ requestId: REQ, companyId: 7, contactId: 5, total: 66, currency: 'BYN' })
     expect(deal.comments).toContain('［b］заранее［/b］')
     expect(deal.comments).toContain('Ближайший рейс: ср, 14 октября, 10:00–14:00')
     expect(deal.rows).toEqual([
       { name: 'Товар 1 (SKU-1)', price: 2.5, qty: 10, unit: 'шт', vatRate: 20 },
       { name: 'Товар 2 (SKU-2)', price: 10, qty: 3, unit: 'шт', vatRate: 20 },
     ])
-    expect(deps.orders.list(7)).toMatchObject([{ status: 'sent', total: 55, address: 'Минск, ул. Строителей, 1' }])
+    expect(deps.orders.list(7)).toMatchObject([{ status: 'sent', total: 66, address: 'Минск, ул. Строителей, 1' }])
   })
 
   it('сделка подписана названием компании из CRM, а не именем клиента из 1С (#77)', async () => {
@@ -267,9 +267,9 @@ describe('заявка', () => {
     await submitOrder(session, ok, input(), deps)
     deps.prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, priceOf(i, 99)])))
     expect(await submitOrder(session, ok, input(), deps)).toMatchObject({ ok: true })
-    expect(deps.b24.createDeal.mock.calls[1]![0]).toMatchObject({ total: 55 })
+    expect(deps.b24.createDeal.mock.calls[1]![0]).toMatchObject({ total: 66 })
     expect(deps.b24.createDeal.mock.calls[1]![0].rows.map((r: { price: number }) => r.price)).toEqual([2.5, 10])
-    expect(deps.orders.list(7)[0]!.total).toBe(55)
+    expect(deps.orders.list(7)[0]!.total).toBe(66)
   })
 
   it('та же заявка с правкой: до сделки — черновик обновляется; после — 409, это новая заявка', async () => {
@@ -277,7 +277,7 @@ describe('заявка', () => {
     await submitOrder(session, ok, input(), deps)
     expect(await submitOrder(session, ok, input({ lines: [{ guid: g(2), qty: 4 }] }), deps)).toMatchObject({ ok: true })
     expect(deps.b24.createDeal.mock.calls[1]![0].rows).toEqual([{ name: 'Товар 2 (SKU-2)', price: 10, qty: 4, unit: 'шт', vatRate: 20 }])
-    expect(deps.orders.list(7)[0]!.total).toBe(40)
+    expect(deps.orders.list(7)[0]!.total).toBe(48)
     expect(await submitOrder(session, ok, input({ lines: [{ guid: g(2), qty: 5 }] }), deps)).toMatchObject({ ok: false, status: 409, error: 'already_sent' })
   })
 
@@ -300,7 +300,7 @@ describe('заявка', () => {
   it('итог — сумма округлённых строк', async () => {
     deps.prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, priceOf(i, 0.1)])))
     const q = await quoteCart([{ guid: g(2), qty: 3 }], deps.store, ok, deps.prices)
-    expect(q.total).toBe(0.3)
+    expect(q.total).toBe(0.36) // 0.30 без НДС + 0.06 НДС с суммы строки
   })
 
   it('«Мои заявки»: limit и offset зажаты', async () => {
@@ -336,7 +336,7 @@ describe('сделка в CRM', () => {
     const f = fake()
     expect(await createB24Orders(f.call).createDeal(deal)).toBe(77)
     expect(f.calls.find(c => c.method === 'crm.deal.add')!.params.fields).toMatchObject({ CATEGORY_ID: 9, COMPANY_ID: 7, CONTACT_IDS: [5], ORIGINATOR_ID: DEAL_ORIGINATOR, ORIGIN_ID: REQ })
-    expect(f.calls.find(c => c.method === 'crm.deal.productrows.set')!.params).toMatchObject({ id: 77, rows: [{ PRODUCT_NAME: 'A', PRICE: 10, TAX_RATE: 20, TAX_INCLUDED: 'Y' }] })
+    expect(f.calls.find(c => c.method === 'crm.deal.productrows.set')!.params).toMatchObject({ id: 77, rows: [{ PRODUCT_NAME: 'A', PRICE: 12, PRICE_EXCLUSIVE: 10, PRICE_NETTO: 10, TAX_RATE: 20, TAX_INCLUDED: 'N' }] })
   })
 
   it('повтор находит прежнюю сделку по ORIGIN_ID и не создаёт новую; чужой ORIGIN_ID не считается', async () => {

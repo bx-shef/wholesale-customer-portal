@@ -46,7 +46,7 @@ const inCart = computed(() => (item.value ? cart.qtyOf(item.value.guid) : 0))
               </p>
               <p class="text-2xl font-semibold">
                 <template v-if="item.price">
-                  {{ formatMoney(item.price.value, item.price.currency) }}<span class="text-sm font-normal"> / {{ item.unit }}, НДС {{ item.price.vatRate }}%</span>
+                  {{ formatMoney(item.price.value, item.price.currency) }}<span class="text-sm font-normal"> / {{ item.unit }} с НДС</span>
                 </template>
                 <span v-else class="text-base font-normal">{{ missingPriceText(data?.priceStatus ?? 'ok') }}</span>
               </p>

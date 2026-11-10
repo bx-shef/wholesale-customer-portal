@@ -4,6 +4,7 @@
  * Транспорт — `call(method, params)` (B24Hook), в тестах — подделка.
  */
 import { DEAL_CATEGORY_NAME } from '../../shared/b24Setup'
+import { grossPrice } from '../../shared/vat'
 import { isNotFound, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
@@ -12,6 +13,7 @@ export const DEAL_ORIGINATOR = 'wholesale-portal'
 /** `unknown` — портал отдал семантику, которую мы не знаем: по такой стадии заказ не создаём. */
 export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' | 'unknown' }
 
+/** `price` — цена без НДС (прайс 1С), `vatRate` — ставка в процентах. */
 export interface DealRow { name: string, price: number, qty: number, unit: string, vatRate: number }
 
 export interface DealInput {
@@ -75,12 +77,16 @@ export function createB24Orders(call: B24Call) {
         rows: input.rows.map((r, i) => ({
           PRODUCT_ID: 0,
           PRODUCT_NAME: r.name,
-          PRICE: r.price,
+          // Прайс 1С — без НДС, налог сверху (TAX_INCLUDED N). По документации crm.deal.productrows.set
+          // PRICE — «итоговая стоимость за единицу», то есть с налогом; без налога — PRICE_EXCLUSIVE
+          // и PRICE_NETTO (скидок нет). Передаём все три, чтобы портал не пересчитывал по-своему.
+          PRICE: grossPrice(r.price, r.vatRate),
+          PRICE_EXCLUSIVE: r.price,
+          PRICE_NETTO: r.price,
           QUANTITY: r.qty,
           MEASURE_NAME: r.unit,
           TAX_RATE: r.vatRate,
-          // Цена из 1С — с НДС (контракт: цена клиента), налог в неё уже включён.
-          TAX_INCLUDED: 'Y',
+          TAX_INCLUDED: 'N',
           SORT: (i + 1) * 10,
         })),
       })

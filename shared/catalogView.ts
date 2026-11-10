@@ -1,7 +1,8 @@
 /** Формы ответов каталога для экранов — одно описание для сервера и страниц. */
 export type PriceStatus = 'ok' | 'no-contract' | 'unavailable'
 
-export interface ItemPriceView { value: number, currency: string, vatRate: number }
+/** `value` — цена с НДС, `net` — без НДС (прайс 1С). */
+export interface ItemPriceView { value: number, net: number, currency: string, vatRate: number }
 
 export interface CatalogItemView {
   guid: string

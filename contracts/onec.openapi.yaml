@@ -1273,6 +1273,10 @@ components:
                 exclusiveMinimum: 0
               price:
                 type: number
+              vatRate:
+                type: number
+                minimum: 0
+                maximum: 100
             required:
               - itemGuid
               - qty

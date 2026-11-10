@@ -44,9 +44,6 @@ export function maxOrderQty(available: number, packQty: number, minQty: number, 
 /** Количество — до тысячных: сумма дробных упаковок не тянет хвост двоичной погрешности. */
 export const roundQty = (qty: number) => Math.round(qty * 1000) / 1000
 
-/** Сумма строки до копеек. */
-export const lineTotal = (price: number, qty: number) => Math.round(price * qty * 100) / 100
-
 /** Адрес одной строкой: город не повторяем, если 1С уже вписала его в адрес. */
 export function addressLine(city: string, address: string): string {
   return address.toLowerCase().includes(city.trim().toLowerCase()) ? address : `${city}, ${address}`

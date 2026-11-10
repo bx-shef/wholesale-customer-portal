@@ -15,8 +15,9 @@
 import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceT } from '../../shared/onec/schemas'
-import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isValidQty, lineTotal, maxOrderQty, neutralizeBb, normalizeQty, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
+import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isValidQty, maxOrderQty, neutralizeBb, normalizeQty, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
 import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSchedule } from '../../shared/delivery'
+import { grossPrice, lineAmounts, sumMoney } from '../../shared/vat'
 import type { CatalogStore } from './catalog'
 import type { ClientPricing, PriceSource } from './catalogView'
 import { GUID_RE } from './catalogView'
@@ -36,9 +37,13 @@ export interface QuoteLine {
   qty: number
   /** Ближайшее допустимое количество — экран предлагает его, если введено не кратное. */
   suggestedQty: number
+  /** Цена без НДС (прайс 1С) — её получают сделка и заказ 1С. */
   price: number | null
+  /** Цена с НДС за единицу — для экрана. */
+  grossPrice: number | null
   vatRate: number
   currency: string | null
+  /** Итог строки с НДС: сумма без НДС + НДС с суммы, как в 1С. */
   total: number
   problem: LineProblem | null
 }
@@ -82,7 +87,7 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
   }
   const out: QuoteLine[] = items.map(({ input, item }) => {
     if (!item) {
-      return { guid: input.guid, sku: '', name: 'Товар больше не продаётся', unit: '', packQty: 1, minQty: 1, available: 0, qty: input.qty, suggestedQty: input.qty, price: null, vatRate: 0, currency: null, total: 0, problem: 'not_found' }
+      return { guid: input.guid, sku: '', name: 'Товар больше не продаётся', unit: '', packQty: 1, minQty: 1, available: 0, qty: input.qty, suggestedQty: input.qty, price: null, grossPrice: null, vatRate: 0, currency: null, total: 0, problem: 'not_found' }
     }
     const p = priceMap.get(item.guid)
     const valid = isValidQty(input.qty, item.packQty, item.minQty)
@@ -91,15 +96,15 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
     return {
       guid: item.guid, sku: item.sku, name: item.name, unit: item.unit, packQty: item.packQty, minQty: item.minQty,
       available: item.available, qty: input.qty, suggestedQty: suggested,
-      price: p?.price ?? null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
-      total: p ? lineTotal(p.price, input.qty) : 0,
+      price: p?.price ?? null, grossPrice: p ? grossPrice(p.price, p.vatRate) : null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
+      total: p ? lineAmounts(p.price, input.qty, p.vatRate).total : 0,
       // Сверх остатка — по ORDER_STOCK_MODE (решение владельца 2026-10-27): по умолчанию не больше наличия.
       problem: !canOrder(item.available, mode) || (mode === 'stock' && max === 0) ? 'out_of_stock' : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
     }
   })
   const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))
-  // Итог — сумма уже округлённых строк: так же считает и сделка (цена × количество по строкам).
-  const total = Math.round(out.reduce((s, l) => s + l.total * 100, 0)) / 100
+  // Итог с НДС — сумма уже округлённых строк: так же считает 1С (НДС с суммы строки).
+  const total = sumMoney(out.map(l => l.total))
   return {
     lines: out,
     total,

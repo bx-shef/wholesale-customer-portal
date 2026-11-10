@@ -34,12 +34,21 @@ function onec(over: { existing?: object[], agreementPartner?: string, agreementS
 const opts = { warehouseNames: ['Основной склад'], enabled: true, now: new Date('2026-10-21T09:00:00Z') }
 
 describe('заказ по OData: тело документа', () => {
+  it('цена без НДС, НДС с суммы строки, итог документа с НДС', () => {
+    const r = req()
+    r.items = [{ itemGuid: G(10), qty: 3, price: 1.23, vatRate: 20 }, { itemGuid: G(11), qty: 1, price: 10, vatRate: 0 }]
+    const b = orderBody(r, { agreement: { Ref_Key: G(3), ЦенаВключаетНДС: true }, counterparty: G(6), warehouse: G(50), zone: null, address: 'a', vat: new Map() }, opts.now)
+    expect(b.ЦенаВключаетНДС).toBe(false)
+    expect((b.Товары as object[])[0]).toMatchObject({ Цена: 1.23, Сумма: 3.69, СуммаНДС: 0.74, СуммаСНДС: 4.43 })
+    expect(b.СуммаДокумента).toBe(14.43)
+  })
+
   it('маркер заявки, ссылки, строки, дата по Минску; пустые ссылки не уходят', () => {
     const b = orderBody(req(), { agreement: { Ref_Key: G(3), Договор_Key: G(4), Организация_Key: '00000000-0000-0000-0000-000000000000', ВидЦен_Key: G(30) }, counterparty: G(6), warehouse: G(50), zone: null, address: 'ул. Ленина, 1', vat: new Map([[G(10), G(90)]]) }, opts.now)
-    expect(b).toMatchObject({ Date: '2026-10-21T12:00:00', Партнер_Key: PARTNER, Контрагент_Key: G(6), Соглашение_Key: G(3), Склад_Key: G(50), НомерПоДаннымКлиента: 'ЛК-123', ДатаОтгрузки: '2026-10-25T00:00:00', АдресДоставки: 'ул. Ленина, 1', ХозяйственнаяОперация: 'РеализацияКлиенту', ЦенаВключаетНДС: true })
+    expect(b).toMatchObject({ Date: '2026-10-21T12:00:00', Партнер_Key: PARTNER, Контрагент_Key: G(6), Соглашение_Key: G(3), Склад_Key: G(50), НомерПоДаннымКлиента: 'ЛК-123', ДатаОтгрузки: '2026-10-25T00:00:00', АдресДоставки: 'ул. Ленина, 1', ХозяйственнаяОперация: 'РеализацияКлиенту', ЦенаВключаетНДС: false })
     expect(b).not.toHaveProperty('Организация_Key')
     expect(b).not.toHaveProperty('ЗонаДоставки_Key')
-    expect((b.Товары as object[])[0]).toMatchObject({ LineNumber: '1', Номенклатура_Key: G(10), Количество: 3, Цена: 12.5, Сумма: 37.5, СтавкаНДС_Key: G(90), ВидЦены_Key: G(30) })
+    expect((b.Товары as object[])[0]).toMatchObject({ LineNumber: '1', Номенклатура_Key: G(10), Количество: 3, Цена: 12.5, Сумма: 37.5, СуммаНДС: 0, СуммаСНДС: 37.5, СтавкаНДС_Key: G(90), ВидЦены_Key: G(30) })
   })
 
   it('маркер — только безопасные символы: кавычка в фильтр не попадёт', () => {

@@ -137,7 +137,11 @@ export const OrderRequest = z.object({
   comment: z.string().max(2000).default(''),
   /** Заказ со стенда проверки (docs/onec-contract.md §1.7): 1С проверяет всё, документ не создаёт или помечает. */
   test: z.boolean().optional(),
-  items: z.array(z.object({ itemGuid: Guid, qty: z.number().positive(), price: Money })).min(1).max(PAGE_SIZE_MAX),
+  /**
+   * `price` — цена без НДС (вид цен «Прайс»), `vatRate` — ставка НДС товара в процентах; 1С считает
+   * строку сама: сумма = цена × количество, НДС с суммы. Без `vatRate` 1С берёт ставку товара.
+   */
+  items: z.array(z.object({ itemGuid: Guid, qty: z.number().positive(), price: Money, vatRate: z.number().nonnegative().max(100).optional() })).min(1).max(PAGE_SIZE_MAX),
 })
 /** Факт по строке заказа (§2.6): цена, с которой заказ принят, и сколько зарезервировано. */
 export const OrderLineFact = z.object({ itemGuid: Guid, price: Money, reserved: z.number().nonnegative() })

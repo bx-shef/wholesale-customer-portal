@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto'
 import { OrderCreated, OrderRequest, type OrderStatusRowT, type OrderStatusT } from '../../shared/onec/schemas'
 import type { z } from 'zod'
 import { OnecError } from './onec'
+import { lineAmounts, sumMoney } from '../../shared/vat'
 import { assertGuid, EMPTY_REF, ONEC_TZ, orFilters, type ODataClient } from './onecOdata'
 import { addressGuid, agreementActive, listAll, type ContactRow } from './onecOdataClients'
 
@@ -28,7 +29,6 @@ export const ORDER_STATUS_DAYS = 90
 export const DEFAULT_OPERATION = 'РеализацияКлиенту'
 
 const ref = (v: string | undefined) => (v && v !== EMPTY_REF ? v.toLowerCase() : null)
-const money = (v: number) => Math.round(v * 100) / 100
 
 export interface AgreementForOrder {
   Ref_Key: string
@@ -71,6 +71,12 @@ export function testOrderGuid(externalId: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
 }
 
+/** Денежные поля строки заказа: цена без НДС, сумма, НДС с суммы и итог с НДС (так считает 1С). */
+export function orderLineAmounts(price: number, qty: number, vatRate: number) {
+  const a = lineAmounts(price, qty, vatRate)
+  return { Цена: price, Сумма: a.sum, СуммаНДС: a.vat, СуммаСНДС: a.total }
+}
+
 /** Тело `Document_ЗаказКлиента` по заявке и найденным ссылкам. Пустые ссылки не передаём. */
 export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now: Date): Record<string, unknown> {
   const a = refs.agreement
@@ -90,7 +96,8 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
       ЗонаДоставки_Key: refs.zone,
     }),
     ХозяйственнаяОперация: a.ХозяйственнаяОперация || DEFAULT_OPERATION,
-    ЦенаВключаетНДС: a.ЦенаВключаетНДС ?? true,
+    // Прайс 1С — без НДС (замечание клиента 2026-11-10): налог сверху, суммы строк — как считает 1С.
+    ЦенаВключаетНДС: false,
     ДатаОтгрузки: shipment,
     АдресДоставки: o.deliveryAddressText || refs.address,
     Комментарий: o.comment ?? '',
@@ -101,10 +108,10 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
       Количество: it.qty,
       КоличествоУпаковок: it.qty,
       ...keys({ ВидЦены_Key: a.ВидЦен_Key, СтавкаНДС_Key: refs.vat.get(it.itemGuid.toLowerCase()), Склад_Key: refs.warehouse }),
-      Цена: it.price,
-      Сумма: money(it.price * it.qty),
+      ...orderLineAmounts(it.price, it.qty, it.vatRate ?? 0),
       ДатаОтгрузки: shipment,
     })),
+    СуммаДокумента: sumMoney(o.items.map(it => lineAmounts(it.price, it.qty, it.vatRate ?? 0).total)),
   }
 }
 

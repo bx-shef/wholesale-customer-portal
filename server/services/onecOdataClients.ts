@@ -36,6 +36,8 @@ export interface AgreementRow {
   ВидЦен_Key?: string
   Валюта_Key?: string
   Договор_Key?: string
+  /** Ссылка на типовое соглашение: у индивидуального пустая. Нет в метаданных — поля нет вовсе. */
+  ТиповоеСоглашение_Key?: string
 }
 
 export interface ContractRow { Ref_Key: string, Номер?: string, Дата?: string, ДопустимаяСуммаЗадолженности?: number }
@@ -110,7 +112,7 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
     return m
   }
   const counterparties = byPartner(src.counterparties.filter(c => !c.DeletionMark))
-  const agreements = byPartner(src.agreements.filter(a => agreementActive(a, today)))
+  const agreements = byPartner(src.agreements.filter(a => agreementActive(a, today) && isIndividualAgreement(a)))
   const contracts = new Map(src.contracts.map(c => [c.Ref_Key.toLowerCase(), c]))
   const contacts = new Map<string, ContactRow[]>()
   for (const c of src.contacts) {
@@ -231,6 +233,35 @@ export async function listAll<T>(client: ODataClient, set: string, query: Record
   throw new OnecError('contract', `1C OData ${set}: more than ${maxPages} pages`)
 }
 
+const AGREEMENT_FIELDS = 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key'
+let typicalFieldWarned = false
+
+/**
+ * Клиенту — только индивидуальные соглашения (замечание клиента 2026-11-10): у них пустой
+ * `ТиповоеСоглашение_Key`. Поля нет в ответе (нет в метаданных) — не фильтруем, как раньше.
+ */
+export function isIndividualAgreement(a: AgreementRow): boolean {
+  return !('ТиповоеСоглашение_Key' in a) || !ref(a.ТиповоеСоглашение_Key)
+}
+
+/**
+ * Соглашения с полем типового. Его может не быть в метаданных базы — тогда OData отвергает весь
+ * запрос; читаем без поля (фильтр не применяется), в журнал — один раз за процесс. Отказ не
+ * запоминаем: разовый сбой сети не должен выключить фильтр до перезапуска.
+ */
+export async function readAgreements(read: (fields: string) => Promise<AgreementRow[]>): Promise<AgreementRow[]> {
+  try {
+    return await read(`${AGREEMENT_FIELDS},ТиповоеСоглашение_Key`)
+  }
+  catch (e) {
+    // Без поля тоже не прочиталось — сбой не в поле: пробрасываем исходную ошибку.
+    const rows = await read(AGREEMENT_FIELDS).catch(() => { throw e })
+    if (!typicalFieldWarned) console.warn('[onec:clients] Catalog_СоглашенияСКлиентами без ТиповоеСоглашение_Key: типовые соглашения не отсекаются')
+    typicalFieldWarned = true
+    return rows
+  }
+}
+
 /**
  * Прочитать всё для клиентов. Обязательно всё: не прочиталось — прогон падает. Иначе пустой набор
  * соглашений, адресов, зон или сегментов затёр бы договоры, адреса, регионы и запрет отгрузки у
@@ -242,9 +273,7 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
     $filter: 'Клиент eq true',
   })
   const counterparties = await listAll<CounterpartyRow>(client, 'Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark' })
-  const agreements = await listAll<AgreementRow>(client, 'Catalog_СоглашенияСКлиентами', {
-    $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key',
-  })
+  const agreements = await readAgreements(fields => listAll<AgreementRow>(client, 'Catalog_СоглашенияСКлиентами', { $select: fields }))
   const contracts = await listAll<ContractRow>(client, 'Catalog_ДоговорыКонтрагентов', { $select: 'Ref_Key,Номер,Дата,ДопустимаяСуммаЗадолженности' })
   const contacts = await listAll<ContactRow>(client, 'Catalog_Партнеры_КонтактнаяИнформация', {
     $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город',
@@ -277,9 +306,7 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
   if (!partners.length || partners[0]!.Клиент === false) return null
   const byPartner = { $filter: `Партнер_Key eq ${g}` }
   const counterparties = await client.list<CounterpartyRow>('Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark', ...byPartner })
-  const agreements = await client.list<AgreementRow>('Catalog_СоглашенияСКлиентами', {
-    $select: 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key', ...byPartner,
-  })
+  const agreements = await readAgreements(fields => client.list<AgreementRow>('Catalog_СоглашенияСКлиентами', { $select: fields, ...byPartner }))
   const contractKeys = [...new Set(agreements.flatMap(a => (ref(a.Договор_Key) ? [ref(a.Договор_Key)!] : [])))].slice(0, 40) // у клиента их единицы (стенд: максимум 31 соглашение)
   const contracts: ContractRow[] = []
   for (const $filter of orFilters(contractKeys.map(k => `Ref_Key eq guid'${assertGuid(k)}'`))) {
