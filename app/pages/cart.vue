@@ -13,7 +13,7 @@ const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', valu
 useHead({ title: 'Корзина' })
 const stockMode = useStockMode()
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, grossPrice: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -189,7 +189,7 @@ async function submit() {
                 <B24Button color="air-tertiary" size="sm" label="Удалить" :aria-label="`Удалить ${l.name} из корзины`" @click="cart.setQty(l.guid, 0)" />
               </div>
               <p v-if="l.sku" class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
-                {{ l.sku }} · {{ l.price !== null && l.currency ? `${formatMoney(l.price, l.currency)} / ${l.unit}` : 'без цены' }}
+                {{ l.sku }} · {{ l.grossPrice !== null && l.currency ? `${formatMoney(l.grossPrice, l.currency)} / ${l.unit} с НДС` : 'без цены' }}
               </p>
               <div v-if="l.problem !== 'not_found'" class="flex flex-wrap items-center justify-between gap-2">
                 <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" :max="maxOrderQty(l.available, l.packQty, l.minQty, stockMode)" @update:qty="v => cart.setQty(l.guid, v)" />

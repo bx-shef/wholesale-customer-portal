@@ -4,6 +4,7 @@
  * Транспорт — `call(method, params)` (B24Hook), в тестах — подделка.
  */
 import { DEAL_CATEGORY_NAME } from '../../shared/b24Setup'
+import { lineAmounts, sumMoney } from '../../shared/vat'
 import { isNotFound, type B24Call } from './b24Access'
 
 /** Источник сделок ЛК: по паре ORIGINATOR_ID + ORIGIN_ID повторная отправка находит уже созданную. */
@@ -12,6 +13,7 @@ export const DEAL_ORIGINATOR = 'wholesale-portal'
 /** `unknown` — портал отдал семантику, которую мы не знаем: по такой стадии заказ не создаём. */
 export interface DealStage { id: string, name: string, sort: number, semantics: 'process' | 'success' | 'failure' | 'unknown' }
 
+/** `price` — цена без НДС (прайс 1С), `vatRate` — ставка в процентах. */
 export interface DealRow { name: string, price: number, qty: number, unit: string, vatRate: number }
 
 export interface DealInput {
@@ -62,7 +64,8 @@ export function createB24Orders(call: B24Call) {
             COMPANY_ID: input.companyId,
             CONTACT_IDS: [input.contactId],
             COMMENTS: input.comments,
-            OPPORTUNITY: input.total,
+            // Итог — сумма итогов строк (НДС с суммы строки, как в корзине и 1С), а не цена × количество.
+            OPPORTUNITY: sumMoney(input.rows.map(r => lineAmounts(r.price, r.qty, r.vatRate).total)),
             CURRENCY_ID: input.currency,
             ORIGINATOR_ID: DEAL_ORIGINATOR,
             ORIGIN_ID: input.requestId,
@@ -75,12 +78,17 @@ export function createB24Orders(call: B24Call) {
         rows: input.rows.map((r, i) => ({
           PRODUCT_ID: 0,
           PRODUCT_NAME: r.name,
-          PRICE: r.price,
+          // Прайс 1С — без НДС, налог сверху (TAX_INCLUDED N). PRICE по документации — цена за единицу
+          // с налогом; берём итог строки / количество без округления до копеек: портал умножит обратно и
+          // получит итог корзины и 1С (НДС с суммы строки). Округлённая цена ед. × количество разошлась бы:
+          // 0.33 × 1000 при 20% — 400.00 вместо 396.00. Без налога — PRICE_EXCLUSIVE и PRICE_NETTO.
+          PRICE: lineAmounts(r.price, r.qty, r.vatRate).total / r.qty,
+          PRICE_EXCLUSIVE: r.price,
+          PRICE_NETTO: r.price,
           QUANTITY: r.qty,
           MEASURE_NAME: r.unit,
           TAX_RATE: r.vatRate,
-          // Цена из 1С — с НДС (контракт: цена клиента), налог в неё уже включён.
-          TAX_INCLUDED: 'Y',
+          TAX_INCLUDED: 'N',
           SORT: (i + 1) * 10,
         })),
       })

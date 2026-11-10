@@ -5,12 +5,14 @@
  * Граница данных: GUID клиента в 1С берётся только по компании из сессии; из запроса — никогда.
  */
 import { parseProps } from '../../shared/propFilter'
+import { grossPrice } from '../../shared/vat'
 import type { PriceT } from '../../shared/onec/schemas'
 import type { CatalogItem, CatalogItemDetails, CatalogQuery, CatalogStore } from './catalog'
 import { SORTS } from './catalog'
 import type { PriceStatus } from '../../shared/catalogView'
 
-export interface ItemPrice { value: number, currency: string, vatRate: number }
+/** `value` — цена с НДС (её видит клиент), `net` — без НДС, как в прайсе 1С. */
+export interface ItemPrice { value: number, net: number, currency: string, vatRate: number }
 export type Priced<T extends CatalogItem> = T & { price: ItemPrice | null }
 
 /**
@@ -82,7 +84,8 @@ export function parseCatalogQuery(q: Record<string, unknown>): CatalogQuery {
   }
 }
 
-const toPrice = (p: PriceT | undefined): ItemPrice | null => (p ? { value: p.price, currency: p.currency, vatRate: p.vatRate } : null)
+// Прайс 1С — без НДС; клиенту показываем с НДС по ставке товара (замечание клиента 2026-11-10).
+const toPrice = (p: PriceT | undefined): ItemPrice | null => (p ? { value: grossPrice(p.price, p.vatRate), net: p.price, currency: p.currency, vatRate: p.vatRate } : null)
 
 /** Контекст клиента: GUID договора или почему цен нет. */
 /** `contractGuid` — выбранное клиентом соглашение (#46); не из его соглашений — берётся основное. */

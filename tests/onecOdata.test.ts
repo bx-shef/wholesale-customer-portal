@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { EMPTY_REF, mapItem, ODataClient, ROOT_SECTION, type NomenclatureRow } from '../server/services/onecOdata'
 import { CatalogPage } from '../shared/onec/schemas'
 
@@ -270,6 +270,17 @@ describe('картинки, снимок каталога, нулевая цен
     const out = mapPrices([{ Номенклатура_Key: G(20), ВидЦены_Key: G(30), Цена: 0, Валюта_Key: G(90) }], { currencies: new Map([[G(90), 'BYN']]), vat: new Map() }, stats)
     expect(out).toMatchObject([{ price: 0, deleted: true }])
     expect(stats.zero).toBe(1)
+  })
+
+  it('mapPrices: товар без ставки НДС считается один раз и попадает в журнал', async () => {
+    const { mapPrices, emptyPriceStats } = await import('../server/services/onecOdata')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const stats = emptyPriceStats()
+    const rows = [G(30), G(31)].map(t => ({ Номенклатура_Key: G(20), ВидЦены_Key: t, Цена: 5, Валюта_Key: G(90) }))
+    mapPrices(rows, { currencies: new Map([[G(90), 'BYN']]), vat: new Map() }, stats)
+    expect(stats.noVat).toBe(1)
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
   })
 })
 

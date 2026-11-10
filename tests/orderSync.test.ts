@@ -137,7 +137,7 @@ describe('синхронизация заявок', () => {
       const id = await confirmed()
       expect(deps.createOnecOrder).toHaveBeenCalledTimes(1)
       expect(deps.createOnecOrder.mock.calls[0]![0]).toMatchObject({
-        externalId: '501', clientGuid: g(100), contractGuid: g(200), deliveryAddressGuid: g(300), comment: 'к', items: [{ itemGuid: g(1), qty: 2, price: 5 }],
+        externalId: '501', clientGuid: g(100), contractGuid: g(200), deliveryAddressGuid: g(300), comment: 'к', items: [{ itemGuid: g(1), qty: 2, price: 5, vatRate: 20 }],
       })
       expect(deps.orders.byId(id)).toMatchObject({ status: 'new', onec_order_guid: g(900), onec_number: 'ЛК-1' })
       await syncOrders(deps)

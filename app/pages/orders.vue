@@ -1,7 +1,7 @@
 <!-- «Мои заявки»: статус и дата машины — только по компании из сессии. -->
 <script setup lang="ts">
 import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
-import { lineTotal } from '~~/shared/cart'
+import { grossPrice, lineAmounts } from '~~/shared/vat'
 import { formatSlot } from '~~/shared/delivery'
 
 useHead({ title: 'Заявки' })
@@ -128,10 +128,10 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
                       {{ it.qty }} {{ it.unit }}
                     </td>
                     <td class="py-1 text-right whitespace-nowrap">
-                      {{ formatMoney(it.price, o.currency) }}
+                      {{ formatMoney(grossPrice(it.price, it.vatRate), o.currency) }}
                     </td>
                     <td class="py-1 text-right whitespace-nowrap">
-                      {{ formatMoney(lineTotal(it.price, it.qty), o.currency) }}
+                      {{ formatMoney(lineAmounts(it.price, it.qty, it.vatRate).total, o.currency) }}
                     </td>
                   </tr>
                 </tbody>

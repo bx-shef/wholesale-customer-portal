@@ -559,11 +559,13 @@ export interface PriceStats {
   variant: number
   noRef: number
   noCurrency: number
+  /** Товаров без ставки НДС: цена клиенту — по ставке 0. */
+  noVat: number
   noPrice: number
   /** Цена 0 — уходит как удалённая: в ЛК «нет цены». */
   zero: number
 }
-export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, variant: 0, noRef: 0, noCurrency: 0, noPrice: 0, zero: 0 })
+export const emptyPriceStats = (): PriceStats => ({ read: 0, inactive: 0, variant: 0, noRef: 0, noCurrency: 0, noPrice: 0, zero: 0, noVat: 0 })
 
 export interface PricesResult {
   items: PriceT[]
@@ -657,6 +659,12 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
     const prev = last.get(key)
     if (!prev || (r.Period ?? '') >= (prev.Period ?? '')) last.set(key, r)
   }
+  const noVat = new Set<string>()
+  const vatOf = (item: string) => {
+    const v = look.vat.get(item)
+    if (v === undefined) noVat.add(item)
+    return v ?? 0
+  }
   const out: PriceT[] = []
   for (const r of last.values()) {
     const currency = ref(r.Валюта_Key) && look.currencies.get(ref(r.Валюта_Key)!)
@@ -670,11 +678,14 @@ export function mapPrices(rows: PriceRow[], look: { currencies: Map<string, stri
       itemGuid: item,
       price: money(r.Цена),
       currency,
-      vatRate: look.vat.get(item) ?? 0,
+      vatRate: vatOf(item),
       changedAt: `${(r.Period ?? '2000-01-01T00:00:00').slice(0, 19)}${ONEC_TZ}`,
       deleted: money(r.Цена) === 0,
     })
   }
+  stats.noVat += noVat.size
+  // Один раз за прогон, без ПДн — только число: без ставки клиент увидит цену без НДС.
+  if (noVat.size) console.warn(`[onec:prices] товаров без ставки НДС: ${noVat.size} — цена клиенту по ставке 0`)
   return out
 }
 

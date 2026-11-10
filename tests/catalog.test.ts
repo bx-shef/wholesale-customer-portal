@@ -200,7 +200,7 @@ describe('каталог глазами клиента', () => {
     const prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, { itemGuid: i, price: 5, currency: 'BYN', vatRate: 20 }])))
     const page = await catalogPage(store, parseCatalogQuery({ clientGuid: g(666) }), await resolvePricing({ companyId: 7 }, async () => g(100)), prices)
     expect(prices.mock.calls[0]![0]).toBe(g(100))
-    expect(page.items[0]!.price).toEqual({ value: 5, currency: 'BYN', vatRate: 20 })
+    expect(page.items[0]!.price).toEqual({ value: 6, net: 5, currency: 'BYN', vatRate: 20 })
   })
 
   it('1С упала — каталог без цен и с флагом, а не 500 и не нули', async () => {
@@ -215,8 +215,8 @@ describe('каталог глазами клиента', () => {
     const ok = { status: 'ok' as const, clientGuid: g(100) }
     const r = await catalogItem(store, g(1), ok, prices)
     expect(prices).toHaveBeenCalledTimes(1)
-    expect(r!.item.price!.value).toBe(7)
-    expect(r!.item.analogs[0]!.price!.value).toBe(9)
+    expect(r!.item.price!.value).toBe(8.4)
+    expect(r!.item.analogs[0]!.price!.value).toBe(10.8)
     expect(await catalogItem(store, g(9), ok, prices)).toBeNull()
   })
 

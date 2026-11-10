@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto'
 import { OrderCreated, OrderRequest, type OrderStatusRowT, type OrderStatusT } from '../../shared/onec/schemas'
 import type { z } from 'zod'
 import { OnecError } from './onec'
+import { lineAmounts, sumMoney } from '../../shared/vat'
 import { assertGuid, EMPTY_REF, ONEC_TZ, orFilters, type ODataClient } from './onecOdata'
 import { addressGuid, agreementActive, listAll, type ContactRow } from './onecOdataClients'
 
@@ -28,7 +29,6 @@ export const ORDER_STATUS_DAYS = 90
 export const DEFAULT_OPERATION = 'РеализацияКлиенту'
 
 const ref = (v: string | undefined) => (v && v !== EMPTY_REF ? v.toLowerCase() : null)
-const money = (v: number) => Math.round(v * 100) / 100
 
 export interface AgreementForOrder {
   Ref_Key: string
@@ -39,7 +39,6 @@ export interface AgreementForOrder {
   Склад_Key?: string
   ВидЦен_Key?: string
   ХозяйственнаяОперация?: string
-  ЦенаВключаетНДС?: boolean
   DeletionMark?: boolean
   Статус?: string
   ДатаНачалаДействия?: string
@@ -71,6 +70,17 @@ export function testOrderGuid(externalId: string): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
 }
 
+/**
+ * Денежные поля строки заказа: цена без НДС, сумма, НДС с суммы и итог с НДС (так считает 1С).
+ * Ставки нет (заявка старше хранения ставки) — передаём только цену и сумму: налог 1С посчитает
+ * по ставке товара сама, а не мы по нулю.
+ */
+export function orderLineAmounts(price: number, qty: number, vatRate: number | undefined) {
+  if (vatRate === undefined) return { Цена: price, Сумма: lineAmounts(price, qty, 0).sum }
+  const a = lineAmounts(price, qty, vatRate)
+  return { Цена: price, Сумма: a.sum, СуммаНДС: a.vat, СуммаСНДС: a.total }
+}
+
 /** Тело `Document_ЗаказКлиента` по заявке и найденным ссылкам. Пустые ссылки не передаём. */
 export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now: Date): Record<string, unknown> {
   const a = refs.agreement
@@ -90,7 +100,8 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
       ЗонаДоставки_Key: refs.zone,
     }),
     ХозяйственнаяОперация: a.ХозяйственнаяОперация || DEFAULT_OPERATION,
-    ЦенаВключаетНДС: a.ЦенаВключаетНДС ?? true,
+    // Прайс 1С — без НДС (замечание клиента 2026-11-10): налог сверху, суммы строк — как считает 1С.
+    ЦенаВключаетНДС: false,
     ДатаОтгрузки: shipment,
     АдресДоставки: o.deliveryAddressText || refs.address,
     Комментарий: o.comment ?? '',
@@ -101,10 +112,11 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
       Количество: it.qty,
       КоличествоУпаковок: it.qty,
       ...keys({ ВидЦены_Key: a.ВидЦен_Key, СтавкаНДС_Key: refs.vat.get(it.itemGuid.toLowerCase()), Склад_Key: refs.warehouse }),
-      Цена: it.price,
-      Сумма: money(it.price * it.qty),
+      ...orderLineAmounts(it.price, it.qty, it.vatRate),
       ДатаОтгрузки: shipment,
     })),
+    // Итог документа — только когда ставка известна у всех строк, иначе его считает 1С.
+    ...(o.items.every(it => it.vatRate !== undefined) ? { СуммаДокумента: sumMoney(o.items.map(it => lineAmounts(it.price, it.qty, it.vatRate!).total)) } : {}),
   }
 }
 
@@ -160,7 +172,7 @@ const one = async <T>(client: ODataClient, set: string, filter: string, select: 
 export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof OrderRequest>, opts: { warehouseNames: string[], today: string }): Promise<OrderRefs> {
   const partner = assertGuid(o.clientGuid).toLowerCase()
   const agreement = await one<AgreementForOrder>(client, 'Catalog_СоглашенияСКлиентами', `Ref_Key eq guid'${assertGuid(o.contractGuid)}'`,
-    'Ref_Key,Партнер_Key,Валюта_Key,Договор_Key,Организация_Key,Склад_Key,ВидЦен_Key,ХозяйственнаяОперация,ЦенаВключаетНДС,DeletionMark,Статус,ДатаНачалаДействия,ДатаОкончанияДействия')
+    'Ref_Key,Партнер_Key,Валюта_Key,Договор_Key,Организация_Key,Склад_Key,ВидЦен_Key,ХозяйственнаяОперация,DeletionMark,Статус,ДатаНачалаДействия,ДатаОкончанияДействия')
   // Соглашение чужого клиента — отказ: заказ ушёл бы по чужим условиям.
   if (!agreement || ref(agreement.Партнер_Key) !== partner) throw new OnecError('contract', '1C OData order: agreement does not belong to the client')
   if (!agreementActive(agreement, opts.today)) throw new OnecError('contract', '1C OData order: agreement is not active')
