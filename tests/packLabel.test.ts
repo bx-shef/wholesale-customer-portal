@@ -137,5 +137,8 @@ describe('упаковка товара из 1С (справка клиенту)
     store.saveCatalog([], [{ ...item, packLabel: undefined }])
     expect(store.item(G(1))!.packLabel).toBe('')
     expect(Object.fromEntries(storedPackLabels(db))).toEqual({ [G(2)]: 'уп (6 шт)' })
+    // GUID в базе в верхнем регистре — ключ всё равно в нижнем, как ищет снимок.
+    db.prepare(`UPDATE catalog_item SET guid = 'ABCDEF00-0000-0000-0000-000000000002' WHERE guid = ?`).run(G(2))
+    expect(storedPackLabels(db).get('abcdef00-0000-0000-0000-000000000002')).toBe('уп (6 шт)')
   })
 })
