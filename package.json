@@ -26,19 +26,19 @@
     "@bitrix24/b24jssdk": "^3.0.0",
     "@bitrix24/b24ui-nuxt": "^2.15.0",
     "@nuxt/content": "^3.16.2",
-    "@nuxtjs/mcp-toolkit": "^0.24.2",
+    "@nuxtjs/mcp-toolkit": "^0.24.3",
     "nuxt": "^4.6.3",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "^4.3.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.17.0",
     "@types/node": "^22.0.0",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.9",
+    "vue-tsc": "^3.3.14",
     "yaml": "^2.9.1"
   },
   "packageManager": "pnpm@10.33.0",
