@@ -50,7 +50,7 @@ async function repeat(o: Order) {
   const { added, dropped } = cart.addLines(o.items.filter(i => i.guid).map(i => ({ guid: i.guid, qty: i.qty })))
   const tail = dropped ? `; ${dropped} не поместились — в корзине не больше ${CART_LINES_MAX} строк` : ''
   if (added === 0) {
-    toast.add({ title: `Позиции этой заявки недоступны для повтора${tail}`, color: 'air-primary-warning' })
+    toast.add({ title: dropped ? `Корзина заполнена: не больше ${CART_LINES_MAX} строк` : 'Позиции этой заявки недоступны для повтора', color: 'air-primary-warning' })
     return
   }
   toast.add({ title: `Добавлено ${added} ${plural(added, 'позиция', 'позиции', 'позиций')}${tail}`, color: dropped ? 'air-primary-warning' : 'air-primary-success' })
