@@ -114,7 +114,10 @@ export function mapSection(row: { Ref_Key: string, Description?: string, Parent_
 /** Строка `Catalog_УпаковкиЕдиницыИзмерения` (КА 2.5). Имена полей — типовые, на живой 1С не сверены. */
 export interface PackRow {
   Ref_Key?: string
-  /** Владелец: одним типом — `Owner_Key`, составным (номенклатура или набор упаковок) — `Owner` + `Owner_Type`. */
+  /**
+   * Владелец: в 1С клиента (замер 2026-11-11) — составной `Owner` + `Owner_Type`. `Owner_Key` и
+   * `Коэффициент` в этой базе нет; поддержаны для других конфигураций, но в `$select` их не ставим (400).
+   */
   Owner?: string
   Owner_Key?: string
   Owner_Type?: string
@@ -133,7 +136,7 @@ export function packFactor(r: PackRow): number {
 }
 
 /** Поля справочника упаковок, которые читаем (`$select`): остальные 1С не отдаёт. */
-export const PACK_FIELDS = ['Ref_Key', 'Owner_Key', 'Owner_Type', 'Description', 'DeletionMark', 'Коэффициент', 'Числитель', 'Знаменатель'] as const
+export const PACK_FIELDS = ['Ref_Key', 'Owner', 'Owner_Type', 'Description', 'DeletionMark', 'Числитель', 'Знаменатель'] as const
 
 /** Предел длины подписи упаковки: справка клиенту, а не описание. */
 export const PACK_LABEL_MAX = 60

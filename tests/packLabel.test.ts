@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { migrate } from '../server/db/sqlite'
-import { choosePack, ODATA_PAGE, ODataClient, packFactor, packLabels } from '../server/services/onecOdata'
+import { choosePack, ODATA_PAGE, ODataClient, PACK_FIELDS, packFactor, packLabels } from '../server/services/onecOdata'
 import { createCatalogStore, storedPackLabels } from '../server/utils/catalog'
 import type { ItemT } from '../shared/onec/schemas'
 
@@ -27,6 +27,10 @@ describe('упаковка товара из 1С (справка клиенту)
       { Owner_Key: G(6), Description: 'шт', Коэффициент: 1 },
     ])
     expect(Object.fromEntries(map)).toEqual({ [G(1)]: 'кор (144 шт)', [G(2)]: 'уп (6 шт)' })
+  })
+
+  it('$select — только поля, которые есть в справочнике упаковок 1С (замер 2026-11-11)', () => {
+    expect([...PACK_FIELDS]).toEqual(['Ref_Key', 'Owner', 'Owner_Type', 'Description', 'DeletionMark', 'Числитель', 'Знаменатель'])
   })
 
   const snapshot = async (packs: (url: string) => Response, previous?: Map<string, string>, guid = G(1)) => {
@@ -84,7 +88,7 @@ describe('упаковка товара из 1С (справка клиенту)
     })
     expect(urls).toHaveLength(2)
     expect(urls[1]).toContain(`$skip=${ODATA_PAGE}`)
-    expect(urls[0]).toContain('$select=Ref_Key,Owner_Key,Owner_Type,Description,DeletionMark')
+    expect(urls[0]).toContain('$select=Ref_Key,Owner,Owner_Type,Description,DeletionMark')
     expect(snap.items[0]!.item.packLabel).toBe('кор')
   })
 
