@@ -183,6 +183,9 @@ describe('режим раздела «Доставка»', () => {
   it('города есть, рейсов нет — общий график', () => {
     expect(deliveryView('ok', 0, 2)).toBe('general')
   })
+  it('нет договора — без графика', () => {
+    expect(deliveryView('no-contract', 0, 0)).toBe('none')
+  })
   it('график недоступен — предупреждение', () => {
     expect(deliveryView('unavailable', 0, 2)).toBe('unavailable')
   })

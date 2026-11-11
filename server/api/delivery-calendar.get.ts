@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const client = useClientStore().get(ctx.pricing.clientGuid)
   if (!client || client.deleted) return { status: 'no-contract' as const, days: [], cities: [], general: [], noCity: [] as string[] }
   const cities = [...new Set(client.addresses.map(a => a.city.trim()).filter(Boolean))]
-  const noCity = client.addresses.filter(a => !a.city.trim()).map(a => a.address.trim()).filter(Boolean)
+  const noCity = [...new Set(client.addresses.filter(a => !a.city.trim()).map(a => a.address.trim()).filter(Boolean))]
   let schedules: Awaited<ReturnType<typeof cachedSchedules>>
   try {
     schedules = await cachedSchedules()
