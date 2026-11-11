@@ -7,7 +7,7 @@ import { openDatabase } from '../server/db/sqlite'
 import { createDeliveryStore } from '../server/utils/delivery'
 import { deliveriesWindow, readDeliveries } from '../server/utils/deliveriesTab'
 import { createClientStore } from '../server/utils/clients'
-import { nextDelivery, scheduleFromOnec } from '../shared/delivery'
+import { deliveryView, nextDelivery, scheduleFromOnec } from '../shared/delivery'
 import { createMockState, handleMockRequest, ORDER_TIMELINE, type MockRequest } from '../server/mocks/onec/mock'
 import type { DeliveryScheduleT, TripT } from '../shared/onec/schemas'
 
@@ -166,7 +166,27 @@ describe('раздел «Доставка» для клиента (#79)', () => 
     expect(readFileSync('app/layouts/default.vue', 'utf8')).toContain("{ label: 'Доставка', icon: CalendarIcon, to: '/delivery'")
     expect(isClientRoute('/delivery')).toBe(true)
     const api = readFileSync('server/api/delivery-calendar.get.ts', 'utf8')
-    expect(api).toContain('deliveryCalendar(schedules, new Date(), CLIENT_CALENDAR_DAYS, cities)')
+    expect(api).toContain('deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS, cities)')
+    expect(api).toContain('deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS)')
+    expect(api).toContain('a => !a.city.trim()')
     expect(api).toContain('client.addresses.map(a => a.city.trim())')
+  })
+})
+
+describe('режим раздела «Доставка»', () => {
+  it('рейсы в города клиента есть — свои дни, общий график свёрнут', () => {
+    expect(deliveryView('ok', 3, 1)).toBe('own')
+  })
+  it('городов в адресах нет — плашка про адрес и общий график', () => {
+    expect(deliveryView('ok', 0, 0)).toBe('no-city')
+  })
+  it('города есть, рейсов нет — общий график', () => {
+    expect(deliveryView('ok', 0, 2)).toBe('general')
+  })
+  it('нет договора — без графика', () => {
+    expect(deliveryView('no-contract', 0, 0)).toBe('none')
+  })
+  it('график недоступен — предупреждение', () => {
+    expect(deliveryView('unavailable', 0, 2)).toBe('unavailable')
   })
 })

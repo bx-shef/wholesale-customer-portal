@@ -195,3 +195,17 @@ export function formatSlot(slot: Pick<DeliverySlot, 'arrivalFrom' | 'arrivalTo'>
 export function formatCutoff(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU', { timeZone: 'Europe/Minsk', weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 }
+
+/** Что показать в разделе «Доставка» (#79): дни в города клиента, общий график или подсказку про адрес без города. */
+export type DeliveryView = 'none' | 'unavailable' | 'own' | 'general' | 'no-city'
+
+/**
+ * Режим страницы: есть рейсы в города клиента — «own» (общий график свёрнут); у клиента нет ни одного
+ * города в адресах — «no-city»; нет договора и прочие отказы — «none» (плашка про адрес и общий график); города есть, рейсов нет — «general».
+ */
+export function deliveryView(status: string, ownDays: number, cities: number): DeliveryView {
+  if (status === 'unavailable') return 'unavailable'
+  if (status !== 'ok') return 'none'
+  if (ownDays > 0) return 'own'
+  return cities > 0 ? 'general' : 'no-city'
+}
