@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ODataClient } from '../server/services/onecOdata'
 import { addressGuid } from '../server/services/onecOdataClients'
-import { createOdataOrder, orderBody, orderMarker, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
+import { createOdataOrder, orderBody, orderMarker, ORDER_STATE_STATUS, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
 import { OrderRequest, OrderStatusRow } from '../shared/onec/schemas'
 
 const G = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -136,6 +136,44 @@ describe('заказ по OData: статусы', () => {
     expect(orderStatusOf({ Ref_Key: 'x', Posted: true, Статус: 'Закрыт' })).toBe('shipped')
   })
 
+  it('статус по состоянию заказа из регистра — главнее статуса документа', () => {
+    const doc = { Ref_Key: 'x', Posted: true, Статус: 'КОбеспечению' }
+    const want: Record<string, string> = {
+      ОжидаетсяСогласование: 'new', НеСогласован: 'new',
+      ОжидаетсяПредоплатаДоОбеспечения: 'confirmed', ОжидаетсяОбеспечение: 'confirmed', ОжидаетсяПредоплатаДоОтгрузки: 'confirmed',
+      ГотовКОтгрузке: 'assembled',
+      ВПроцессеОтгрузки: 'shipped', ОжидаетсяОплатаПослеОтгрузки: 'shipped', ГотовКЗакрытию: 'shipped', Закрыт: 'shipped',
+    }
+    for (const [state, status] of Object.entries(want)) expect(orderStatusOf(doc, state), state).toBe(status)
+    expect(Object.keys(ORDER_STATE_STATUS).sort()).toEqual(Object.keys(want).sort())
+    // Незнакомое или пустое состояние — откат на статус документа.
+    expect(orderStatusOf(doc, 'Неведомое')).toBe('confirmed')
+    expect(orderStatusOf(doc, '')).toBe('confirmed')
+    expect(orderStatusOf({ ...doc, Статус: 'КОтгрузке' })).toBe('assembled')
+    // Пометка удаления и непроведённый — главнее состояния.
+    expect(orderStatusOf({ ...doc, DeletionMark: true }, 'Закрыт')).toBe('cancelled')
+    expect(orderStatusOf({ ...doc, Posted: false }, 'Закрыт')).toBe('new')
+  })
+
+  it('readOrderStatuses: состояние из регистра в статусе и версии; регистр — один раз; сбой — откат', async () => {
+    const doc = { Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОбеспечению' }
+    const t = onec({ existing: [doc], extra: { InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77).toUpperCase(), Состояние: 'ОжидаетсяОплатаПослеОтгрузки' }] } })
+    const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
+    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'shipped' }), version: 'v1|shipped||0|ОжидаетсяОплатаПослеОтгрузки' }])
+    // «К выполнению» — сверка доставки берёт уже прочитанное состояние.
+    const w = onec({ existing: [{ ...doc, Статус: 'КОтгрузке' }], extra: { InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77), Состояние: 'ГотовКОтгрузке' }] } })
+    await readOrderStatuses(w.client, new Date('2026-10-21T09:00:00Z'))
+    expect(w.calls.filter(c => c.url.includes('СостоянияЗаказовКлиентов'))).toHaveLength(1)
+    const f = onec({ existing: [doc] })
+    const list = f.client.list.bind(f.client)
+    f.client.list = (async (set: string, q: never) => {
+      if (set.includes('СостоянияЗаказов')) throw new Error('HTTP 500')
+      return list(set, q)
+    }) as typeof f.client.list
+    const fb = await readOrderStatuses(f.client, new Date('2026-10-21T09:00:00Z'))
+    expect(fb[0]!.row.status).toBe('confirmed')
+  })
+
   it('строка контракта только для заказов ЛК; дата отгрузки 0001 — нет', () => {
     expect(orderStatusRow({ Ref_Key: G(77), НомерПоДаннымКлиента: 'чужой' }, '2026-10-21T00:00:00+03:00')).toBeNull()
     const r = orderStatusRow({ Ref_Key: G(77).toUpperCase(), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', ДатаОтгрузки: '0001-01-01T00:00:00' }, '2026-10-21T00:00:00+03:00')!
@@ -146,7 +184,7 @@ describe('заказ по OData: статусы', () => {
   it('readOrderStatuses: окно по дате и маркер в фильтре', async () => {
     const t = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОтгрузке', ДатаОтгрузки: '2026-10-25T00:00:00' }] })
     const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
-    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25|0' }])
+    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25|0|' }])
     expect(t.calls[0]!.url).toContain("Date ge datetime'2026-07-23T12:00:00' and startswith(НомерПоДаннымКлиента, 'ЛК-')")
   })
 })
