@@ -133,17 +133,24 @@ export interface OrderDocRow {
 }
 
 /**
- * Статус заказа ЛК по документу 1С. «Отгружен» и «доставлен» 1С знает по реализации и рейсу —
- * они ещё не опубликованы; пока «Закрыт» — это `shipped`, дальше статус ведёт рейс. Закрытый без
- * отгрузки (отказ) так не отличить — проверить на тестовой базе, как 1С закрывает отказы.
+ * Статус заказа ЛК. Порядок проверок:
+ * 1. пометка удаления — `cancelled`;
+ * 2. документ не проведён — `new`;
+ * 3. состояние заказа из регистра `СостоянияЗаказовКлиентов` (`ORDER_STATE_STATUS`), если оно
+ *    известно и знакомо;
+ * 4. иначе `Статус` документа: `КОбеспечению` — `confirmed`, `КОтгрузке` — `assembled`,
+ *    `Закрыт` — `shipped`.
+ * «Доставлен» отсюда не выводится — его ставит рейс. Закрытый без отгрузки (отказ) так не
+ * отличить — проверить на тестовой базе, как 1С закрывает отказы.
  */
 export function orderStatusOf(d: OrderDocRow, state?: string): OrderStatusT {
   if (d.DeletionMark) return 'cancelled'
   if (!d.Posted) return 'new'
   // Состояние из регистра точнее статуса документа: отгруженный заказ остаётся «К обеспечению»
   // (замер 2026-11-11, 00ЦБ-032500 — состояние «Ожидается оплата после отгрузки»).
-  const byState = ORDER_STATE_STATUS[(state ?? '').trim()]
-  if (byState) return byState
+  // Object.hasOwn: «constructor» и прочие ключи прототипа — не состояние.
+  const key = (state ?? '').trim()
+  if (Object.hasOwn(ORDER_STATE_STATUS, key)) return ORDER_STATE_STATUS[key]!
   switch ((d.Статус ?? '').trim()) {
     case 'КОбеспечению': return 'confirmed'
     case 'КОтгрузке': return 'assembled'
@@ -265,30 +272,38 @@ export async function readOrderStatuses(client: ODataClient, now: Date): Promise
     $select: 'Ref_Key,Number,DataVersion,DeletionMark,Posted,Статус,НомерПоДаннымКлиента,ДатаОтгрузки',
     $filter: `Date ge datetime'${since}' and startswith(НомерПоДаннымКлиента, '${ORDER_MARK}')`,
   })
-  // Состояния заказов — один раз на прогон; сбой — откат на `Статус` документа.
+  // Состояния заказов — один раз на прогон и только там, где они что-то меняют: проведённый,
+  // не помеченный на удаление и не закрытый документом (закрытый — `shipped` и без регистра).
+  // Сбой — откат на `Статус` документа.
   let states: Map<string, string> | undefined
   try {
-    states = await readOrderStates(client, docs.filter(d => !d.DeletionMark && d.Posted).map(d => d.Ref_Key.toLowerCase()))
+    states = await readOrderStates(client, docs.filter(d => !d.DeletionMark && d.Posted && (d.Статус ?? '').trim() !== 'Закрыт').map(d => d.Ref_Key.toLowerCase()))
   }
   catch (e) {
+    // Без текста ошибки: в нём может быть адрес и фильтр запроса.
     console.warn(`[orders:odata] order states unavailable, fallback to document status: ${(e as Error).name}`)
   }
-  // «Точно приедет»: проверяем только заказы «К выполнению»; сбой сверки не роняет статусы.
+  // «Точно приедет»: кандидаты — состояние «Готов к закрытию» из регистра или документ «К выполнению»
+  // (отгруженный заказ бывает «К обеспечению» по документу). Регистр не прочитался — сверку в этом
+  // прогоне пропускаем, второй раз его не читаем. Сбой сверки не роняет статусы.
   let confirmed = new Set<string>()
-  try {
-    confirmed = await readDeliveryConfirmed(client, docs.filter(d => !d.DeletionMark && d.Posted && ORDER_IN_WORK.has((d.Статус ?? '').trim())).map(d => d.Ref_Key.toLowerCase()), states)
-  }
-  catch (e) {
-    console.error(`[orders:odata] delivery confirmed: ${(e as Error).message.slice(0, 200)}`)
+  if (states) {
+    try {
+      const candidates = docs.filter(d => !d.DeletionMark && d.Posted && (STATE_READY.has(states?.get(d.Ref_Key.toLowerCase()) ?? '') || ORDER_IN_WORK.has((d.Статус ?? '').trim()))).map(d => d.Ref_Key.toLowerCase())
+      confirmed = await readDeliveryConfirmed(client, candidates, states)
+    }
+    catch (e) {
+      console.error(`[orders:odata] delivery confirmed: ${(e as Error).message.slice(0, 200)}`)
+    }
   }
   return docs.flatMap((d) => {
-    const state = states?.get(d.Ref_Key.toLowerCase()) ?? ''
-    const row = orderStatusRow(d, `2000-01-01T00:00:00${ONEC_TZ}`, state)
+    const row = orderStatusRow(d, `2000-01-01T00:00:00${ONEC_TZ}`, states?.get(d.Ref_Key.toLowerCase()))
     if (!row) return []
     row.deliveryConfirmed = confirmed.has(row.orderGuid)
     // Без DataVersion — пустая версия: такой заказ считается изменённым на каждом прогоне.
-    // Подтверждение доставки и состояние — в версии: меняются по другим документам и регистру, а не по заказу.
-    return [{ row, version: d.DataVersion ? `${d.DataVersion}|${row.status}|${row.shipmentDate ?? ''}|${row.deliveryConfirmed ? 1 : 0}|${state}` : '' }]
+    // Подтверждение доставки — в версии: меняется по другим документам, а не по заказу. Состояние
+    // в версию не входит: статус из него уже выведен, а смена внутри одного статуса не нужна.
+    return [{ row, version: d.DataVersion ? `${d.DataVersion}|${row.status}|${row.shipmentDate ?? ''}|${row.deliveryConfirmed ? 1 : 0}` : '' }]
   })
 }
 

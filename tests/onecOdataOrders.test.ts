@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ODataClient } from '../server/services/onecOdata'
 import { addressGuid } from '../server/services/onecOdataClients'
 import { createOdataOrder, orderBody, orderMarker, ORDER_STATE_STATUS, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
@@ -149,6 +149,8 @@ describe('заказ по OData: статусы', () => {
     // Незнакомое или пустое состояние — откат на статус документа.
     expect(orderStatusOf(doc, 'Неведомое')).toBe('confirmed')
     expect(orderStatusOf(doc, '')).toBe('confirmed')
+    // Ключи прототипа объекта — не состояние.
+    for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(orderStatusOf(doc, k), k).toBe('confirmed')
     expect(orderStatusOf({ ...doc, Статус: 'КОтгрузке' })).toBe('assembled')
     // Пометка удаления и непроведённый — главнее состояния.
     expect(orderStatusOf({ ...doc, DeletionMark: true }, 'Закрыт')).toBe('cancelled')
@@ -159,7 +161,7 @@ describe('заказ по OData: статусы', () => {
     const doc = { Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОбеспечению' }
     const t = onec({ existing: [doc], extra: { InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77).toUpperCase(), Состояние: 'ОжидаетсяОплатаПослеОтгрузки' }] } })
     const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
-    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'shipped' }), version: 'v1|shipped||0|ОжидаетсяОплатаПослеОтгрузки' }])
+    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'shipped' }), version: 'v1|shipped||0' }])
     // «К выполнению» — сверка доставки берёт уже прочитанное состояние.
     const w = onec({ existing: [{ ...doc, Статус: 'КОтгрузке' }], extra: { InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77), Состояние: 'ГотовКОтгрузке' }] } })
     await readOrderStatuses(w.client, new Date('2026-10-21T09:00:00Z'))
@@ -170,8 +172,35 @@ describe('заказ по OData: статусы', () => {
       if (set.includes('СостоянияЗаказов')) throw new Error('HTTP 500')
       return list(set, q)
     }) as typeof f.client.list
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const fb = await readOrderStatuses(f.client, new Date('2026-10-21T09:00:00Z'))
     expect(fb[0]!.row.status).toBe('confirmed')
+    // Предупреждение есть, и в нём нет текста ошибки (адрес, фильтр, номер заказа).
+    expect(warn).toHaveBeenCalledTimes(1)
+    const msg = String(warn.mock.calls[0]![0])
+    expect(msg).toContain('order states unavailable')
+    expect(msg).not.toContain('HTTP 500')
+    expect(msg).not.toContain('ЛК-55')
+    warn.mockRestore()
+  })
+
+  it('регистр не читается для закрытых, непроведённых и удалённых документов', async () => {
+    const base = { Number: 'ЗК', DataVersion: 'v', НомерПоДаннымКлиента: 'ЛК-1' }
+    const t = onec({ existing: [
+      { ...base, Ref_Key: G(1), Posted: true, Статус: 'Закрыт' },
+      { ...base, Ref_Key: G(2), Posted: false, Статус: 'КОбеспечению' },
+      { ...base, Ref_Key: G(3), Posted: true, DeletionMark: true, Статус: 'КОбеспечению' },
+    ] })
+    const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
+    expect(rows.map(r => r.row.status)).toEqual(['shipped', 'new', 'cancelled'])
+    expect(t.calls.filter(c => c.url.includes('СостоянияЗаказовКлиентов'))).toHaveLength(0)
+    // Открытый проведённый — читается, и только он.
+    const o = onec({ existing: [{ ...base, Ref_Key: G(4), Posted: true, Статус: 'КОбеспечению' }, { ...base, Ref_Key: G(1), Posted: true, Статус: 'Закрыт' }] })
+    await readOrderStatuses(o.client, new Date('2026-10-21T09:00:00Z'))
+    const reg = o.calls.filter(c => c.url.includes('СостоянияЗаказовКлиентов'))
+    expect(reg).toHaveLength(1)
+    expect(reg[0]!.url).toContain(G(4))
+    expect(reg[0]!.url).not.toContain(G(1))
   })
 
   it('строка контракта только для заказов ЛК; дата отгрузки 0001 — нет', () => {
@@ -184,7 +213,7 @@ describe('заказ по OData: статусы', () => {
   it('readOrderStatuses: окно по дате и маркер в фильтре', async () => {
     const t = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОтгрузке', ДатаОтгрузки: '2026-10-25T00:00:00' }] })
     const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
-    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25|0|' }])
+    expect(rows).toEqual([{ row: expect.objectContaining({ status: 'assembled', shipmentDate: '2026-10-25' }), version: 'v1|assembled|2026-10-25|0' }])
     expect(t.calls[0]!.url).toContain("Date ge datetime'2026-07-23T12:00:00' and startswith(НомерПоДаннымКлиента, 'ЛК-')")
   })
 })
@@ -238,7 +267,25 @@ describe('«точно приедет»: четыре статуса (решен
     const doc = { Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true }
     const yes = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОтгрузке' }], extra: extra() }).client, new Date('2026-10-21T09:00:00Z'))
     expect(yes[0]!.row.deliveryConfirmed).toBe(true)
-    const no = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОбеспечению' }], extra: extra() }).client, new Date('2026-10-21T09:00:00Z'))
+    // Документ «К обеспечению», но состояние «Готов к закрытию» — тоже кандидат.
+    const byState = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОбеспечению' }], extra: extra() }).client, new Date('2026-10-21T09:00:00Z'))
+    expect(byState[0]!.row.deliveryConfirmed).toBe(true)
+    const no = await readOrderStatuses(onec({ existing: [{ ...doc, Статус: 'КОбеспечению' }], extra: extra({ state: 'ОжидаетсяОплатаПослеОтгрузки' }) }).client, new Date('2026-10-21T09:00:00Z'))
     expect(no[0]!.row.deliveryConfirmed).toBe(false)
+  })
+  it('регистр не прочитался — сверку пропускаем, регистр второй раз не читаем', async () => {
+    const t = onec({ existing: [{ Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОтгрузке' }], extra: extra() })
+    const list = t.client.list.bind(t.client)
+    let reg = 0
+    t.client.list = (async (set: string, q: never) => {
+      if (set.includes('СостоянияЗаказов')) { reg++; throw new Error('HTTP 500') }
+      return list(set, q)
+    }) as typeof t.client.list
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
+    warn.mockRestore()
+    expect(reg).toBe(1)
+    expect(rows[0]!.row.deliveryConfirmed).toBe(false)
+    expect(t.calls.filter(c => c.url.includes('РасходныйОрдер'))).toHaveLength(0)
   })
 })
