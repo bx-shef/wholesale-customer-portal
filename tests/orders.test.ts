@@ -151,6 +151,9 @@ describe('заявка', () => {
     const q = await quoteCart([{ guid: g(2), qty: 1 }, { guid: g(3), qty: 1 }], deps.store, ok, deps.prices)
     expect(q.lines.map(l => l.problem)).toEqual([null, 'out_of_stock'])
     expect(q.ok).toBe(false)
+    // Недоступная строка в итог не входит (#153): итог — как у одной доступной.
+    const alone = await quoteCart([{ guid: g(2), qty: 1 }], deps.store, ok, deps.prices)
+    expect(q.total).toBe(alone.total)
   })
 
   it('ORDER_STOCK_MODE: stock — не больше наличия, over — больше можно, any — и то, чего нет', async () => {
@@ -361,6 +364,27 @@ describe('сделка в CRM', () => {
     const f = fake()
     expect(await createB24Orders(f.call).requestCallback({ companyId: 7, responsibleId: 3, contactLabel: 'Иван', now: new Date('2026-10-12T10:00:00Z') })).toBe(15)
     expect(f.calls[0]!.params).toMatchObject({ ownerTypeId: 4, ownerId: 7, responsibleId: 3, deadline: '2026-10-12T11:00:00.000Z' })
+  })
+})
+
+describe('«Мои заявки»: вкладки и страницы (#153)', () => {
+  it('вкладки делят по статусу, счётчики и страницы — только своей компании', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createOrderStore(db)
+    const add = (n: number, companyId: number) => store.begin({ requestId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, companyId, contactId: 1, clientGuid: 'c', contractGuid: 'k', addressGuid: 'a', addressText: 'Минск', slot: null, items: [], total: 0, currency: 'BYN', comment: '' }, 'h', `2026-10-${String(n).padStart(2, '0')}T00:00:00Z`)
+    for (let i = 1; i <= 25; i++) add(i, 1)
+    store.setStatus(add(26, 1).id, 'delivered', 'x')
+    store.setStatus(add(27, 1).id, 'cancelled', 'x')
+    store.setStatus(add(28, 2).id, 'delivered', 'x')
+    add(29, 2)
+    expect(store.tabCounts(1)).toEqual({ active: 25, done: 2 })
+    expect(store.tabCounts(2)).toEqual({ active: 1, done: 1 })
+    expect(store.listTab(1, 'active', 20, 0).length).toBe(20)
+    expect(store.listTab(1, 'active', 20, 20).length).toBe(5)
+    expect(store.listTab(1, 'done', 20, 0).map(r => r.status)).toEqual(['cancelled', 'delivered'])
+    expect(store.listTab(2, 'done', 20, 0).length).toBe(1)
+    expect(store.tabCounts(3)).toEqual({ active: 0, done: 0 })
   })
 })
 

@@ -4,7 +4,7 @@
  * Ключ хранения — по компании: на общем компьютере корзина одной компании не уезжает в другую.
  */
 import type { CartLineInput } from '~~/shared/cart'
-import { CART_LINES_MAX } from '~~/shared/cart'
+import { CART_LINES_MAX, mergeCartLines } from '~~/shared/cart'
 
 const KEY = 'wcp-cart'
 let listening = false
@@ -69,6 +69,14 @@ export function useCart() {
     persist()
   }
 
+  /** «Повторить заявку» (#153): позиции — к уже лежащим, количества складываются. Сколько добавлено. */
+  function addLines(extra: CartLineInput[]): number {
+    const r = mergeCartLines(lines.value, extra)
+    lines.value = r.lines
+    persist()
+    return r.added
+  }
+
   function clear() {
     lines.value = []
     persist()
@@ -88,5 +96,5 @@ export function useCart() {
   }
 
   const count = computed(() => lines.value.length)
-  return { lines, count, loaded, load, qtyOf, setQty, clear, forget }
+  return { lines, count, loaded, load, qtyOf, setQty, addLines, clear, forget }
 }

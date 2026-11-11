@@ -1,11 +1,17 @@
 import { nextDelivery } from '../../../shared/delivery'
 import { cityInText } from '../../utils/orders'
+import { ORDERS_PAGE_SIZE, pageOf, parseOrderTab } from '../../../shared/orderList'
 
-// «Мои заявки» — только компании из сессии, новые сверху. Рейс — из заданий на перевозку 1С.
+// «Мои заявки» — только компании из сессии, новые сверху, по вкладкам и страницам (#153). Рейс — из заданий на перевозку 1С.
 export default defineEventHandler(async (event) => {
   const ctx = await orderContext(event)
   const delivery = useDelivery()
-  const rows = useOrderStore().list(ctx.session.companyId, 20, Number(getQuery(event).offset))
+  const store = useOrderStore()
+  const q = getQuery(event)
+  const tab = parseOrderTab(q.tab)
+  const counts = store.tabCounts(ctx.session.companyId)
+  const { page, offset } = pageOf(q.page, counts[tab])
+  const rows = store.listTab(ctx.session.companyId, tab, ORDERS_PAGE_SIZE, offset)
   // «Точно приедет» (решение клиента 2026-10-27): доставка подтверждена в 1С по четырём статусам —
   // клиенту ближайший день по графику его города. График недоступен — подсветки нет, заявки показываем.
   let schedules: Awaited<ReturnType<typeof cachedSchedules>> | null = null
@@ -19,5 +25,5 @@ export default defineEventHandler(async (event) => {
     // Клиенту — дата и статус рейса, без машины и номера задания: это внутреннее у поставщика.
     return { ...o, trip: trip ? { plannedStart: trip.plannedStart, status: trip.status } : null, confirmedDate: slot?.date ?? null }
   })
-  return { items }
+  return { items, tab, page, pageSize: ORDERS_PAGE_SIZE, total: counts[tab], counts }
 })

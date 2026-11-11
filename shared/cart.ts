@@ -58,3 +58,24 @@ export function humanDateTime(iso: string): string {
 export function neutralizeBb(text: string): string {
   return text.replace(/\[/g, '［').replace(/\]/g, '］')
 }
+
+/**
+ * «Повторить заявку» (#153): позиции заявки — к уже лежащим в корзине, количества одного товара
+ * складываются. Новые строки — в конец, лимит строк корзины соблюдается. Возвращает и число добавленных позиций.
+ */
+export function mergeCartLines(current: CartLineInput[], extra: CartLineInput[]): { lines: CartLineInput[], added: number } {
+  const lines = current.map(l => ({ ...l }))
+  let added = 0
+  for (const e of extra) {
+    if (typeof e?.guid !== 'string' || !e.guid || !(Number(e.qty) > 0)) continue
+    const same = lines.find(l => l.guid === e.guid)
+    if (same) same.qty = roundQty(same.qty + Number(e.qty))
+    else if (lines.length < CART_LINES_MAX) lines.push({ guid: e.guid, qty: roundQty(Number(e.qty)) })
+    else continue
+    added++
+  }
+  return { lines, added }
+}
+
+/** Строку нельзя заказать вовсе: снят с продажи или нет в наличии — в итог не входит (#153). */
+export const isUnavailableProblem = (problem: string | null | undefined) => problem === 'not_found' || problem === 'out_of_stock'

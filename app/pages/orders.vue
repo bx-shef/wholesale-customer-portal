@@ -4,6 +4,7 @@ import DeliveryIcon from '@bitrix24/b24icons-vue/outline/DeliveryIcon'
 import { grossPrice, lineAmounts } from '~~/shared/vat'
 import { formatSlot } from '~~/shared/delivery'
 import { ORDER_STEPS, orderStepIndex } from '~/utils/format'
+import type { OrderTab } from '~~/shared/orderList'
 
 useHead({ title: 'Заявки' })
 
@@ -22,11 +23,29 @@ interface Order {
   confirmedDate: string | null
   /** Рейс из задания на перевозку 1С: формируется → к погрузке → отправлено → закрыто. */
   trip: { plannedStart: string, status: 'forming' | 'loading' | 'sent' | 'closed' } | null
-  items: { name: string, sku: string, qty: number, unit: string, price: number, vatRate: number }[]
+  items: { guid: string, name: string, sku: string, qty: number, unit: string, price: number, vatRate: number }[]
 }
+interface OrdersPage { items: Order[], tab: OrderTab, page: number, pageSize: number, total: number, counts: Record<OrderTab, number> }
 
 const headers = useRequestHeaders(['cookie'])
-const { data, error } = await useFetch<{ items: Order[] }>('/api/orders', { headers })
+// Вкладки «В работе» / «Выполненные» и страницы по 20 (#153): сервер отдаёт страницу и счётчики.
+const tab = ref<OrderTab>('active')
+const page = ref(1)
+watch(tab, () => { page.value = 1 })
+const { data, error } = await useFetch<OrdersPage>('/api/orders', { headers, query: { tab, page } })
+const tabs = computed(() => [
+  { label: `В работе (${data.value?.counts.active ?? 0})`, value: 'active' },
+  { label: `Выполненные (${data.value?.counts.done ?? 0})`, value: 'done' },
+])
+
+// «Повторить» (#153): позиции заявки — в корзину к уже лежащим; цены и наличие пересчитает корзина.
+const cart = useCart()
+const toast = useToast()
+async function repeat(o: Order) {
+  const added = cart.addLines(o.items.filter(i => i.guid).map(i => ({ guid: i.guid, qty: i.qty })))
+  toast.add({ title: `Добавлено ${added} ${plural(added, 'позиция', 'позиции', 'позиций')}`, color: 'air-primary-success' })
+  await navigateTo('/cart')
+}
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
 const TRIP_STATUS = { forming: 'рейс формируется', loading: 'готовится к погрузке', sent: 'машина в пути', closed: 'рейс завершён' } as const
@@ -40,7 +59,14 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
 <template>
   <AppPage id="orders" title="Мои заявки">
       <B24Container class="py-4 flex flex-col gap-3 max-w-2xl">
+        <B24Tabs v-model="tab" :items="tabs" :content="false" />
         <B24Alert v-if="error && error.statusCode !== 401" color="air-primary-alert" title="Не удалось загрузить заявки. Обновите страницу." />
+        <B24Empty
+          v-else-if="!data?.items.length && tab === 'done'"
+          :icon="DeliveryIcon"
+          title="Выполненных заявок пока нет"
+          description="Доставленные и отменённые заявки соберутся здесь."
+        />
         <B24Empty
           v-else-if="!data?.items.length"
           :icon="DeliveryIcon"
@@ -80,13 +106,15 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
               </template>
               · {{ o.address }}
             </p>
+            <div class="flex flex-wrap gap-2">
+            <B24Button color="air-secondary" size="sm" label="Повторить" :aria-label="`Повторить заявку №${o.id}`" @click="repeat(o)" />
             <B24Button
               color="air-tertiary"
               size="sm"
-              class="self-start"
               :label="open === o.id ? 'Скрыть состав' : 'Состав и статус'"
               @click="open = open === o.id ? null : o.id"
             />
+            </div>
             <template v-if="open === o.id">
               <ol v-if="o.status !== 'cancelled' && o.status !== 'pending'" class="flex flex-wrap gap-1 text-xs" aria-label="Статус доставки">
                 <li v-for="(s, i) in ORDER_STEPS" :key="s.key">
@@ -133,6 +161,13 @@ const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZo
             </template>
           </div>
         </B24Card>
+        <B24Pagination
+          v-if="data && data.total > data.pageSize"
+          v-model:page="page"
+          :total="data.total"
+          :items-per-page="data.pageSize"
+          class="self-center"
+        />
       </B24Container>
   </AppPage>
 </template>
