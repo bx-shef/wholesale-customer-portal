@@ -133,7 +133,7 @@ export function packFactor(r: PackRow): number {
 }
 
 /** Поля справочника упаковок, которые читаем (`$select`): остальные 1С не отдаёт. */
-export const PACK_FIELDS = ['Ref_Key', 'Owner_Key', 'Owner_Type', 'Description', 'DeletionMark', 'Коэффициент', 'Числитель', 'Знаменатель'] as const
+export const PACK_FIELDS = ['Ref_Key', 'Owner', 'Owner_Type', 'Description', 'DeletionMark', 'Числитель', 'Знаменатель'] as const
 
 /** Предел длины подписи упаковки: справка клиенту, а не описание. */
 export const PACK_LABEL_MAX = 60
