@@ -1,11 +1,12 @@
 import { nextDelivery } from '../../../shared/delivery'
 import { cityInText } from '../../utils/orders'
+import { ordersPage } from '../../../shared/orderList'
 
-// «Мои заявки» — только компании из сессии, новые сверху. Рейс — из заданий на перевозку 1С.
+// «Мои заявки» — только компании из сессии, новые сверху, по вкладкам и страницам (#153). Рейс — из заданий на перевозку 1С.
 export default defineEventHandler(async (event) => {
   const ctx = await orderContext(event)
   const delivery = useDelivery()
-  const rows = useOrderStore().list(ctx.session.companyId, 20, Number(getQuery(event).offset))
+  const { rows, ...pageInfo } = ordersPage(ctx.session, getQuery(event), useOrderStore())
   // «Точно приедет» (решение клиента 2026-10-27): доставка подтверждена в 1С по четырём статусам —
   // клиенту ближайший день по графику его города. График недоступен — подсветки нет, заявки показываем.
   let schedules: Awaited<ReturnType<typeof cachedSchedules>> | null = null
@@ -19,5 +20,5 @@ export default defineEventHandler(async (event) => {
     // Клиенту — дата и статус рейса, без машины и номера задания: это внутреннее у поставщика.
     return { ...o, trip: trip ? { plannedStart: trip.plannedStart, status: trip.status } : null, confirmedDate: slot?.date ?? null }
   })
-  return { items }
+  return { items, ...pageInfo }
 })

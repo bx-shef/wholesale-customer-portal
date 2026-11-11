@@ -1,7 +1,7 @@
 <!-- Корзина: количество с кратностью, итог по ценам договора, адрес, ближайший рейс, комментарий, «Отправить заявку». -->
 <script setup lang="ts">
 import CartIcon from '@bitrix24/b24icons-vue/outline/ProductIcon'
-import { COMMENT_MAX, maxOrderQty } from '~~/shared/cart'
+import { COMMENT_MAX, isUnavailableProblem, maxOrderQty } from '~~/shared/cart'
 import type { ClientDataResponse } from '~~/shared/clientData'
 import { formatCutoff, formatSlot } from '~~/shared/delivery'
 
@@ -13,7 +13,7 @@ const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', valu
 useHead({ title: 'Корзина' })
 const stockMode = useStockMode()
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, grossPrice: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, grossPrice: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | 'below_min' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -106,11 +106,18 @@ const sent = ref<{ orderId: number, deliveryFrom: string | null, deliveryTo: str
 const requestId = ref('')
 
 const problemText: Record<NonNullable<QuoteLine['problem']>, string> = {
-  not_found: 'Товара больше нет в каталоге — удалите его из корзины.',
+  not_found: 'Товар больше не продаётся',
   no_price: 'Нет цены по вашему договору — уточните у менеджера.',
   bad_qty: 'Количество должно быть кратно упаковке.',
-  out_of_stock: 'Нет в наличии — удалите товар из корзины.',
+  out_of_stock: 'Нет в наличии',
   over_stock: 'Больше, чем есть в наличии.',
+  below_min: 'Остаток меньше минимальной партии',
+}
+
+// Недоступные строки (#153): помечены, в итог не входят; заявку отправим, когда их уберут из корзины.
+const unavailable = computed(() => (quote.value?.lines ?? []).filter(l => isUnavailableProblem(l.problem)))
+function removeUnavailable() {
+  for (const l of unavailable.value) cart.setQty(l.guid, 0)
 }
 
 async function submit() {
@@ -191,14 +198,15 @@ async function submit() {
               <p v-if="l.sku" class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
                 {{ l.sku }} · {{ l.grossPrice !== null && l.currency ? `${formatMoney(l.grossPrice, l.currency)} / ${l.unit} с НДС` : 'без цены' }}
               </p>
-              <div v-if="l.problem !== 'not_found'" class="flex flex-wrap items-center justify-between gap-2">
+              <div v-if="l.problem !== 'not_found'" :class="{ 'opacity-60': isUnavailableProblem(l.problem) }" class="flex flex-wrap items-center justify-between gap-2">
                 <QtyStepper :qty="l.qty" :pack-qty="l.packQty" :min-qty="l.minQty" :unit="l.unit" :max="maxOrderQty(l.available, l.packQty, l.minQty, stockMode)" @update:qty="v => cart.setQty(l.guid, v)" />
                 <span class="font-semibold">{{ l.currency ? formatMoney(l.total, l.currency) : '—' }}</span>
               </div>
               <p v-if="stockMode !== 'stock' && l.problem !== 'not_found' && l.available < l.qty" class="text-sm">
                 На складах сейчас {{ formatQty(Math.max(l.available, 0), l.unit) }} — остальное менеджер согласует отдельно.
               </p>
-              <B24Alert v-if="l.problem" color="air-primary-warning" :title="problemText[l.problem]">
+              <B24Badge v-if="isUnavailableProblem(l.problem)" color="air-secondary-alert" :label="problemText[l.problem!]" class="self-start" />
+              <B24Alert v-else-if="l.problem" color="air-primary-warning" :title="problemText[l.problem]">
                 <template v-if="(l.problem === 'bad_qty' || l.problem === 'over_stock') && l.suggestedQty > 0" #actions>
                   <B24Button size="sm" color="air-secondary" :label="`Взять ${formatQty(l.suggestedQty, l.unit)}`" @click="cart.setQty(l.guid, l.suggestedQty)" />
                 </template>
@@ -254,6 +262,17 @@ async function submit() {
           </B24Card>
         </template>
         <div v-if="cart.lines.value.length" class="fixed inset-x-0 bottom-0 z-10 border-t border-(--ui-color-divider-default) bg-(--ui-color-bg-content-primary) p-3 md:static md:border-0 md:bg-transparent md:p-0">
+          <B24Alert
+            v-if="unavailable.length"
+            color="air-primary-warning"
+            :title="`${unavailable.length} ${plural(unavailable.length, 'позиция недоступна', 'позиции недоступны', 'позиций недоступны')} — в итог не входят`"
+            description="Уберите их, и заявку можно отправлять."
+            class="mb-2"
+          >
+            <template #actions>
+              <B24Button size="sm" color="air-secondary" label="Убрать недоступные" @click="removeUnavailable" />
+            </template>
+          </B24Alert>
           <BuildLoader v-if="sending" compact title="Передаём заявку менеджеру…" />
           <B24Alert v-if="sendError" color="air-primary-alert" :title="sendError" class="mb-2" />
           <div class="flex items-center justify-between gap-3">

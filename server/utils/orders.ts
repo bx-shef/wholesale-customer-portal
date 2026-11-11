@@ -15,16 +15,17 @@
 import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceT } from '../../shared/onec/schemas'
-import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isValidQty, maxOrderQty, neutralizeBb, normalizeQty, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
+import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isUnavailableProblem, isValidQty, maxOrderQty, neutralizeBb, normalizeQty, QTY_MAX, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
 import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSchedule } from '../../shared/delivery'
 import { grossPrice, lineAmounts, sumMoney } from '../../shared/vat'
+import { DONE_STATUSES, type OrderTab } from '../../shared/orderList'
 import type { CatalogStore } from './catalog'
 import type { ClientPricing, PriceSource } from './catalogView'
 import { GUID_RE } from './catalogView'
 import { chooseContract, type ClientStore } from './clients'
 import type { B24Orders } from '../services/b24Orders'
 
-export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock'
+export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | 'below_min'
 
 export interface QuoteLine {
   guid: string
@@ -56,7 +57,6 @@ export interface Quote {
   ok: boolean
 }
 
-const QTY_MAX = 1e6
 
 /** Разбор корзины из тела запроса: мусор отбрасывается, повторы одного товара складываются. */
 export function parseCartLines(body: unknown): CartLineInput[] {
@@ -99,12 +99,15 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
       price: p?.price ?? null, grossPrice: p ? grossPrice(p.price, p.vatRate) : null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
       total: p ? lineAmounts(p.price, input.qty, p.vatRate).total : 0,
       // Сверх остатка — по ORDER_STOCK_MODE (решение владельца 2026-10-27): по умолчанию не больше наличия.
-      problem: !canOrder(item.available, mode) || (mode === 'stock' && max === 0) ? 'out_of_stock' : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
+      // Остаток есть, но меньше минимальной партии или упаковки — это не «нет в наличии»: строка не «недоступна».
+      problem: !canOrder(item.available, mode) ? 'out_of_stock' : mode === 'stock' && max === 0 ? (item.available > 0 ? 'below_min' : 'out_of_stock') : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
     }
   })
-  const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))
+  // Недоступные строки (снят с продажи, нет в наличии) не входят ни в итог, ни в выбор валюты (#153).
+  const available = out.filter(l => !isUnavailableProblem(l.problem))
+  const currencies = new Set(available.filter(l => l.currency).map(l => l.currency!))
   // Итог с НДС — сумма уже округлённых строк: так же считает 1С (НДС с суммы строки).
-  const total = sumMoney(out.map(l => l.total))
+  const total = sumMoney(available.map(l => l.total))
   return {
     lines: out,
     total,
@@ -223,6 +226,16 @@ export function createOrderStore(db: DatabaseSync) {
   const applyOnec = db.prepare('UPDATE order_request SET status = ?, shipment_date = ?, onec_number = ?, updated_at = ? WHERE id = ?')
   const setTrip = db.prepare('UPDATE order_request SET trip_guid = ? WHERE id = ? AND trip_guid IS NOT ?')
   const setConfirmed = db.prepare('UPDATE order_request SET delivery_confirmed = ? WHERE id = ?')
+  const DONE = DONE_STATUSES.map(s => `'${s}'`).join(', ')
+  const countTabs = db.prepare(`SELECT SUM(CASE WHEN status IN (${DONE}) THEN 0 ELSE 1 END) AS active,
+      SUM(CASE WHEN status IN (${DONE}) THEN 1 ELSE 0 END) AS done FROM order_request WHERE company_id = ?`)
+  const listCols = `SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
+      address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, trip_guid AS tripGuid, delivery_confirmed AS deliveryConfirmed, items
+    FROM order_request WHERE company_id = ?`
+  const listTab = {
+    active: db.prepare(`${listCols} AND status NOT IN (${DONE}) ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
+    done: db.prepare(`${listCols} AND status IN (${DONE}) ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
+  }
   const list = db.prepare(`SELECT id, created_at AS createdAt, status, delivery_from AS deliveryFrom, delivery_to AS deliveryTo,
       address_text AS address, total, currency, onec_number AS onecNumber, shipment_date AS shipmentDate, trip_guid AS tripGuid, delivery_confirmed AS deliveryConfirmed, items
     FROM order_request WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
@@ -299,6 +312,18 @@ export function createOrderStore(db: DatabaseSync) {
       const lim = Math.min(Math.max(Math.trunc(limit) || 20, 1), 50)
       const off = Math.min(Math.max(Math.trunc(offset) || 0, 0), 100_000)
       return (list.all(companyId, lim, off) as unknown as (Omit<OrderListRow, 'items'> & { items: string })[])
+        .map(r => ({ ...r, items: JSON.parse(r.items) as OrderItem[] }))
+    },
+    /** Счётчики вкладок «В работе» / «Выполненные» — только по компании (#153). */
+    tabCounts(companyId: number): Record<OrderTab, number> {
+      const r = countTabs.get(companyId) as { active: number | null, done: number | null }
+      return { active: Number(r.active ?? 0), done: Number(r.done ?? 0) }
+    },
+    /** Страница вкладки — только по компании, новые сверху. */
+    listTab(companyId: number, tab: OrderTab, limit: number, offset: number): OrderListRow[] {
+      const lim = Math.min(Math.max(Math.trunc(limit) || 20, 1), 50)
+      const off = Math.min(Math.max(Math.trunc(offset) || 0, 0), 1_000_000)
+      return (listTab[tab].all(companyId, lim, off) as unknown as (Omit<OrderListRow, 'items'> & { items: string })[])
         .map(r => ({ ...r, items: JSON.parse(r.items) as OrderItem[] }))
     },
   }

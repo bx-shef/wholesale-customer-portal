@@ -6,6 +6,8 @@ export interface CartLineInput { guid: string, qty: number }
 
 export const CART_LINES_MAX = 200
 export const COMMENT_MAX = 2000
+/** Наибольшее количество одной строки — то же, что принимает сервер. */
+export const QTY_MAX = 1e6
 
 /** Количество кратно упаковке и не меньше минимума: ближайшее допустимое не меньше запрошенного. */
 export function normalizeQty(qty: number, packQty: number, minQty: number): number {
@@ -58,3 +60,27 @@ export function humanDateTime(iso: string): string {
 export function neutralizeBb(text: string): string {
   return text.replace(/\[/g, '［').replace(/\]/g, '］')
 }
+
+/**
+ * «Повторить заявку» (#153): позиции заявки — к уже лежащим в корзине, количества одного товара
+ * складываются. Новые строки — в конец, лимит строк корзины соблюдается. Возвращает и число добавленных позиций.
+ */
+export function mergeCartLines(current: CartLineInput[], extra: CartLineInput[]): { lines: CartLineInput[], added: number, dropped: number } {
+  // Копии строк: исходную корзину не трогаем. GUID — в нижнем регистре, как в каталоге и на сервере.
+  const lines = current.map(l => ({ ...l, guid: String(l.guid).toLowerCase() }))
+  let added = 0
+  let dropped = 0
+  for (const e of extra) {
+    if (typeof e?.guid !== 'string' || !e.guid || !(Number(e.qty) > 0)) continue
+    const guid = e.guid.toLowerCase()
+    const same = lines.find(l => l.guid === guid)
+    if (same) same.qty = Math.min(roundQty(same.qty + Number(e.qty)), QTY_MAX)
+    else if (lines.length < CART_LINES_MAX) lines.push({ guid, qty: Math.min(roundQty(Number(e.qty)), QTY_MAX) })
+    else { dropped++; continue }
+    added++
+  }
+  return { lines, added, dropped }
+}
+
+/** Строку нельзя заказать вовсе: снят с продажи или нет в наличии — в итог не входит (#153). */
+export const isUnavailableProblem = (problem: string | null | undefined) => problem === 'not_found' || problem === 'out_of_stock'
