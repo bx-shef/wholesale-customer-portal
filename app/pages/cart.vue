@@ -211,6 +211,10 @@ async function submit() {
               <B24FormField v-if="contractItems.length > 1" label="Соглашение" description="Цены и заявка — по выбранному соглашению.">
                 <B24Select v-model="contractGuid" :items="contractItems" class="w-full min-w-0 max-w-full" :b24ui="WRAP_SELECT" />
               </B24FormField>
+              <!-- Одно соглашение — выбирать нечего, но клиент видит, по какому считаются цены. -->
+              <p v-else-if="contractItems.length === 1" class="text-sm">
+                <span class="text-(--ui-color-design-plain-na-content-secondary)">Соглашение:</span> {{ contractItems[0]!.label }}
+              </p>
               <B24Alert v-if="contractError" color="air-primary-alert" :title="contractError" />
               <B24FormField label="Адрес доставки" description="Выберите адрес или наберите новый и нажмите на него в списке.">
                 <B24SelectMenu
