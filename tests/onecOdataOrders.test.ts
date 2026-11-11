@@ -142,7 +142,7 @@ describe('заказ по OData: статусы', () => {
       ОжидаетсяСогласование: 'new', НеСогласован: 'new',
       ОжидаетсяПредоплатаДоОбеспечения: 'confirmed', ОжидаетсяОбеспечение: 'confirmed', ОжидаетсяПредоплатаДоОтгрузки: 'confirmed',
       ГотовКОтгрузке: 'assembled',
-      ВПроцессеОтгрузки: 'shipped', ОжидаетсяОплатаПослеОтгрузки: 'shipped', ГотовКЗакрытию: 'shipped', Закрыт: 'shipped',
+      ВПроцессеОтгрузки: 'assembled', ОжидаетсяОплатаПослеОтгрузки: 'shipped', ГотовКЗакрытию: 'shipped', Закрыт: 'shipped',
     }
     for (const [state, status] of Object.entries(want)) expect(orderStatusOf(doc, state), state).toBe(status)
     expect(Object.keys(ORDER_STATE_STATUS).sort()).toEqual(Object.keys(want).sort())

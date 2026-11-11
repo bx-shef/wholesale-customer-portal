@@ -171,7 +171,7 @@ export const ORDER_STATE_STATUS: Readonly<Record<string, OrderStatusT>> = {
   ОжидаетсяОбеспечение: 'confirmed',
   ОжидаетсяПредоплатаДоОтгрузки: 'confirmed',
   ГотовКОтгрузке: 'assembled',
-  ВПроцессеОтгрузки: 'shipped',
+  ВПроцессеОтгрузки: 'assembled',
   ОжидаетсяОплатаПослеОтгрузки: 'shipped',
   ГотовКЗакрытию: 'shipped',
   Закрыт: 'shipped',
