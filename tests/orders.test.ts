@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createCatalogStore } from '../server/utils/catalog'
 import { createClientStore } from '../server/utils/clients'
+import { ordersPage } from '../shared/orderList'
 import { cityInText, cleanNewAddress, createOrderStore, parseCartLines, quoteCart, SENDING_STALE_MS, submitOrder, type SubmitDeps } from '../server/utils/orders'
 import { createB24Orders, DEAL_ORIGINATOR } from '../server/services/b24Orders'
 import { createRateLimiter } from '../server/utils/rateLimit'
 import { formatSlot, nextDelivery, parseDates, parseTime, parseWeekdays, type TripSchedule } from '../shared/delivery'
-import { addressLine, isValidQty, neutralizeBb, normalizeQty, roundQty } from '../shared/cart'
+import { isUnavailableProblem, addressLine, isValidQty, neutralizeBb, normalizeQty, roundQty } from '../shared/cart'
 import type { ClientT, ItemT, PriceT } from '../shared/onec/schemas'
 
 const at = '2026-10-01T00:00:00Z'
@@ -154,6 +155,23 @@ describe('заявка', () => {
     // Недоступная строка в итог не входит (#153): итог — как у одной доступной.
     const alone = await quoteCart([{ guid: g(2), qty: 1 }], deps.store, ok, deps.prices)
     expect(q.total).toBe(alone.total)
+  })
+
+  it('остаток меньше минимальной партии — не «нет в наличии» и не недоступна (#153)', async () => {
+    deps.store.saveStock([{ itemGuid: g(1), warehouseGuid: g(500), warehouseName: 'Склад', available: 3, changedAt: at }])
+    const q = await quoteCart([{ guid: g(1), qty: 5 }], deps.store, ok, deps.prices)
+    expect(q.lines[0]!.problem).toBe('below_min')
+    expect(isUnavailableProblem(q.lines[0]!.problem)).toBe(false)
+    expect(q.ok).toBe(false)
+    const none = await quoteCart([{ guid: g(3), qty: 1 }], deps.store, ok, deps.prices)
+    expect(none.lines[0]!.problem).toBe('out_of_stock')
+  })
+
+  it('валюта — только по доступным строкам (#153)', async () => {
+    deps.prices = vi.fn(async (_c: string, items: string[]) => new Map(items.map(i => [i, { ...priceOf(i, 10), currency: i === g(3) ? 'RUB' : 'BYN' }])))
+    const q = await quoteCart([{ guid: g(2), qty: 1 }, { guid: g(3), qty: 1 }], deps.store, ok, deps.prices)
+    expect(q.lines.map(l => l.problem)).toEqual([null, 'out_of_stock'])
+    expect(q.currency).toBe('BYN')
   })
 
   it('ORDER_STOCK_MODE: stock — не больше наличия, over — больше можно, any — и то, чего нет', async () => {
@@ -385,6 +403,25 @@ describe('«Мои заявки»: вкладки и страницы (#153)', (
     expect(store.listTab(1, 'done', 20, 0).map(r => r.status)).toEqual(['cancelled', 'delivered'])
     expect(store.listTab(2, 'done', 20, 0).length).toBe(1)
     expect(store.tabCounts(3)).toEqual({ active: 0, done: 0 })
+    // «В работе» — новые сверху: 25-я заявка первой, 6-я последней на первой странице.
+    const first = store.listTab(1, 'active', 20, 0).map(r => r.createdAt)
+    expect(first[0]).toBe('2026-10-25T00:00:00Z')
+    expect(first[19]).toBe('2026-10-06T00:00:00Z')
+    expect([...first].sort().reverse()).toEqual(first)
+  })
+
+  it('компания — только из сессии, вкладка и страница — в хранилище', () => {
+    const calls: unknown[][] = []
+    const store = {
+      tabCounts: (c: number) => { calls.push(['counts', c]); return { active: 45, done: 3 } },
+      listTab: (c: number, t: string, l: number, o: number) => { calls.push(['list', c, t, l, o]); return ['row'] },
+    }
+    const r = ordersPage({ companyId: 7 }, { tab: 'active', page: '3', companyId: 99 } as never, store)
+    expect(calls).toEqual([['counts', 7], ['list', 7, 'active', 20, 40]])
+    expect(r).toEqual({ rows: ['row'], tab: 'active', page: 3, pageSize: 20, total: 45, counts: { active: 45, done: 3 } })
+    calls.length = 0
+    expect(ordersPage({ companyId: 7 }, { tab: 'done', page: '5' }, store)).toMatchObject({ tab: 'done', page: 1, total: 3 })
+    expect(calls).toEqual([['counts', 7], ['list', 7, 'done', 20, 0]])
   })
 })
 

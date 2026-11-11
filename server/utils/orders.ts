@@ -15,7 +15,7 @@
 import { createHash } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { PriceT } from '../../shared/onec/schemas'
-import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isUnavailableProblem, isValidQty, maxOrderQty, neutralizeBb, normalizeQty, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
+import { addressLine, canOrder, CART_LINES_MAX, COMMENT_MAX, isUnavailableProblem, isValidQty, maxOrderQty, neutralizeBb, normalizeQty, QTY_MAX, roundQty, type CartLineInput, type StockMode } from '../../shared/cart'
 import { formatCutoff, formatSlot, nextDelivery, type DeliverySlot, type TripSchedule } from '../../shared/delivery'
 import { grossPrice, lineAmounts, sumMoney } from '../../shared/vat'
 import { DONE_STATUSES, type OrderTab } from '../../shared/orderList'
@@ -25,7 +25,7 @@ import { GUID_RE } from './catalogView'
 import { chooseContract, type ClientStore } from './clients'
 import type { B24Orders } from '../services/b24Orders'
 
-export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock'
+export type LineProblem = 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | 'below_min'
 
 export interface QuoteLine {
   guid: string
@@ -57,7 +57,6 @@ export interface Quote {
   ok: boolean
 }
 
-const QTY_MAX = 1e6
 
 /** Разбор корзины из тела запроса: мусор отбрасывается, повторы одного товара складываются. */
 export function parseCartLines(body: unknown): CartLineInput[] {
@@ -100,13 +99,15 @@ export async function quoteCart(lines: CartLineInput[], store: CatalogStore, pri
       price: p?.price ?? null, grossPrice: p ? grossPrice(p.price, p.vatRate) : null, vatRate: p?.vatRate ?? 0, currency: p?.currency ?? null,
       total: p ? lineAmounts(p.price, input.qty, p.vatRate).total : 0,
       // Сверх остатка — по ORDER_STOCK_MODE (решение владельца 2026-10-27): по умолчанию не больше наличия.
-      problem: !canOrder(item.available, mode) || (mode === 'stock' && max === 0) ? 'out_of_stock' : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
+      // Остаток есть, но меньше минимальной партии или упаковки — это не «нет в наличии»: строка не «недоступна».
+      problem: !canOrder(item.available, mode) ? 'out_of_stock' : mode === 'stock' && max === 0 ? (item.available > 0 ? 'below_min' : 'out_of_stock') : input.qty > max ? 'over_stock' : !valid ? 'bad_qty' : p ? null : 'no_price',
     }
   })
-  const currencies = new Set(out.filter(l => l.currency).map(l => l.currency!))
+  // Недоступные строки (снят с продажи, нет в наличии) не входят ни в итог, ни в выбор валюты (#153).
+  const available = out.filter(l => !isUnavailableProblem(l.problem))
+  const currencies = new Set(available.filter(l => l.currency).map(l => l.currency!))
   // Итог с НДС — сумма уже округлённых строк: так же считает 1С (НДС с суммы строки).
-  // Недоступные строки (снят с продажи, нет в наличии) в итог не входят (#153).
-  const total = sumMoney(out.filter(l => !isUnavailableProblem(l.problem)).map(l => l.total))
+  const total = sumMoney(available.map(l => l.total))
   return {
     lines: out,
     total,

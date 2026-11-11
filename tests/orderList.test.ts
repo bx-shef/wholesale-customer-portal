@@ -29,7 +29,19 @@ describe('«Повторить заявку»: слияние с корзино�
     const cur = [{ guid: 'a', qty: 1 }]
     const r = mergeCartLines(cur, [{ guid: '', qty: 1 }, { guid: 'c', qty: 0 }])
     expect(cur).toEqual([{ guid: 'a', qty: 1 }])
-    expect(r).toEqual({ lines: [{ guid: 'a', qty: 1 }], added: 0 })
+    expect(r).toEqual({ lines: [{ guid: 'a', qty: 1 }], added: 0, dropped: 0 })
+  })
+  it('та же позиция: исходный массив не меняется, GUID без учёта регистра', () => {
+    const cur = [{ guid: 'aa', qty: 1 }]
+    const r = mergeCartLines(cur, [{ guid: 'AA', qty: 2 }])
+    expect(cur).toEqual([{ guid: 'aa', qty: 1 }])
+    expect(r.lines).toEqual([{ guid: 'aa', qty: 3 }])
+    expect(mergeCartLines([], [{ guid: 'BB', qty: 1 }]).lines).toEqual([{ guid: 'bb', qty: 1 }])
+  })
+  it('0.1 + 0.2 = 0.3, сумма не больше QTY_MAX', () => {
+    expect(mergeCartLines([{ guid: 'a', qty: 0.1 }], [{ guid: 'a', qty: 0.2 }]).lines[0]!.qty).toBe(0.3)
+    expect(mergeCartLines([{ guid: 'a', qty: 999_999 }], [{ guid: 'a', qty: 5 }]).lines[0]!.qty).toBe(1e6)
+    expect(mergeCartLines([], [{ guid: 'a', qty: 2e6 }]).lines[0]!.qty).toBe(1e6)
   })
   it('лимит строк корзины соблюдается', () => {
     const full = Array.from({ length: 200 }, (_, i) => ({ guid: `g${i}`, qty: 1 }))
@@ -37,11 +49,13 @@ describe('«Повторить заявку»: слияние с корзино�
     expect(r.lines.length).toBe(200)
     expect(r.lines[0]!.qty).toBe(2)
     expect(r.added).toBe(1)
+    expect(r.dropped).toBe(1)
   })
   it('недоступные — снятые с продажи и без остатка', () => {
     expect(isUnavailableProblem('not_found')).toBe(true)
     expect(isUnavailableProblem('out_of_stock')).toBe(true)
     expect(isUnavailableProblem('over_stock')).toBe(false)
+    expect(isUnavailableProblem('below_min')).toBe(false)
     expect(isUnavailableProblem(null)).toBe(false)
   })
 })

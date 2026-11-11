@@ -13,7 +13,7 @@ const WRAP_SELECT = { base: 'h-auto min-h-9 py-1.5 pe-9 whitespace-normal', valu
 useHead({ title: 'Корзина' })
 const stockMode = useStockMode()
 
-interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, grossPrice: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | null }
+interface QuoteLine { guid: string, sku: string, name: string, unit: string, packQty: number, minQty: number, available: number, qty: number, suggestedQty: number, price: number | null, grossPrice: number | null, currency: string | null, total: number, problem: 'not_found' | 'no_price' | 'bad_qty' | 'out_of_stock' | 'over_stock' | 'below_min' | null }
 interface Quote { lines: QuoteLine[], total: number, currency: string | null, priceStatus: 'ok' | 'no-contract' | 'unavailable', ok: boolean }
 interface Address { guid: string, label: string, city: string, slot: { arrivalFrom: string, arrivalTo: string, cutoffAt: string } | null, slotStatus: 'ok' | 'unavailable' }
 
@@ -111,6 +111,7 @@ const problemText: Record<NonNullable<QuoteLine['problem']>, string> = {
   bad_qty: 'Количество должно быть кратно упаковке.',
   out_of_stock: 'Нет в наличии',
   over_stock: 'Больше, чем есть в наличии.',
+  below_min: 'Остаток меньше минимальной партии',
 }
 
 // Недоступные строки (#153): помечены, в итог не входят; заявку отправим, когда их уберут из корзины.

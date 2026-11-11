@@ -69,12 +69,12 @@ export function useCart() {
     persist()
   }
 
-  /** «Повторить заявку» (#153): позиции — к уже лежащим, количества складываются. Сколько добавлено. */
-  function addLines(extra: CartLineInput[]): number {
+  /** «Повторить заявку» (#153): позиции — к уже лежащим, количества складываются. Сколько добавлено и сколько отброшено лимитом строк. */
+  function addLines(extra: CartLineInput[]): { added: number, dropped: number } {
     const r = mergeCartLines(lines.value, extra)
     lines.value = r.lines
     persist()
-    return r.added
+    return { added: r.added, dropped: r.dropped }
   }
 
   function clear() {

@@ -5,6 +5,7 @@ import { grossPrice, lineAmounts } from '~~/shared/vat'
 import { formatSlot } from '~~/shared/delivery'
 import { ORDER_STEPS, orderStepIndex } from '~/utils/format'
 import type { OrderTab } from '~~/shared/orderList'
+import { CART_LINES_MAX } from '~~/shared/cart'
 
 useHead({ title: 'Заявки' })
 
@@ -31,8 +32,12 @@ const headers = useRequestHeaders(['cookie'])
 // Вкладки «В работе» / «Выполненные» и страницы по 20 (#153): сервер отдаёт страницу и счётчики.
 const tab = ref<OrderTab>('active')
 const page = ref(1)
-watch(tab, () => { page.value = 1 })
 const { data, error } = await useFetch<OrdersPage>('/api/orders', { headers, query: { tab, page } })
+// Сервер мог поправить номер страницы (дальше последней) — показываем ту, что пришла.
+watch(() => data.value?.page, (p) => { if (p && p !== page.value) page.value = p })
+// Смена вкладки — с первой страницы; смена вкладки или страницы закрывает раскрытую заявку.
+watch(tab, () => { page.value = 1; open.value = null })
+watch(page, () => { open.value = null })
 const tabs = computed(() => [
   { label: `В работе (${data.value?.counts.active ?? 0})`, value: 'active' },
   { label: `Выполненные (${data.value?.counts.done ?? 0})`, value: 'done' },
@@ -42,8 +47,13 @@ const tabs = computed(() => [
 const cart = useCart()
 const toast = useToast()
 async function repeat(o: Order) {
-  const added = cart.addLines(o.items.filter(i => i.guid).map(i => ({ guid: i.guid, qty: i.qty })))
-  toast.add({ title: `Добавлено ${added} ${plural(added, 'позиция', 'позиции', 'позиций')}`, color: 'air-primary-success' })
+  const { added, dropped } = cart.addLines(o.items.filter(i => i.guid).map(i => ({ guid: i.guid, qty: i.qty })))
+  const tail = dropped ? `; ${dropped} не поместились — в корзине не больше ${CART_LINES_MAX} строк` : ''
+  if (added === 0) {
+    toast.add({ title: `Позиции этой заявки недоступны для повтора${tail}`, color: 'air-primary-warning' })
+    return
+  }
+  toast.add({ title: `Добавлено ${added} ${plural(added, 'позиция', 'позиции', 'позиций')}${tail}`, color: dropped ? 'air-primary-warning' : 'air-primary-success' })
   await navigateTo('/cart')
 }
 if (error.value?.statusCode === 401) await navigateTo('/login')
