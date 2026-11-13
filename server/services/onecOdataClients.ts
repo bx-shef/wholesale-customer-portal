@@ -36,8 +36,10 @@ export interface AgreementRow {
   ВидЦен_Key?: string
   Валюта_Key?: string
   Договор_Key?: string
-  /** Ссылка на типовое соглашение: у индивидуального пустая. Нет в метаданных — поля нет вовсе. */
-  ТиповоеСоглашение_Key?: string
+  /** Само соглашение типовое (замер публикации 2026-11-13). */
+  Типовое?: boolean
+  /** Поле «Типовое соглашение» — ссылка на типовое: у индивидуального пустая. */
+  Соглашение_Key?: string
 }
 
 export interface ContractRow { Ref_Key: string, Номер?: string, Дата?: string, ДопустимаяСуммаЗадолженности?: number }
@@ -236,15 +238,17 @@ export async function listAll<T>(client: ODataClient, set: string, query: Record
 const AGREEMENT_FIELDS = 'Ref_Key,Description,DeletionMark,Партнер_Key,Статус,Номер,Дата,ДатаНачалаДействия,ДатаОкончанияДействия,ВидЦен_Key,Валюта_Key,Договор_Key'
 let typicalFieldWarned = false
 
-/** Поле `ТиповоеСоглашение_Key` не прочиталось в последнем чтении — для «Состояния системы». */
+/** Поля `Типовое`/`Соглашение_Key` не прочитались в последнем чтении — для «Состояния системы». */
 export const typicalAgreementFieldMissing = () => typicalFieldWarned
 
 /**
- * Клиенту — только индивидуальные соглашения (замечание клиента 2026-11-10): у них пустой
- * `ТиповоеСоглашение_Key`. Поля нет в ответе (нет в метаданных) — не фильтруем, как раньше.
+ * Клиенту — только индивидуальные соглашения (замечание клиента 2026-11-10): не `Типовое` и пустое
+ * поле «Типовое соглашение» (`Соглашение_Key`; имена — замер публикации 2026-11-13). Полей нет в
+ * ответе — не фильтруем, как раньше.
  */
 export function isIndividualAgreement(a: AgreementRow): boolean {
-  return !('ТиповоеСоглашение_Key' in a) || !ref(a.ТиповоеСоглашение_Key)
+  if (!('Типовое' in a) && !('Соглашение_Key' in a)) return true
+  return a.Типовое !== true && !ref(a.Соглашение_Key)
 }
 
 /**
@@ -254,14 +258,14 @@ export function isIndividualAgreement(a: AgreementRow): boolean {
  */
 export async function readAgreements(read: (fields: string) => Promise<AgreementRow[]>): Promise<AgreementRow[]> {
   try {
-    const rows = await read(`${AGREEMENT_FIELDS},ТиповоеСоглашение_Key`)
+    const rows = await read(`${AGREEMENT_FIELDS},Типовое,Соглашение_Key`)
     typicalFieldWarned = false
     return rows
   }
   catch (e) {
     // Без поля тоже не прочиталось — сбой не в поле: пробрасываем исходную ошибку.
     const rows = await read(AGREEMENT_FIELDS).catch(() => { throw e })
-    if (!typicalFieldWarned) console.warn('[onec:clients] Catalog_СоглашенияСКлиентами без ТиповоеСоглашение_Key: типовые соглашения не отсекаются')
+    if (!typicalFieldWarned) console.warn('[onec:clients] Catalog_СоглашенияСКлиентами без Типовое/Соглашение_Key: типовые соглашения не отсекаются')
     typicalFieldWarned = true // предупреждение в журнал — один раз, пока поле не появится
     return rows
   }
