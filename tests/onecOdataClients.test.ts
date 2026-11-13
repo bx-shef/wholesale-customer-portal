@@ -73,7 +73,7 @@ describe('mapClients', () => {
     expect(mapClients(base({ currencies: new Map() }), TODAY, s)[0]!.client.contract).toBeNull()
     expect(s.noCurrency).toBe(1)
     // Типовое соглашение (ссылка на типовое заполнена) клиенту не отдаём; единственное типовое — договора нет.
-    const typical = { ...a0, Ref_Key: G(8), Дата: '2026-09-01T00:00:00', ТиповоеСоглашение_Key: G(9) }
+    const typical = { ...a0, Ref_Key: G(8), Дата: '2026-09-01T00:00:00', Типовое: false, Соглашение_Key: G(9) }
     expect(mapClients(base({ agreements: [a0, typical] }), TODAY)[0]!.client.contracts.map(c => c.guid)).toEqual([G(3)])
     expect(mapClients(base({ agreements: [typical] }), TODAY)[0]!.client.contract).toBeNull()
     const late = { ...a0, Ref_Key: G(7), Дата: '2026-09-01T00:00:00', ВидЦен_Key: undefined }
