@@ -286,6 +286,84 @@ describe('«точно приедет»: четыре статуса (решен
     warn.mockRestore()
     expect(reg).toBe(1)
     expect(rows[0]!.row.deliveryConfirmed).toBe(false)
+    // Задание «Закрыто» — доставлено и без регистра; цепочка прочитана один раз.
+    expect(rows[0]!.row.status).toBe('delivered')
+    expect(t.calls.filter(c => c.url.includes('ЗаданиеНаПеревозку?'))).toHaveLength(1)
+  })
+})
+
+describe('статусы по 1С: задание на перевозку и отмена (ответы программиста 1С 2026-11-13)', () => {
+  const doc = { Ref_Key: G(77), Number: 'ЗК-1', НомерПоДаннымКлиента: 'ЛК-55', DataVersion: 'v1', Posted: true, Статус: 'КОтгрузке', ДатаОтгрузки: '2026-10-25T00:00:00' }
+  const chain = (trip: object | null, issue: object = {}) => ({
+    Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям: [{ Ref_Key: G(80), Распоряжение: G(77) }],
+    Document_РасходныйОрдерНаТовары: [{ Ref_Key: G(80), Статус: 'КОтбору', Posted: true, ЗаданиеНаПеревозку_Key: G(81), ...issue }],
+    Document_ЗаданиеНаПеревозку: trip ? [{ Ref_Key: G(81), Date: '2026-10-27T08:00:00', ...trip }] : [],
+  })
+  const run = async (d: object, extra: Record<string, unknown[]>) => readOrderStatuses(onec({ existing: [d], extra }).client, new Date('2026-10-21T09:00:00Z'))
+
+  it('«Отправлено» — shipped, дата отгрузки — дата задания; «Закрыто» — delivered', async () => {
+    const sent = await run(doc, chain({ Статус: 'Отправлено' }))
+    expect(sent[0]).toEqual({ row: expect.objectContaining({ status: 'shipped', shipmentDate: '2026-10-27' }), version: 'v1|shipped|2026-10-27|0' })
+    const closed = await run(doc, chain({ Статус: 'Закрыто' }))
+    expect(closed[0]!.row).toMatchObject({ status: 'delivered', shipmentDate: '2026-10-27' })
+    // Смена статуса задания меняет версию при той же версии заказа.
+    expect(closed[0]!.version).not.toBe(sent[0]!.version)
+  })
+
+  it('«Формируется», «К погрузке», удалённое задание, непроведённый ордер — статус по заказу', async () => {
+    for (const [trip, issue] of [[{ Статус: 'Формируется' }, {}], [{ Статус: 'КПогрузке' }, {}], [{ Статус: 'Закрыто', DeletionMark: true }, {}], [{ Статус: 'Закрыто' }, { Posted: false }]] as const) {
+      const r = await run(doc, chain(trip, issue))
+      expect(r[0]!.row, JSON.stringify([trip, issue])).toMatchObject({ status: 'assembled', shipmentDate: '2026-10-25' })
+    }
+  })
+
+  it('несколько заданий — «Закрыто» важнее «Отправлено»', async () => {
+    const extra = {
+      Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям: [{ Ref_Key: G(80), Распоряжение: G(77) }, { Ref_Key: G(82), Распоряжение: G(77) }],
+      Document_РасходныйОрдерНаТовары: [{ Ref_Key: G(80), Posted: true, ЗаданиеНаПеревозку_Key: G(81) }, { Ref_Key: G(82), Posted: true, ЗаданиеНаПеревозку_Key: G(83) }],
+      Document_ЗаданиеНаПеревозку: [{ Ref_Key: G(81), Статус: 'Закрыто', Date: '2026-10-26T00:00:00' }, { Ref_Key: G(83), Статус: 'Отправлено', Date: '2026-10-28T00:00:00' }],
+    }
+    expect((await run(doc, extra))[0]!.row).toMatchObject({ status: 'delivered', shipmentDate: '2026-10-26' })
+  })
+
+  it('закрыт и все строки отменены — cancelled; не все или не закрыт — нет', async () => {
+    const lines = (...off: boolean[]) => ({ Document_ЗаказКлиента_Товары: off.map(o => ({ Ref_Key: G(77), Отменено: o })) })
+    const closed = { ...doc, Статус: 'Закрыт' }
+    expect((await run(closed, lines(true, true)))[0]!.row.status).toBe('cancelled')
+    expect((await run(closed, lines(true, false)))[0]!.row.status).toBe('shipped')
+    expect((await run(closed, lines()))[0]!.row.status).toBe('shipped')
+    expect((await run(doc, lines(true, true)))[0]!.row.status).toBe('assembled')
+    // Закрыт по состоянию регистра — тоже.
+    const byState = await run({ ...doc, Статус: 'КОбеспечению' }, { ...lines(true), InformationRegister_СостоянияЗаказовКлиентов: [{ Заказ: G(77), Состояние: 'Закрыт' }] })
+    expect(byState[0]!.row.status).toBe('cancelled')
+    // Отменённый целиком — задания не читаем.
+    const t = onec({ existing: [closed], extra: { ...lines(true), ...chain({ Статус: 'Закрыто' }) } })
+    await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
     expect(t.calls.filter(c => c.url.includes('РасходныйОрдер'))).toHaveLength(0)
+  })
+
+  it('приоритет: отмена строк важнее задания «Закрыто»; удаление и непроведён — важнее всего', () => {
+    const d = { Ref_Key: G(77), Posted: true, Статус: 'Закрыт' }
+    const trip = { status: 'delivered' as const, date: '2026-10-27' }
+    expect(orderStatusOf(d, undefined, { allLinesCancelled: true, trip })).toBe('cancelled')
+    expect(orderStatusOf({ ...d, Posted: false }, undefined, { allLinesCancelled: true, trip })).toBe('new')
+    expect(orderStatusOf({ ...d, DeletionMark: true }, undefined, { trip })).toBe('cancelled')
+    expect(orderStatusOf(d, 'ГотовКОтгрузке', { trip })).toBe('delivered')
+    expect(orderStatusOf(d, 'ГотовКОтгрузке', { trip: { status: 'shipped', date: null } })).toBe('shipped')
+    expect(orderStatusOf(d, 'ГотовКОтгрузке', { trip: { status: 'shipped', date: null }, allLinesCancelled: false })).toBe('shipped')
+  })
+
+  it('поля «Отменено» нет — правило пропущено, предупреждение без ПДн', async () => {
+    const t = onec({ existing: [{ ...doc, Статус: 'Закрыт' }], extra: { Document_ЗаказКлиента_Товары: [{ Ref_Key: G(77), Отменено: true }] } })
+    const list = t.client.list.bind(t.client)
+    t.client.list = (async (set: string, q: never) => {
+      if (set === 'Document_ЗаказКлиента_Товары') throw new Error('HTTP 400 Отменено ЛК-55')
+      return list(set, q)
+    }) as typeof t.client.list
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rows = await readOrderStatuses(t.client, new Date('2026-10-21T09:00:00Z'))
+    expect(rows[0]!.row.status).toBe('shipped')
+    expect(String(warn.mock.calls[0]![0])).not.toContain('ЛК-55')
+    warn.mockRestore()
   })
 })
