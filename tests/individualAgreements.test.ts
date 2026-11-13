@@ -10,6 +10,11 @@ describe('только индивидуальные соглашения', () =>
     expect(isIndividualAgreement({ Ref_Key: 'a', Типовое: false, Соглашение_Key: '11111111-1111-1111-1111-111111111111' })).toBe(false)
     expect(isIndividualAgreement({ Ref_Key: 'a', Типовое: true, Соглашение_Key: EMPTY })).toBe(false)
     expect(isIndividualAgreement({ Ref_Key: 'a' })).toBe(true)
+    // Есть только одно поле — фильтруем по нему.
+    expect(isIndividualAgreement({ Ref_Key: 'a', Соглашение_Key: '11111111-1111-1111-1111-111111111111' })).toBe(false)
+    expect(isIndividualAgreement({ Ref_Key: 'a', Соглашение_Key: EMPTY })).toBe(true)
+    expect(isIndividualAgreement({ Ref_Key: 'a', Типовое: true })).toBe(false)
+    expect(isIndividualAgreement({ Ref_Key: 'a', Типовое: false })).toBe(true)
   })
 
   it('поле просим; отказ OData — читаем без него и пишем в журнал', async () => {

@@ -123,6 +123,7 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
 export interface OrderDocRow {
   Ref_Key: string
   Number?: string
+  Date?: string
   DataVersion?: string
   DeletionMark?: boolean
   Posted?: boolean
@@ -142,8 +143,8 @@ export interface OrderDocRow {
  *    `Закрыт` — `shipped`.
  * Ответы программиста 1С (2026-11-13) — `facts` от чтения прогона, между шагами 2 и 3:
  * 2а. заказ закрыт и во всех строках «Товары» `Отменено` — `cancelled`;
- * 2б. задание на перевозку заказа «Закрыто» — `delivered`;
- * 2в. задание «Отправлено» — `shipped`.
+ * 2б. все задания на перевозку заказа «Закрыто» — `delivered`;
+ * 2в. хотя бы одно «Отправлено» или «Закрыто», но не все закрыты — `shipped`.
  */
 export function orderStatusOf(d: OrderDocRow, state?: string, facts: OrderFacts = {}): OrderStatusT {
   if (d.DeletionMark) return 'cancelled'
@@ -166,8 +167,8 @@ export function orderStatusOf(d: OrderDocRow, state?: string, facts: OrderFacts 
 
 /**
  * Статус ЛК по состоянию заказа (`InformationRegister_СостоянияЗаказовКлиентов.Состояние`,
- * перечисление КА 2.5). Незнакомое значение — откат на `Статус` документа. «Доставлена» здесь
- * нет: признака доставки в 1С нет.
+ * перечисление КА 2.5). Незнакомое значение — откат на `Статус` документа. «Доставлена» — по
+ * заданию на перевозку, не из карты состояний.
  */
 export const ORDER_STATE_STATUS: Readonly<Record<string, OrderStatusT>> = {
   ОжидаетсяСогласование: 'new',
@@ -182,7 +183,10 @@ export const ORDER_STATE_STATUS: Readonly<Record<string, OrderStatusT>> = {
   Закрыт: 'shipped',
 }
 
-/** Задание на перевозку заказа: «Отправлено» — `shipped`, «Закрыто» — `delivered`; дата — дата задания. */
+/**
+ * Задания на перевозку заказа: все «Закрыто» — `delivered` (дата — самая поздняя из закрытых),
+ * иначе при «Отправлено»/«Закрыто» — `shipped` (дата — самая поздняя из них).
+ */
 export interface OrderTrip { status: 'shipped' | 'delivered', date: string | null }
 /** Факты прогона для статуса: отмена всех строк и задание на перевозку. */
 export interface OrderFacts { allLinesCancelled?: boolean, trip?: OrderTrip }
@@ -281,7 +285,7 @@ export async function createOdataOrder(client: ODataClient, input: z.input<typeo
 export async function readOrderStatuses(client: ODataClient, now: Date): Promise<Array<{ row: OrderStatusRowT, version: string }>> {
   const since = new Date(now.getTime() - ORDER_STATUS_DAYS * 86_400_000 + 3 * 3_600_000).toISOString().slice(0, 19)
   const docs = await listAll<OrderDocRow>(client, ORDER_SET, {
-    $select: 'Ref_Key,Number,DataVersion,DeletionMark,Posted,Статус,НомерПоДаннымКлиента,ДатаОтгрузки',
+    $select: 'Ref_Key,Number,Date,DataVersion,DeletionMark,Posted,Статус,НомерПоДаннымКлиента,ДатаОтгрузки',
     $filter: `Date ge datetime'${since}' and startswith(НомерПоДаннымКлиента, '${ORDER_MARK}')`,
   })
   // Состояния заказов — один раз на прогон и только там, где они что-то меняют: проведённый,
@@ -297,7 +301,11 @@ export async function readOrderStatuses(client: ODataClient, now: Date): Promise
   }
   // Отмена всех строк — только у закрытых (документ или состояние «Закрыт»). Сбой или нет поля
   // `Отменено` — правило не применяем.
-  const live = docs.filter(d => !d.DeletionMark && d.Posted)
+  // Закрытые документом больше `CLOSED_SKIP_DAYS` дней назад — без заданий и строк «Отменено»:
+  // статус уже не меняется, а цепочка на 90 днях заказов — лишняя нагрузка на 1С.
+  const cutoff = new Date(now.getTime() - CLOSED_SKIP_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const settled = (d: OrderDocRow) => (d.Статус ?? '').trim() === 'Закрыт' && !!d.Date && d.Date.slice(0, 10) < cutoff
+  const live = docs.filter(d => !d.DeletionMark && d.Posted && !settled(d))
   const keyOf = (d: OrderDocRow) => d.Ref_Key.toLowerCase()
   let cancelled = new Set<string>()
   try {
@@ -320,7 +328,8 @@ export async function readOrderStatuses(client: ODataClient, now: Date): Promise
     shipping = await readShipping(client, tripCandidates, confirmable, states)
   }
   catch (e) {
-    console.error(`[orders:odata] trips of orders: ${(e as Error).message.slice(0, 200)}`)
+    // Без текста ошибки: в нём может быть адрес и фильтр запроса.
+    console.error(`[orders:odata] trips of orders unavailable: ${(e as Error).name}`)
   }
   return docs.flatMap((d) => {
     const k = keyOf(d)
@@ -352,6 +361,9 @@ export async function readAllLinesCancelled(client: ODataClient, orders: string[
   }
   return new Set([...lines].filter(([, c]) => c.off === c.all).map(([k]) => k))
 }
+
+/** Закрытый документом заказ старше стольких дней (по дате документа) по цепочке заданий не проверяем. */
+export const CLOSED_SKIP_DAYS = 30
 
 /** Заказ «К выполнению»: в ERP значение перечисления — `КОтгрузке` (в интерфейсе «К выполнению»). */
 export const ORDER_IN_WORK = new Set(['КВыполнению', 'КОтгрузке'])
@@ -388,8 +400,9 @@ export async function readDeliveryConfirmed(client: ODataClient, orders: string[
 
 /**
  * Один проход цепочки заказ → расходный ордер → задание на перевозку (ответы программиста 1С,
- * 2026-11-13). `trips`: задание «Закрыто» — `delivered`, «Отправлено» — `shipped`, дата — `Date`
- * задания (несколько — самое продвинутое, при равенстве — позднее). `confirmed` — «точно приедет»
+ * 2026-11-13). `trips`: задание «Закрыто» — `delivered`, только если ВСЕ непомеченные на удаление
+ * задания заказа «Закрыто»; иначе при «Отправлено»/«Закрыто» — `shipped`. Дата — `Date` задания:
+ * у `delivered` самая поздняя из закрытых, у `shipped` — из «Отправлено»/«Закрыто». `confirmed` — «точно приедет»
  * для заказов из `confirmable` с состоянием «Готов к закрытию» и ордером «К отгрузке».
  */
 export async function readShipping(client: ODataClient, orders: string[], confirmable: Set<string>, states?: Map<string, string>): Promise<Shipping> {
@@ -419,29 +432,37 @@ export async function readShipping(client: ODataClient, orders: string[], confir
   const tripIds = [...new Set([...tripOfIssue.values()].map(t => t.trip))]
   if (!tripIds.length) return out
   // 3. Статус и дата задания.
-  const tripState = new Map<string, OrderTrip>()
+  const tripState = new Map<string, { status: 'delivered' | 'shipped' | 'other', date: string | null }>()
   for (const $filter of orFilters(tripIds.map(g => `Ref_Key eq guid'${assertGuid(g)}'`))) {
     const rows = await client.list<{ Ref_Key: string, Статус?: string, Date?: string, DeletionMark?: boolean }>('Document_ЗаданиеНаПеревозку', { $select: 'Ref_Key,Статус,Date,DeletionMark', $filter })
     for (const r of rows) {
       if (r.DeletionMark) continue
       const st = (r.Статус ?? '').trim()
-      const status = st === TRIP_CLOSED ? 'delivered' : st === TRIP_SENT ? 'shipped' : null
-      if (status) tripState.set(r.Ref_Key.toLowerCase(), { status, date: r.Date && !r.Date.startsWith('0001') ? r.Date.slice(0, 10) : null })
+      // Прочие статусы («Формируется», «К погрузке») тоже помним: с ними заказ не доставлен.
+      const status = st === TRIP_CLOSED ? 'delivered' : st === TRIP_SENT ? 'shipped' : 'other'
+      tripState.set(r.Ref_Key.toLowerCase(), { status, date: r.Date && !r.Date.startsWith('0001') ? r.Date.slice(0, 10) : null })
     }
   }
   for (const [order, set] of issueOf) {
-    let best: OrderTrip | undefined
+    const seen = new Map<string, { status: 'delivered' | 'shipped' | 'other', date: string | null }>()
     for (const i of set) {
       const link = tripOfIssue.get(i)
       const t = link && tripState.get(link.trip)
       if (!link || !t) continue
+      seen.set(link.trip, t)
       if (t.status === 'delivered' && link.ready && confirmable.has(order) && STATE_READY.has(states?.get(order) ?? '')) out.confirmed.add(order)
-      if (!best || tripBetter(t, best)) best = t
     }
-    if (best) out.trips.set(order, best)
+    const trip = aggregateTrips([...seen.values()])
+    if (trip) out.trips.set(order, trip)
   }
   return out
 }
 
-const tripBetter = (a: OrderTrip, b: OrderTrip): boolean =>
-  a.status !== b.status ? a.status === 'delivered' : (a.date ?? '') > (b.date ?? '')
+/** Итог по заданиям заказа: все «Закрыто» — delivered, иначе есть движение — shipped. */
+export function aggregateTrips(trips: Array<{ status: 'delivered' | 'shipped' | 'other', date: string | null }>): OrderTrip | undefined {
+  const moved = trips.filter(t => t.status !== 'other')
+  if (!moved.length) return undefined
+  const latest = (xs: typeof trips) => xs.reduce<string | null>((m, t) => (t.date && (!m || t.date > m) ? t.date : m), null)
+  if (moved.length === trips.length && trips.every(t => t.status === 'delivered')) return { status: 'delivered', date: latest(trips) }
+  return { status: 'shipped', date: latest(moved) }
+}

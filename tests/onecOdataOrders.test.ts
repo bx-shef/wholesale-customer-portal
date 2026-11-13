@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ODataClient } from '../server/services/onecOdata'
 import { addressGuid } from '../server/services/onecOdataClients'
-import { createOdataOrder, orderBody, orderMarker, ORDER_STATE_STATUS, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
+import { aggregateTrips, CLOSED_SKIP_DAYS, createOdataOrder, orderBody, orderMarker, ORDER_STATE_STATUS, orderStatusOf, orderStatusRow, readDeliveryConfirmed, readOrderStatuses, testOrderGuid } from '../server/services/onecOdataOrders'
 import { OrderRequest, OrderStatusRow } from '../shared/onec/schemas'
 
 const G = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`
@@ -317,13 +317,39 @@ describe('статусы по 1С: задание на перевозку и о�
     }
   })
 
-  it('несколько заданий — «Закрыто» важнее «Отправлено»', async () => {
+  it('несколько заданий: одно «Отправлено» — частичная отгрузка, shipped с поздней датой', async () => {
     const extra = {
       Document_РасходныйОрдерНаТовары_ТоварыПоРаспоряжениям: [{ Ref_Key: G(80), Распоряжение: G(77) }, { Ref_Key: G(82), Распоряжение: G(77) }],
       Document_РасходныйОрдерНаТовары: [{ Ref_Key: G(80), Posted: true, ЗаданиеНаПеревозку_Key: G(81) }, { Ref_Key: G(82), Posted: true, ЗаданиеНаПеревозку_Key: G(83) }],
       Document_ЗаданиеНаПеревозку: [{ Ref_Key: G(81), Статус: 'Закрыто', Date: '2026-10-26T00:00:00' }, { Ref_Key: G(83), Статус: 'Отправлено', Date: '2026-10-28T00:00:00' }],
     }
-    expect((await run(doc, extra))[0]!.row).toMatchObject({ status: 'delivered', shipmentDate: '2026-10-26' })
+    expect((await run(doc, extra))[0]!.row).toMatchObject({ status: 'shipped', shipmentDate: '2026-10-28' })
+    const both = { ...extra, Document_ЗаданиеНаПеревозку: [{ Ref_Key: G(81), Статус: 'Закрыто', Date: '2026-10-29T00:00:00' }, { Ref_Key: G(83), Статус: 'Закрыто', Date: '2026-10-26T00:00:00' }] }
+    expect((await run(doc, both))[0]!.row).toMatchObject({ status: 'delivered', shipmentDate: '2026-10-29' })
+  })
+
+  it('aggregateTrips: все закрыты — delivered; есть иное — shipped; только иное — нет', () => {
+    const c = (date: string) => ({ status: 'delivered' as const, date })
+    expect(aggregateTrips([c('2026-10-01'), c('2026-10-05')])).toEqual({ status: 'delivered', date: '2026-10-05' })
+    expect(aggregateTrips([c('2026-10-05'), { status: 'other', date: '2026-10-09' }])).toEqual({ status: 'shipped', date: '2026-10-05' })
+    expect(aggregateTrips([c('2026-10-01'), { status: 'shipped', date: '2026-10-03' }])).toEqual({ status: 'shipped', date: '2026-10-03' })
+    expect(aggregateTrips([{ status: 'other', date: '2026-10-09' }])).toBeUndefined()
+  })
+
+  it('дата задания — только у shipped/delivered, не у отменённого', () => {
+    const r = orderStatusRow({ ...doc, DeletionMark: true }, '2026-10-21T00:00:00+03:00', undefined, { trip: { status: 'delivered', date: '2026-10-27' } })!
+    expect(r).toMatchObject({ status: 'cancelled', shipmentDate: '2026-10-25' })
+  })
+
+  it(`закрытый документом старше ${CLOSED_SKIP_DAYS} дней — без цепочки заданий и строк`, async () => {
+    expect(CLOSED_SKIP_DAYS).toBe(30)
+    const lines = { Document_ЗаказКлиента_Товары: [{ Ref_Key: G(77), Отменено: true }] }
+    const old = onec({ existing: [{ ...doc, Статус: 'Закрыт', Date: '2026-09-15T00:00:00' }], extra: { ...lines, ...chain({ Статус: 'Закрыто' }) } })
+    const r = await readOrderStatuses(old.client, new Date('2026-10-21T09:00:00Z'))
+    expect(r[0]!.row.status).toBe('shipped')
+    expect(old.calls.filter(c => c.url.includes('РасходныйОрдер') || c.url.includes('_Товары'))).toHaveLength(0)
+    const fresh = onec({ existing: [{ ...doc, Статус: 'Закрыт', Date: '2026-10-01T00:00:00' }], extra: { ...lines } })
+    expect((await readOrderStatuses(fresh.client, new Date('2026-10-21T09:00:00Z')))[0]!.row.status).toBe('cancelled')
   })
 
   it('закрыт и все строки отменены — cancelled; не все или не закрыт — нет', async () => {
