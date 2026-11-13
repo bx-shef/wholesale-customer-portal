@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "description": "Личный кабинет оптового клиента: каталог с ценой клиента и остатками, заявки, дата машины, ИИ-помощник. Битрикс24 (коробка) + 1С.",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/bx-shef/wholesale-customer-portal.git"
