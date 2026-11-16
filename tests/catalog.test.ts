@@ -385,6 +385,18 @@ describe('очередь картинок', () => {
     store.saveStock([2, 3].map(n => ({ itemGuid: g(n), warehouseGuid: g(500), warehouseName: 'Склад', available: 5, changedAt: at })))
     expect(store.imageRefs().map(r => r.id)).toEqual([g(702), g(701), g(703)])
   })
+
+  it('без скрытых разделов не падает (боевая 1С, 2026-11-16: «1st ORDER BY term out of range»)', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db)
+    const store = createCatalogStore(db, { hiddenSections: () => [] })
+    store.saveCatalog([{ guid: g(900), parentGuid: null, name: 'Крепёж' }], [
+      item(1, { name: 'А', images: [{ id: g(701), hash: 'h1' }] }),
+      item(2, { name: 'Б', images: [{ id: g(702), hash: 'h2' }] }),
+    ])
+    store.saveStock([{ itemGuid: g(2), warehouseGuid: g(500), warehouseName: 'Склад', available: 5, changedAt: at }])
+    expect(store.imageRefs().map(r => r.id)).toEqual([g(702), g(701)])
+  })
 })
 
 describe('фильтр по характеристикам (владелец 2026-10-27)', () => {
