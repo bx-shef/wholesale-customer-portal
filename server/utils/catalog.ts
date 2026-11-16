@@ -257,9 +257,10 @@ export function createCatalogStore(db: DatabaseSync, opts: { hiddenSections?: ()
      */
     imageRefs(): ImageRefT[] {
       const hidden = [...hiddenNow()]
-      const hiddenRank = hidden.length ? `CASE WHEN i.section_guid IN (${hidden.map(() => '?').join(',')}) THEN 1 ELSE 0 END` : '0'
+      // Без скрытых разделов терма нет: голое «ORDER BY 0» SQLite читает как номер столбца и падает.
+      const hiddenRank = hidden.length ? `CASE WHEN i.section_guid IN (${hidden.map(() => '?').join(',')}) THEN 1 ELSE 0 END, ` : ''
       const rows = db.prepare(`SELECT j.value AS url FROM catalog_item i, json_each(i.images) j
-        ORDER BY ${hiddenRank}, CASE WHEN ${AVAILABLE} > 0 THEN 0 ELSE 1 END, i.name_sort`).all(...hidden) as { url: string }[]
+        ORDER BY ${hiddenRank}CASE WHEN ${AVAILABLE} > 0 THEN 0 ELSE 1 END, i.name_sort`).all(...hidden) as { url: string }[]
       return rows.map(r => refFromUrl(r.url)).filter((r): r is ImageRefT => r !== null)
     },
     /** Разделы, где есть товар в наличии (сами, без родителей) — меню прячет пустые при «В наличии». */
