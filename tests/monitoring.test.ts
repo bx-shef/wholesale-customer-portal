@@ -212,6 +212,11 @@ describe('состояние системы из базы', () => {
     expect(s.flows.find(f => f.flow === 'stock')!.state).toBe('failing')
     expect(s.flows.find(f => f.flow === 'prices')!.state).toBe('ok')
     expect(s.counts['товары']).toBe(0)
+    expect(s.counts['регионы в графике']).toBe(0)
+    // График из .env: показываем его, а не пустую таблицу.
+    const e = readSystemStatus(db, { guard: { failures: 0, pausedUntil: 0 }, mode: 'odata', commit: 'abc', telegram: false, now: T0, envScheduleCities: 31 })
+    expect(e.counts['города в графике (.env)']).toBe(31)
+    expect(e.counts['регионы в графике']).toBeUndefined()
     expect(s.recentRuns).toHaveLength(4)
     expect(s.onec.pausedUntil).not.toBeNull()
     expect(s.alerts.map(x => x.kind).sort()).toEqual(['onec-paused', 'sync-failed'])
