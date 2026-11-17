@@ -6,6 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { activeFlows, flowHealth, FLOWS, healthAlerts, type FlowHealth, type FlowRunRow } from './syncHealth'
 import { readAutoSyncPaused, staleMsFor } from './syncSchedule'
+import { parseScheduleEnv } from '../../shared/delivery'
 import { typicalAgreementFieldMissing } from '../services/onecOdataClients'
 
 const STARTED_AT = Date.now()
@@ -30,7 +31,7 @@ export interface SystemStatus {
   autoSync: { paused: boolean, since: string | null, every: Record<string, number> }
 }
 
-export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number>, config?: string[], notes?: string[] }): SystemStatus {
+export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: number, pausedUntil: number }, mode: SystemStatus['onec']['mode'], commit: string, telegram: boolean, now?: number, unsupportedFlows?: readonly string[], every?: Record<string, number>, config?: string[], notes?: string[], envScheduleCities?: number }): SystemStatus {
   const now = deps.now ?? Date.now()
   const runsOf = db.prepare(`SELECT flow, status, started_at AS startedAt, finished_at AS finishedAt, received, error
     FROM sync_run WHERE flow = ? ORDER BY id DESC LIMIT 10`)
@@ -46,7 +47,10 @@ export function readSystemStatus(db: DatabaseSync, deps: { guard: { failures: nu
     'строки прайса': one('SELECT count(*) AS n FROM price_list'),
     'виды цен': one('SELECT count(DISTINCT price_type_guid) AS n FROM price_list'),
     'строки остатков': one('SELECT count(*) AS n FROM stock'),
-    'регионы в графике': one('SELECT count(*) AS n FROM delivery_schedule'),
+    // График из `.env` главнее таблицы (cachedSchedules): иначе плашка показывала 0 при рабочем графике.
+    ...(deps.envScheduleCities !== undefined
+      ? { 'города в графике (.env)': deps.envScheduleCities }
+      : { 'регионы в графике': one('SELECT count(*) AS n FROM delivery_schedule') }),
     'рейсы на неделю': one('SELECT count(*) AS n FROM trip WHERE deleted = 0 AND planned_start >= ? AND planned_start < ?', new Date(now - 86_400_000).toISOString(), new Date(now + 7 * 86_400_000).toISOString()),
   }
   const orders: Record<string, number> = {}
@@ -82,6 +86,7 @@ export function currentSystemStatus(): SystemStatus {
     telegram: resolveTelegramConfig() !== null,
     every: env.syncEvery,
     config: envWarnings(process.env),
+    envScheduleCities: env.deliverySchedule ? parseScheduleEnv(env.deliverySchedule).schedules.length : undefined,
     notes: typicalAgreementFieldMissing() ? ['Индивидуальные соглашения: фильтр не применяется — нет поля в 1С'] : [],
   })
 }
