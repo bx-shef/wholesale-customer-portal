@@ -15,6 +15,8 @@ export function calendarCities(schedules: TripSchedule[], addresses: { city: str
     if (city) cities.add(city)
     else if (a.address.trim()) unknown.push(a.address.trim())
   }
-  if (!cities.size && zone && zone.trim()) cities.add(zone.trim())
-  return { cities: [...cities], noCity: cities.size ? [] : [...new Set(unknown)] }
+  // Регион клиента — запасной город для адресов, где город не определился (и когда адресов нет).
+  const hasZone = !!zone && !!zone.trim()
+  if (hasZone && (unknown.length || !addresses.length)) cities.add(zone!.trim())
+  return { cities: [...cities], noCity: hasZone ? [] : [...new Set(unknown)] }
 }

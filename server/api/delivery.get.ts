@@ -1,6 +1,7 @@
 // Адреса доставки клиента из 1С и ближайший рейс в его бизнес-регион — для корзины.
 import { addressLine } from '../../shared/cart'
 import { nextDelivery } from '../../shared/delivery'
+import { cityInText } from '../utils/orders'
 const ADDRESSES_MAX = 20
 
 export default defineEventHandler(async (event) => {

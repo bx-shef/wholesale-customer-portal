@@ -15,6 +15,10 @@ describe('города клиента для «Доставки» (2026-11-18)',
   it('ни в адресе, ни в колонке — зона доставки клиента', () => {
     expect(calendarCities(schedules, [{ city: '', address: 'АДРЕС ТЕСТ' }], 'Брест город')).toEqual({ cities: ['Брест город'], noCity: [] })
   })
+  it('два адреса: у одного город есть, у другого нет — регион добавляется', () => {
+    expect(calendarCities(schedules, [{ city: 'Брест', address: 'x' }, { city: '', address: 'АДРЕС ТЕСТ' }], 'Иваново').cities).toEqual(['Брест', 'Иваново'])
+    expect(calendarCities(schedules, [{ city: 'Брест', address: 'x' }, { city: '', address: 'АДРЕС ТЕСТ' }], null).noCity).toEqual(['АДРЕС ТЕСТ'])
+  })
   it('ничего не нашлось — адрес в noCity', () => {
     expect(calendarCities(schedules, [{ city: '', address: 'АДРЕС ТЕСТ' }], null)).toEqual({ cities: [], noCity: ['АДРЕС ТЕСТ'] })
   })
