@@ -19,6 +19,8 @@ export interface PartnerRow {
   DeletionMark?: boolean
   Клиент?: boolean
   ЗонаДоставки_Key?: string
+  /** Бизнес-регион партнёра — город для графика доставки (решение клиента 2026-11-18). */
+  БизнесРегион_Key?: string
 }
 
 export interface CounterpartyRow { Ref_Key: string, Партнер_Key?: string, ИНН?: string, DeletionMark?: boolean }
@@ -53,6 +55,8 @@ export interface ClientSources {
   contracts: ContractRow[]
   contacts: ContactRow[]
   zones: Map<string, string>
+  /** Названия бизнес-регионов; справочник не опубликован — пусто, регион берётся из зоны. */
+  regions?: Map<string, string>
   currencies: Map<string, string>
   /** Партнёры в сегментах с запретом отгрузки. */
   blocked: Set<string>
@@ -130,8 +134,11 @@ export function mapClients(src: ClientSources, today: string, stats = emptyClien
     stats.clients++
     const unp = (counterparties.get(guid) ?? []).map(c => (c.ИНН ?? '').trim()).find(Boolean) ?? ''
     if (!unp) stats.noUnp++
-    const zone = ref(p.ЗонаДоставки_Key)
-    const zoneName = zone ? src.zones.get(zone) : undefined
+    // Город клиента для доставки — бизнес-регион партнёра; без него — зона доставки.
+    const bizRegion = ref(p.БизнесРегион_Key)
+    const bizName = bizRegion ? src.regions?.get(bizRegion) : undefined
+    const zone = bizName ? bizRegion : ref(p.ЗонаДоставки_Key)
+    const zoneName = bizName ?? (zone ? src.zones.get(zone) : undefined)
     if (!zoneName) stats.noZone++
     const blocked = src.blocked.has(guid)
     if (blocked) stats.blocked++
@@ -278,7 +285,7 @@ export async function readAgreements(read: (fields: string) => Promise<Agreement
  */
 export async function readClientSources(client: ODataClient): Promise<ClientSources> {
   const partners = await listAll<PartnerRow>(client, 'Catalog_Партнеры', {
-    $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key',
+    $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key,БизнесРегион_Key',
     $filter: 'Клиент eq true',
   })
   const counterparties = await listAll<CounterpartyRow>(client, 'Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark' })
@@ -289,6 +296,8 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
   }, 'Ref_Key,LineNumber')
   const zones = await client.names('Catalog_ЗоныДоставки')
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
+  // Справочник бизнес-регионов может быть не опубликован — тогда работаем по зонам, не падаем.
+  const regions = await client.names('Catalog_БизнесРегионы')
   const currencies = await client.currencies()
   if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
   const segments = await optionalSet(() => client.list<{ Ref_Key: string, ЗапретОтгрузки?: boolean, DeletionMark?: boolean }>('Catalog_СегментыПартнеров', { $select: 'Ref_Key,ЗапретОтгрузки,DeletionMark' }))
@@ -301,7 +310,7 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
   // Пустой набор соглашений при живых партнёрах — сбой чтения, а не «у всех истекло»: иначе все
   // клиенты разом ушли бы удалёнными.
   if (partners.length && !agreements.length) throw new OnecError('contract', '1C OData Catalog_СоглашенияСКлиентами: no rows')
-  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
+  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, regions: regions.error ? new Map() : regions.map, currencies: currencies.map, blocked }
 }
 
 /**
@@ -311,7 +320,7 @@ export async function readClientSources(client: ODataClient): Promise<ClientSour
  */
 export async function readClientSourcesFor(client: ODataClient, partnerGuid: string): Promise<ClientSources | null> {
   const g = `guid'${assertGuid(partnerGuid)}'`
-  const partners = await client.list<PartnerRow>('Catalog_Партнеры', { $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key', $filter: `Ref_Key eq ${g}` })
+  const partners = await client.list<PartnerRow>('Catalog_Партнеры', { $select: 'Ref_Key,Description,DeletionMark,Клиент,ЗонаДоставки_Key,БизнесРегион_Key', $filter: `Ref_Key eq ${g}` })
   if (!partners.length || partners[0]!.Клиент === false) return null
   const byPartner = { $filter: `Партнер_Key eq ${g}` }
   const counterparties = await client.list<CounterpartyRow>('Catalog_Контрагенты', { $select: 'Ref_Key,Партнер_Key,ИНН,DeletionMark', ...byPartner })
@@ -324,6 +333,8 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
   const contacts = await client.list<ContactRow>('Catalog_Партнеры_КонтактнаяИнформация', { $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город', $filter: `Ref_Key eq ${g}` })
   const zones = await client.names('Catalog_ЗоныДоставки')
   if (zones.error) throw new OnecError('contract', `1C OData Catalog_ЗоныДоставки: ${zones.error}`)
+  // Справочник бизнес-регионов может быть не опубликован — тогда работаем по зонам, не падаем.
+  const regions = await client.names('Catalog_БизнесРегионы')
   const currencies = await client.currencies()
   if (currencies.error) throw new OnecError('contract', `1C OData Catalog_Валюты: ${currencies.error}`)
   const members = await optionalSet(() => client.list<{ Ref_Key: string, Партнер_Key?: string }>('Catalog_СегментыПартнеров_ПартнерыПоСегменту', { $select: 'Ref_Key,Партнер_Key', ...byPartner }))
@@ -333,7 +344,7 @@ export async function readClientSourcesFor(client: ODataClient, partnerGuid: str
     const stop = new Set(segments.filter(s => s.ЗапретОтгрузки && !s.DeletionMark).map(s => s.Ref_Key.toLowerCase()))
     if (members.some(m => stop.has(m.Ref_Key.toLowerCase()))) blocked = new Set([partnerGuid.toLowerCase()])
   }
-  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, currencies: currencies.map, blocked }
+  return { partners, counterparties, agreements, contracts, contacts, zones: zones.map, regions: regions.error ? new Map() : regions.map, currencies: currencies.map, blocked }
 }
 
 /** Проверка схемой контракта: «прошло здесь» значит «ЛК прочитает». */

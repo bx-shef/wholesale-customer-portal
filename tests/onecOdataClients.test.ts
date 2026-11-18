@@ -139,6 +139,14 @@ describe('mapClients', () => {
     expect(sampleName('ИП Иванов')).toBe('ИП… (9 симв.)')
   })
 
+  it('город доставки — бизнес-регион партнёра; без него — зона (2026-11-18)', () => {
+    const partners = [{ ...base().partners[0]!, БизнесРегион_Key: G(70) }]
+    const regions = new Map([[G(70), 'Иваново']])
+    expect(mapClients(base({ partners, regions }), TODAY)[0]!.client.region).toEqual({ guid: G(70), name: 'Иваново' })
+    // справочник не опубликован — зона
+    expect(mapClients(base({ partners, regions: new Map() }), TODAY)[0]!.client.region).toEqual({ guid: G(50), name: 'Минск-Север' })
+  })
+
   it('запрет отгрузки, без зоны, не клиент, помечен на удаление', () => {
     const s = emptyClientStats()
     const rows = mapClients(base({

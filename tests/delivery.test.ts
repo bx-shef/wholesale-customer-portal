@@ -168,8 +168,8 @@ describe('раздел «Доставка» для клиента (#79)', () => 
     const api = readFileSync('server/api/delivery-calendar.get.ts', 'utf8')
     expect(api).toContain('deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS, cities)')
     expect(api).toContain('deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS)')
-    expect(api).toContain('a => !a.city.trim()')
-    expect(api).toContain('client.addresses.map(a => a.city.trim())')
+    // Города и адреса без города — по правилу calendarCities (tests/deliveryCities.test.ts).
+    expect(api).toContain('calendarCities(schedules, client.addresses, client.regionName)')
   })
 })
 
