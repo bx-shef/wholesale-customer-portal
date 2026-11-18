@@ -145,7 +145,7 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
         const client = deps.clients.get(row.client_guid)
         // Новый адрес (#124): в 1С его нет — заказ на запасной адрес партнёра, текст — в «Адрес доставки».
         const isNew = row.address_guid === ''
-        const city = isNew ? (schedules ? cityInText(schedules, row.address_text) : null) : client?.addresses.find(a => a.guid === row.address_guid)?.city
+        const city = isNew ? (schedules ? cityInText(schedules, row.address_text) : null) : (() => { const a = client?.addresses.find(x => x.guid === row.address_guid); return a ? (a.city || (schedules ? cityInText(schedules, a.address) : null)) : null })()
         const slot = schedules ? nextDelivery(schedules, isNew ? [city] : [city, client?.regionName, client?.regionGuid], now) : null
         const addressGuid = isNew ? client?.addresses[0]?.guid : row.address_guid
         if (!addressGuid) throw new OnecError('contract', 'new delivery address: client has no address in 1C to fall back on')

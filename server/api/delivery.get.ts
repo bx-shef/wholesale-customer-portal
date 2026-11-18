@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
       label: addressLine(a.city, a.address),
       city: a.city,
       // График — по городу адреса или по зоне доставки клиента из 1С (зона = город).
-      slot: schedules ? nextDelivery(schedules, [a.city, client.regionName, client.regionGuid], now) : null,
+      slot: schedules ? nextDelivery(schedules, [a.city || cityInText(schedules, a.address), client.regionName, client.regionGuid], now) : null,
       slotStatus: schedules ? 'ok' as const : 'unavailable' as const,
     })),
   }
