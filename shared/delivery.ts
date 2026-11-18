@@ -74,7 +74,12 @@ const minskDate = (ms: number) => new Date(ms + MINSK_OFFSET_MIN * 60_000).toISO
 const isoWeekday = (date: string) => ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
 const atMinutes = (date: string, minutes: number) => new Date(minskMidnight(date) + minutes * 60_000).toISOString()
 
-const sameRegion = (a: string, b: string) => a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е')
+/**
+ * Город для сравнения: регистр, «ё», и хвост зоны доставки 1С — «Брест город», «Брест район» → «брест»
+ * (бизнес-регион клиента = город, решение владельца 2026-11-18; график в .env — по городам).
+ */
+export const regionKey = (s: string) => s.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+(город|район|р-н)$/, '').trim()
+const sameRegion = (a: string, b: string) => regionKey(a) === regionKey(b)
 
 /**
  * Ближайший рейс, на который заявка ещё успевает. `region` — ключ графика или несколько кандидатов:

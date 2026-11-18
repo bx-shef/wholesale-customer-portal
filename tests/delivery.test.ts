@@ -7,7 +7,7 @@ import { openDatabase } from '../server/db/sqlite'
 import { createDeliveryStore } from '../server/utils/delivery'
 import { deliveriesWindow, readDeliveries } from '../server/utils/deliveriesTab'
 import { createClientStore } from '../server/utils/clients'
-import { deliveryView, nextDelivery, scheduleFromOnec } from '../shared/delivery'
+import { deliveryView, nextDelivery, parseScheduleEnv, scheduleFromOnec } from '../shared/delivery'
 import { createMockState, handleMockRequest, ORDER_TIMELINE, type MockRequest } from '../server/mocks/onec/mock'
 import type { DeliveryScheduleT, TripT } from '../shared/onec/schemas'
 
@@ -188,5 +188,17 @@ describe('режим раздела «Доставка»', () => {
   })
   it('график недоступен — предупреждение', () => {
     expect(deliveryView('unavailable', 0, 2)).toBe('unavailable')
+  })
+})
+
+describe('зона доставки клиента = город (2026-11-18)', () => {
+  const { schedules } = parseScheduleEnv('Ср: Брест; Пт: Пинск')
+  const now = new Date('2026-11-16T09:00:00Z')
+  it('«Брест город» и «Брест район» находят «Брест»', () => {
+    expect(nextDelivery(schedules, ['', 'Брест город'], now)?.date).toBe('2026-11-18')
+    expect(nextDelivery(schedules, [null, 'брест район'], now)?.date).toBe('2026-11-18')
+  })
+  it('чужой город — не находит', () => {
+    expect(nextDelivery(schedules, ['Гродно город'], now)).toBeNull()
   })
 })
