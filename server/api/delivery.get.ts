@@ -1,6 +1,7 @@
 // Адреса доставки клиента из 1С и ближайший рейс в его бизнес-регион — для корзины.
 import { addressLine } from '../../shared/cart'
 import { nextDelivery } from '../../shared/delivery'
+import { cityInText } from '../utils/orders'
 const ADDRESSES_MAX = 20
 
 export default defineEventHandler(async (event) => {
@@ -26,7 +27,7 @@ export default defineEventHandler(async (event) => {
       label: addressLine(a.city, a.address),
       city: a.city,
       // График — по городу адреса или по зоне доставки клиента из 1С (зона = город).
-      slot: schedules ? nextDelivery(schedules, [a.city, client.regionName, client.regionGuid], now) : null,
+      slot: schedules ? nextDelivery(schedules, [a.city || cityInText(schedules, a.address), client.regionName, client.regionGuid], now) : null,
       slotStatus: schedules ? 'ok' as const : 'unavailable' as const,
     })),
   }

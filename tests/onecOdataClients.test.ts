@@ -139,6 +139,26 @@ describe('mapClients', () => {
     expect(sampleName('ИП Иванов')).toBe('ИП… (9 симв.)')
   })
 
+  it('город доставки — бизнес-регион партнёра; без него — зона (2026-11-18)', () => {
+    const partners = [{ ...base().partners[0]!, БизнесРегион_Key: G(70) }]
+    const regions = new Map([[G(70), 'Иваново']])
+    // зоны нет — GUID бизнес-региона
+    const noZone = [{ ...partners[0]!, ЗонаДоставки_Key: undefined }]
+    expect(mapClients(base({ partners: noZone, regions }), TODAY)[0]!.client.region).toEqual({ guid: G(70), name: 'Иваново' })
+    // справочник не опубликован — зона
+    expect(mapClients(base({ partners, regions: new Map() }), TODAY)[0]!.client.region).toEqual({ guid: G(50), name: 'Минск-Север' })
+    // есть и зона, и бизнес-регион: GUID зоны (ключ рейсов 1С), имя бизнес-региона
+    expect(mapClients(base({ partners, regions }), TODAY)[0]!.client.region).toEqual({ guid: G(50), name: 'Иваново' })
+  })
+
+  it('справочник бизнес-регионов: 404 — пусто, другой сбой — ошибка', async () => {
+    const { readRegions } = await import('../server/services/onecOdataClients')
+    const { OnecError } = await import('../server/services/onec')
+    const fail = (st: number) => ({ list: async () => { throw new OnecError('http', 'x', st) } }) as never
+    expect((await readRegions(fail(404))).size).toBe(0)
+    await expect(readRegions(fail(500))).rejects.toThrow()
+  })
+
   it('запрет отгрузки, без зоны, не клиент, помечен на удаление', () => {
     const s = emptyClientStats()
     const rows = mapClients(base({

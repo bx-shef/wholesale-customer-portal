@@ -422,7 +422,7 @@ export async function submitOrder(
   let slot: DeliverySlot | null = null
   try {
     const schedules = await deps.schedules()
-    slot = nextDelivery(schedules, address ? [address.city, client.regionName, client.regionGuid] : [cityInText(schedules, newAddress!)], now)
+    slot = nextDelivery(schedules, address ? [address.city || cityInText(schedules, address.address), client.regionName, client.regionGuid] : [cityInText(schedules, newAddress!)], now)
   }
   catch (e) {
     console.error(`[orders] schedules: ${(e as Error).name}`)
