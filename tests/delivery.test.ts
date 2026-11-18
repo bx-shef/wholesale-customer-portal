@@ -198,6 +198,16 @@ describe('зона доставки клиента = город (2026-11-18)', (
     expect(nextDelivery(schedules, ['', 'Брест город'], now)?.date).toBe('2026-11-18')
     expect(nextDelivery(schedules, [null, 'брест район'], now)?.date).toBe('2026-11-18')
   })
+  it('город адреса главнее зоны: Пинск + зона «Брест город» → пятница', () => {
+    expect(nextDelivery(schedules, ['Пинск', 'Брест город'], now)?.date).toBe('2026-11-20')
+  })
+  it('«ё» и «р-н»', () => {
+    const { schedules: b } = parseScheduleEnv('Ср: Берёза')
+    expect(nextDelivery(b, ['Береза р-н'], now)?.date).toBe('2026-11-18')
+  })
+  it('«город» не в конце не срезается', () => {
+    expect(nextDelivery(schedules, ['Брест город центр'], now)).toBeNull()
+  })
   it('чужой город — не находит', () => {
     expect(nextDelivery(schedules, ['Гродно город'], now)).toBeNull()
   })

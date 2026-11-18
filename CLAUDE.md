@@ -65,7 +65,7 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса); `mergeCartLines` — «Повторить» заявку в корзину, `isUnavailableProblem` — что уходит кнопкой «Убрать недоступные» и не входит в итог (#153) |
 | `shared/orderList.ts`, `server/api/orders/index.get.ts`, `app/pages/orders.vue` | «Мои заявки»: вкладки «В работе»/«Выполненные», страницы по 20, компания — только из сессии (`ordersPage`), кнопка «Повторить» (#153) |
 | `shared/contractChoice.ts`, `server/api/contract.post.ts`, `chooseContract`/`selectContract` в `clients.ts` | выбор соглашения в корзине (#46): cookie `lk_contract` — подсказка, сервер берёт только соглашение из действующих у клиента сессии; цены, заявка и профиль — по выбранному |
-| `shared/delivery.ts` | ближайший рейс в бизнес-регион клиента и окно прибытия по Минску (§8 спецификации) |
+| `shared/delivery.ts` | ближайший рейс и окно прибытия по Минску (§8 спецификации): ключ графика по приоритету — город адреса → зона доставки клиента 1С как город («Брест город/район» → Брест, `regionKey`) → GUID региона |
 | `server/utils/{delivery,deliverySync,deliveriesTab}.ts`, `server/tasks/sync/{schedule,trips}.ts`, `server/api/b24/deliveries.post.ts` | доставка ведётся только в 1С: график по регионам (раз в час) и задания на перевозку (раз в 10 минут) в базу ЛК; рейс заказа клиенту; вкладка «Ближайшие доставки» на странице приложения в коробке |
 | `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |
 | `server/services/b24Orders.ts` | сделка с товарами (идемпотентно по `ORIGIN_ID`), стадии воронки, комментарий в ленте, дело «перезвонить» |

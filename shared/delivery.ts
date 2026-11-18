@@ -82,17 +82,25 @@ export const regionKey = (s: string) => s.trim().toLowerCase().replace(/ё/g, '�
 const sameRegion = (a: string, b: string) => regionKey(a) === regionKey(b)
 
 /**
- * Ближайший рейс, на который заявка ещё успевает. `region` — ключ графика или несколько кандидатов:
- * бизнес-регион 1С (GUID) или город адреса (график из env, `parseScheduleEnv`). Нет региона, графика
- * или рейсов на 4 недели — null.
+ * Ближайший рейс, на который заявка ещё успевает. `region` — ключ графика или кандидаты ПО ПРИОРИТЕТУ:
+ * город адреса → название зоны доставки клиента (зона = город) → GUID региона 1С. Берётся первый
+ * кандидат, для которого нашёлся рейс: зона не перебивает город адреса более ранним днём.
+ * Нет региона, графика или рейсов на 4 недели — null.
  */
 export function nextDelivery(schedules: TripSchedule[], region: string | null | undefined | (string | null | undefined)[], now: Date): DeliverySlot | null {
-  const keys = (Array.isArray(region) ? region : [region]).filter((r): r is string => !!r && !!r.trim())
-  if (!keys.length) return null
+  for (const k of (Array.isArray(region) ? region : [region])) {
+    if (!k || !k.trim()) continue
+    const slot = nextDeliveryFor(schedules, k, now)
+    if (slot) return slot
+  }
+  return null
+}
+
+function nextDeliveryFor(schedules: TripSchedule[], key: string, now: Date): DeliverySlot | null {
   const today = minskDate(now.getTime())
   let best: DeliverySlot | null = null
   for (const s of schedules) {
-    if (!keys.some(k => sameRegion(s.region, k)) || s.weekdays.length === 0) continue
+    if (!sameRegion(s.region, key) || s.weekdays.length === 0) continue
     for (let d = 0; d <= LOOKAHEAD_DAYS; d++) {
       const date = minskDate(minskMidnight(today) + d * DAY_MS + 12 * 3_600_000)
       if (!s.weekdays.includes(isoWeekday(date)) || s.exceptions.includes(date)) continue
