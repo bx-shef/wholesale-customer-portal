@@ -40,4 +40,8 @@ describe('города клиента для «Доставки» (2026-11-18)',
     expect(calendarCities(schedules, [], 'Иваново').byRegion).toBe(true)
     expect(calendarCities(schedules, [], null).byRegion).toBe(false)
   })
+  it('одинаковый адрес дважды — в «Куда возим» один раз', () => {
+    const a = { city: '', address: 'г. Иваново, ул. Ленина, 1' }
+    expect(calendarCities(schedules, [a, a], null).addresses).toHaveLength(1)
+  })
 })

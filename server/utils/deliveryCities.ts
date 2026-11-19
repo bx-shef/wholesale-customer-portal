@@ -20,7 +20,9 @@ export function calendarCities(schedules: TripSchedule[], addresses: { city: str
     const column = a.city.trim()
     const inText = column ? null : cityInText(schedules, a.address)
     const city = column || inText || ''
-    list.push({ address: a.address.trim(), city: city || null, source: column ? 'column' : inText ? 'text' : 'none' })
+    // Один и тот же адрес в 1С бывает записан дважды (фактический и доставки) — показываем один раз.
+    if (!list.some(x => x.address === a.address.trim()))
+      list.push({ address: a.address.trim(), city: city || null, source: column ? 'column' : inText ? 'text' : 'none' })
     if (city) cities.add(city)
     else if (a.address.trim()) unknown.push(a.address.trim())
   }

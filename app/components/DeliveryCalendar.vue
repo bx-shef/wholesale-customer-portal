@@ -35,8 +35,9 @@ const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
     <p class="font-semibold first-letter:uppercase">
       {{ monthTitle }}
     </p>
-    <div class="grid grid-cols-7 gap-1 text-xs">
-      <div v-for="w in WEEKDAYS" :key="w" class="text-center text-description py-1">
+    <!-- Сетка календаря: линии — фон контейнера в зазорах между белыми клетками. -->
+    <div class="grid grid-cols-7 gap-px text-xs rounded-lg overflow-hidden border border-(--ui-color-divider-default) bg-(--ui-color-divider-default)">
+      <div v-for="(w, k) in WEEKDAYS" :key="w" class="text-center py-1.5 font-semibold bg-(--ui-color-bg-content-secondary)" :class="k > 4 ? 'text-description' : ''">
         {{ w }}
       </div>
       <template v-for="(week, i) in weeks" :key="i">
@@ -47,15 +48,16 @@ const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
           :disabled="!isDelivery(c)"
           :aria-label="isDelivery(c) ? fullDay(c.date) : undefined"
           :data-testid="isDelivery(c) ? 'delivery-day' : undefined"
-          class="min-w-0 min-h-11 sm:min-h-24 rounded-md border p-1 text-left flex flex-col gap-1 overflow-hidden"
+          class="min-w-0 min-h-11 sm:min-h-24 p-1.5 text-left flex flex-col gap-1 overflow-hidden"
           :class="[
-            isDelivery(c) && anyOpen(c) ? 'border-(--ui-color-accent-soft-border-blue) bg-(--ui-color-accent-soft-blue-3) cursor-pointer' : 'border-default',
-            !c.inRange || (isDelivery(c) && !anyOpen(c)) ? 'opacity-50' : '',
-            selected?.date === c.date ? 'ring-2 ring-(--ui-color-accent-main-primary)' : '',
+            isDelivery(c) && anyOpen(c) ? 'bg-(--ui-color-accent-soft-blue-3) cursor-pointer' : 'bg-(--ui-color-bg-content-primary)',
+            !c.inRange ? 'text-description' : '',
+            isDelivery(c) && !anyOpen(c) ? 'opacity-60' : '',
+            selected?.date === c.date ? 'ring-2 ring-inset ring-(--ui-color-accent-main-primary)' : '',
           ]"
           @click="picked = c.date"
         >
-          <span class="font-semibold">{{ dayNum(c) }}</span>
+          <span class="font-semibold" :class="c.date === from ? 'inline-flex size-6 items-center justify-center rounded-full bg-(--ui-color-accent-main-primary) text-white' : ''">{{ dayNum(c) }}</span>
           <span v-if="isDelivery(c)" class="sm:hidden size-2 rounded-full self-center" :class="anyOpen(c) ? 'bg-(--ui-color-accent-main-primary)' : 'bg-(--ui-color-base-6)'" />
           <span v-for="x in c.day?.cities ?? []" :key="x.city" class="hidden sm:flex flex-col leading-tight" :class="x.open ? '' : 'line-through'">
             <b class="truncate">{{ x.city }}</b>
