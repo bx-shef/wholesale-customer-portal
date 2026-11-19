@@ -222,3 +222,29 @@ export function deliveryView(status: string, ownDays: number, cities: number): D
   if (ownDays > 0) return 'own'
   return cities > 0 ? 'general' : 'no-city'
 }
+
+/** Клетка календаря доставок: день недели в сетке; `day` — данные дня из графика, если день в окне. */
+export interface CalendarCell { date: string, inRange: boolean, past: boolean, day: CalendarDay | null }
+
+/**
+ * Сетка календаря доставок (2026-11-19): недели пн–вс от понедельника первой недели окна до
+ * воскресенья последней. Клетки вне окна `inRange: false`, дни раньше сегодня — `past`.
+ * `from` — первый день окна (сегодня), `count` — сколько дней в окне.
+ */
+export function calendarWeeks(from: string, count: number, days: CalendarDay[]): CalendarCell[][] {
+  const byDate = new Map(days.map(d => [d.date, d]))
+  const start = minskMidnight(from) - (isoWeekday(from) - 1) * DAY_MS
+  const last = minskMidnight(from) + (count - 1) * DAY_MS
+  const end = last + (7 - isoWeekday(minskDate(last + 12 * 3_600_000))) * DAY_MS
+  const weeks: CalendarCell[][] = []
+  for (let t = start; t <= end; t += 7 * DAY_MS) {
+    const week: CalendarCell[] = []
+    for (let i = 0; i < 7; i++) {
+      const date = minskDate(t + i * DAY_MS + 12 * 3_600_000)
+      const inRange = date >= from && minskMidnight(date) <= last
+      week.push({ date, inRange, past: date < from, day: inRange ? byDate.get(date) ?? null : null })
+    }
+    weeks.push(week)
+  }
+  return weeks
+}
