@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Last reviewed: 2026-11-13
+> Last reviewed: 2026-11-19
 
 ЛК для опта: B2B-кабинет клиентов поставщика с Битрикс24 (коробка) и 1С. Инструкция менеджерам — `docs/STAFF_GUIDE.md`. Описание —
 `docs/project.md`, ТЗ — `docs/spec.md`, план — `docs/plan.md`.
@@ -65,6 +65,9 @@ make help             # цели сервера (docs/DEPLOY.md)
 | `shared/cart.ts`, `server/utils/orders.ts`, `orderApi.ts`, `clients.ts` | правила корзины, расчёт и отправка заявки, клиенты 1С (договор, адреса); `mergeCartLines` — «Повторить» заявку в корзину, `isUnavailableProblem` — что уходит кнопкой «Убрать недоступные» и не входит в итог (#153) |
 | `shared/orderList.ts`, `server/api/orders/index.get.ts`, `app/pages/orders.vue` | «Мои заявки»: вкладки «В работе»/«Выполненные», страницы по 20, компания — только из сессии (`ordersPage`), кнопка «Повторить» (#153) |
 | `shared/contractChoice.ts`, `server/api/contract.post.ts`, `chooseContract`/`selectContract` в `clients.ts` | выбор соглашения в корзине (#46): cookie `lk_contract` — подсказка, сервер берёт только соглашение из действующих у клиента сессии; цены, заявка и профиль — по выбранному |
+| `formatMoney` в `app/utils/format.ts` | суммы «524,16 руб.»: ЛК только в белорусских рублях, другая валюта — кодом; запросов в портал нет |
+| `shared/supplier.ts` | реквизиты поставщика (АльгенаЛайт, только расчётные счета) — константа для карточки в «Профиле» |
+| `app/components/DeliveryCalendar.vue` | календарь доставок раздела «Доставка»: недели пн–вс (`calendarWeeks`), на телефоне — точки и список дня; сверху «Куда возим» — адреса и источник города (`calendarCities`) |
 | `shared/delivery.ts` | ближайший рейс и окно прибытия по Минску (§8 спецификации): ключ графика по приоритету — город адреса → зона доставки клиента 1С как город («Брест город/район» → Брест, `regionKey`) → GUID региона |
 | `server/utils/{delivery,deliverySync,deliveriesTab}.ts`, `server/tasks/sync/{schedule,trips}.ts`, `server/api/b24/deliveries.post.ts` | доставка ведётся только в 1С: график по регионам (раз в час) и задания на перевозку (раз в 10 минут) в базу ЛК; рейс заказа клиенту; вкладка «Ближайшие доставки» на странице приложения в коробке |
 | `server/utils/rateLimit.ts` | лимит частоты на процесс (заявки, пересчёт корзины, звонок) |

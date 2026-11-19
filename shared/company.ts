@@ -8,5 +8,4 @@ export const COMPANY = {
     { days: 'Пн–Пт', time: '8:30–17:30' },
     { days: 'Сб–Вс', time: 'выходной' },
   ],
-  site: 'https://algena.by',
 } as const

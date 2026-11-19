@@ -1,6 +1,15 @@
-/** Деньги и количества для экранов: русская локаль, валюта из ответа 1С (BYN). */
-export const formatMoney = (value: number, currency: string) =>
-  new Intl.NumberFormat('ru-RU', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
+const NBSP = '\u00A0'
+
+/**
+ * Деньги для экранов (2026-11-19, решение владельца): ЛК работает в белорусских рублях и пишет их
+ * как Битрикс24 — «524,16 руб.»: разряды ru-RU (неразрывный пробел), запятая, 2 знака, «руб.» через
+ * неразрывный пробел. Другая валюта — кодом. Запросов в портал нет.
+ */
+export function formatMoney(value: number, currency: string): string {
+  const number = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0)
+  const code = (currency ?? '').trim().toUpperCase()
+  return code === 'BYN' ? `${number}${NBSP}руб.` : code ? `${number}${NBSP}${code}` : number
+}
 
 export const formatQty = (value: number, unit: string) =>
   `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(value)} ${unit}`

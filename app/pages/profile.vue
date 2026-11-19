@@ -1,11 +1,27 @@
 <!-- Профиль: договор из 1С и менеджер — «Позвонить» открывает звонилку телефона. -->
 <script setup lang="ts">
+import { SUPPLIER } from '~~/shared/supplier'
 useHead({ title: 'Профиль' })
 
 const { data, error } = await useFetch('/api/profile', { headers: useRequestHeaders(['cookie']) })
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
-const money = (v: number, currency: string) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency }).format(v)
+const money = formatMoney
+// Реквизиты поставщика — константа (shared/supplier.ts), без запросов в портал.
+const supplier = SUPPLIER
+const showAllAccounts = ref(false)
+const accounts = computed(() => {
+  const all = supplier.accounts
+  return showAllAccounts.value ? all : all.slice(0, 2)
+})
+const copied = ref('')
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = text
+  }
+  catch { /* без буфера обмена — значение всё равно выделяется целиком */ }
+}
 const date = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Europe/Minsk' })
 
 const calling = ref(false)
@@ -88,6 +104,37 @@ async function requestCallback() {
             </p>
           </B24Card>
         </template>
+        <B24Card data-testid="supplier">
+          <div class="flex flex-col gap-2 text-xs">
+            <p class="font-semibold text-sm">
+              Реквизиты поставщика
+            </p>
+            <p class="text-sm">
+              {{ supplier.name }}
+            </p>
+            <p v-if="supplier.unp">
+              <span class="text-description">УНП:</span> <span class="select-all font-mono">{{ supplier.unp }}</span>
+            </p>
+            <p v-if="supplier.address">
+              <span class="text-description">Юридический адрес:</span> {{ supplier.address }}
+            </p>
+            <template v-if="supplier.accounts.length">
+              <p class="font-semibold mt-1">
+                Расчётные счета
+              </p>
+              <div v-for="a in accounts" :key="a.account" class="flex flex-col gap-0.5" data-testid="supplier-account">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="select-all font-mono text-sm break-all">{{ a.account }}</span>
+                  <B24Button size="xs" color="air-tertiary" :label="copied === a.account ? 'Скопировано' : 'Копировать'" @click="copy(a.account)" />
+                </div>
+                <span class="text-description">{{ [a.bank, a.bik && `БИК ${a.bik}`, a.currency].filter(Boolean).join(' · ') }}</span>
+              </div>
+              <div v-if="supplier.accounts.length > 2">
+                <B24Button size="xs" color="air-tertiary" :label="showAllAccounts ? 'Свернуть' : `Показать все (${supplier.accounts.length})`" @click="showAllAccounts = !showAllAccounts" />
+              </div>
+            </template>
+          </div>
+        </B24Card>
       </B24Container>
   </AppPage>
 </template>

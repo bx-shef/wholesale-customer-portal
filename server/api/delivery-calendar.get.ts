@@ -1,7 +1,8 @@
 // Раздел «Доставка» (#79): дни приезда машины в города адресов клиента на две недели и отсечка
 // приёма заявок по городам адресов клиента из сессии; плюс общий график по всем городам графика и
-// адреса без города — чтобы объяснить клиенту, почему своих дней нет.
-import { deliveryCalendar } from '../../shared/delivery'
+// адреса без города — чтобы объяснить клиенту, почему своих дней нет. `addresses`, `region`, `byRegion`
+// — блок «Куда возим»: что заведено в 1С и откуда взят город.
+import { deliveryCalendar, minskToday } from '../../shared/delivery'
 import { calendarCities } from '../utils/deliveryCities'
 
 export const CLIENT_CALENDAR_DAYS = 14
@@ -16,12 +17,13 @@ export default defineEventHandler(async (event) => {
     schedules = await cachedSchedules()
   }
   catch {
-    const { cities, noCity } = calendarCities([], client.addresses, client.regionName)
-    return { status: 'unavailable' as const, days: [], cities, general: [], noCity }
+    const { cities, noCity, addresses, byRegion } = calendarCities([], client.addresses, client.regionName)
+    return { status: 'unavailable' as const, days: [], cities, general: [], noCity, addresses, region: client.regionName, byRegion }
   }
-  const { cities, noCity } = calendarCities(schedules, client.addresses, client.regionName)
+  const { cities, noCity, addresses, byRegion } = calendarCities(schedules, client.addresses, client.regionName)
   const now = new Date()
+  const today = minskToday(now)
   const days = cities.length ? deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS, cities).filter(d => d.cities.length) : []
   const general = deliveryCalendar(schedules, now, CLIENT_CALENDAR_DAYS).filter(d => d.cities.length)
-  return { status: 'ok' as const, days, cities, general, noCity }
+  return { status: 'ok' as const, days, cities, general, noCity, addresses, region: client.regionName, byRegion, today }
 })

@@ -5,5 +5,5 @@ const label = computed(() => stockLabel(props.available, props.unit))
 </script>
 
 <template>
-  <B24Badge size="sm" :color="label.color" :label="label.text" />
+  <B24Badge size="sm" class="max-w-full" :color="label.color" :label="label.text" />
 </template>

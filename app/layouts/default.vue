@@ -85,8 +85,8 @@ function setInStock(v: boolean) {
 }
 
 // Меню компании внизу — как меню пользователя в templates-dashboard: профиль, справка, выход.
+// Названия компании сверху нет (2026-11-19): длинное обрезалось, а компания и так видна на кнопке.
 const companyMenu = computed<DropdownMenuItem[][]>(() => [
-  [{ type: 'label', label: me.value?.company.title || '' }],
   [
     { label: 'Профиль', icon: PersonIcon, to: '/profile', onSelect: close },
     { label: 'Справка', icon: QuestionIcon, to: '/help', onSelect: close },
