@@ -1,17 +1,17 @@
 <!-- Профиль: договор из 1С и менеджер — «Позвонить» открывает звонилку телефона. -->
 <script setup lang="ts">
+import { SUPPLIER } from '~~/shared/supplier'
 useHead({ title: 'Профиль' })
 
 const { data, error } = await useFetch('/api/profile', { headers: useRequestHeaders(['cookie']) })
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
 const money = formatMoney
-// Реквизиты поставщика из «моей компании» портала; нет ответа — блока нет.
-const { data: supplierData } = await useFetch('/api/supplier', { headers: useRequestHeaders(['cookie']) })
-const supplier = computed(() => supplierData.value?.supplier ?? null)
+// Реквизиты поставщика — константа (shared/supplier.ts), без запросов в портал.
+const supplier = SUPPLIER
 const showAllAccounts = ref(false)
 const accounts = computed(() => {
-  const all = supplier.value?.accounts ?? []
+  const all = supplier.accounts
   return showAllAccounts.value ? all : all.slice(0, 2)
 })
 const copied = ref('')
@@ -104,7 +104,7 @@ async function requestCallback() {
             </p>
           </B24Card>
         </template>
-        <B24Card v-if="supplier" data-testid="supplier">
+        <B24Card data-testid="supplier">
           <div class="flex flex-col gap-2 text-xs">
             <p class="font-semibold text-sm">
               Реквизиты поставщика
