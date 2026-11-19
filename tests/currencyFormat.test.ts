@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applyFormatString, formatAmountWithPortal, parseCurrencyList } from '../shared/currencyFormat'
-import { cached, loadSupplierRequisites, requisiteAddress, settlementAccounts } from '../server/utils/portalDirectory'
+import { applyFormatString, decodeEntities, formatAmountWithPortal, parseCurrencyList } from '../shared/currencyFormat'
+import { formatMoney, meCurrencies } from '../app/utils/format'
+import { cached, loadSupplierRequisites, meRoute, requisiteAddress, settlementAccounts, supplierRoute } from '../server/utils/portalDirectory'
 
 const NB = ' '
 // Шаблоны, замеренные на живом портале (client-bank-alfa-by, 2026-09-16).
@@ -87,5 +88,64 @@ describe('реквизиты поставщика', () => {
     const call = vi.fn(async () => ({ items: [] }))
     expect(await loadSupplierRequisites(call)).toBeNull()
     expect(call).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('замечания ревью PR #164', () => {
+  it('сущности: шестнадцатеричная, вне диапазона, суррогат, неизвестная, без двойного раскрытия', () => {
+    expect(decodeEntities('&#x20BD;')).toBe('₽')
+    expect(decodeEntities('&#99999999;')).toBe('&#99999999;')
+    expect(decodeEntities('&#xD800;')).toBe('&#xD800;')
+    expect(decodeEntities('&foo;')).toBe('&foo;')
+    expect(decodeEntities('&amp;#8381;')).toBe('&#8381;')
+  })
+  it('битый шаблон портала не роняет страницу', () => {
+    expect(formatAmountWithPortal(5, 'BYN', { BYN: { formatString: '# &#99999999;', decimals: 2 } })).toBe('5,00 &#99999999;')
+    expect(formatAmountWithPortal(5, 'BYN', { BYN: { formatString: '#', decimals: 999 } })).toBe('5,00 руб.')
+  })
+  it('мусор в DECIMALS — два знака', () => {
+    const f = parseCurrencyList([{ CURRENCY: 'BYN', FORMAT_STRING: '# руб.', DECIMALS: 'abc' }, { CURRENCY: 'USD', FORMAT_STRING: '$#', DECIMALS: '-1' }, { CURRENCY: 'EUR', FORMAT_STRING: '#', DECIMALS: '1.5' }])
+    expect([f.BYN.decimals, f.USD.decimals, f.EUR.decimals]).toEqual([2, 2, 2])
+  })
+  it('formatMoney берёт справочник из payload «кто вошёл»', () => {
+    expect(meCurrencies({ me: { currencies: { RUB: { formatString: '# &#8381;', decimals: 2 } } } })).toEqual({ RUB: { formatString: '# &#8381;', decimals: 2 } })
+    expect(meCurrencies({ me: { currencies: [] } })).toBeUndefined()
+    expect(meCurrencies(undefined)).toBeUndefined()
+    expect(formatMoney(524.16, 'BYN')).toBe('524,16 руб.')
+  })
+  it('без сессии — 401 у «кто вошёл» и реквизитов, портал не трогается', async () => {
+    const company = vi.fn()
+    const load = vi.fn()
+    expect(await meRoute(null, { company, stockMode: 'stock', currencies: () => ({}) })).toEqual({ status: 401 })
+    expect(await supplierRoute(null, load)).toEqual({ status: 401 })
+    expect(company).not.toHaveBeenCalled()
+    expect(load).not.toHaveBeenCalled()
+    const ok = await meRoute({ companyId: 5, contactId: 9 }, { company: async () => ({ id: 5, title: 'Ключ' }), stockMode: 'stock', currencies: () => formats })
+    expect(ok).toEqual({ status: 200, body: { currencies: formats, stockMode: 'stock', contactId: 9, company: { id: 5, title: 'Ключ' } } })
+    expect(await supplierRoute({}, async () => null)).toEqual({ status: 200, body: { supplier: null } })
+  })
+  it('кэш: после сбоя — прежнее хорошее значение; параллельные — одна загрузка; peek не ждёт', async () => {
+    let t = 0
+    const load = vi.fn().mockResolvedValueOnce('good').mockRejectedValueOnce(new Error('нет'))
+    const get = cached(load, 'empty', () => t)
+    expect(get.peek()).toBe('empty')
+    expect(await Promise.all([get(), get(), get()])).toEqual(['good', 'good', 'good'])
+    expect(load).toHaveBeenCalledTimes(1)
+    t = 2 * 3_600_000
+    expect(await get()).toBe('good')
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+  it('синхронный бросок загрузки — сбой, а не исключение', async () => {
+    const get = cached(() => { throw new Error('не подключён') }, 'empty')
+    expect(await get()).toBe('empty')
+  })
+  it('несколько «моих компаний» — наименьший id', async () => {
+    const call = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === 'crm.item.list') return { items: [{ id: 9, title: 'Б' }, { id: 3, title: 'А' }] }
+      if (method === 'crm.requisite.list') return [{ ID: String((params.filter as { ENTITY_ID: number }).ENTITY_ID) }]
+      return []
+    })
+    await loadSupplierRequisites(call)
+    expect(call.mock.calls[1][1]).toMatchObject({ filter: { ENTITY_ID: 3 } })
   })
 })

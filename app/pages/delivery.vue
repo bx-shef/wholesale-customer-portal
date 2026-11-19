@@ -6,14 +6,15 @@ useHead({ title: 'Доставка' })
 
 interface AddressCity { address: string, city: string | null, source: 'column' | 'text' | 'none' }
 const headers = useRequestHeaders(['cookie'])
-const { data, error } = await useFetch<{ status: string, days: CalendarDay[], cities: string[], general?: CalendarDay[], noCity?: string[], addresses?: AddressCity[], region?: string | null, byRegion?: boolean }>('/api/delivery-calendar', { headers })
+const { data, error } = await useFetch<{ status: string, days: CalendarDay[], cities: string[], general?: CalendarDay[], noCity?: string[], addresses?: AddressCity[], region?: string | null, byRegion?: boolean, today?: string }>('/api/delivery-calendar', { headers })
 if (error.value?.statusCode === 401) await navigateTo('/login')
 
 const view = computed(() => data.value ? deliveryView(data.value.status, data.value.days.length, data.value.cities.length) : null)
 const showAll = ref(false)
 const general = computed(() => view.value === 'own' && !showAll.value ? [] : (data.value?.general ?? []))
-// Окно графика — с сегодняшнего дня по Минску на две недели (как CLIENT_CALENDAR_DAYS на сервере).
-const today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
+// Окно графика — с «сегодня» сервера по Минску на две недели (как CLIENT_CALENDAR_DAYS на сервере):
+// часы клиента могут врать, а дни графика посчитаны от серверного «сегодня».
+const today = computed(() => data.value?.today ?? data.value?.days[0]?.date ?? '')
 const SOURCE: Record<AddressCity['source'], string> = { column: 'из адреса', text: 'из текста адреса', none: 'город не определён' }
 </script>
 
@@ -53,11 +54,11 @@ const SOURCE: Record<AddressCity['source'], string> = { column: 'из адрес
         color="air-primary"
         title="В ближайшие две недели рейсов в ваши города нет. Дату доставки согласует менеджер после заявки."
       />
-      <DeliveryCalendar v-if="data?.days?.length" :days="data.days" :from="today" :count="14" />
+      <DeliveryCalendar v-if="data?.days?.length && today" :days="data.days" :from="today" :count="14" />
       <div v-if="view === 'own' && data?.general?.length">
         <B24Button color="air-tertiary" :label="showAll ? 'Свернуть весь график' : 'Показать весь график'" @click="showAll = !showAll" />
       </div>
-      <template v-if="general.length">
+      <template v-if="general.length && today">
         <h2 class="font-semibold mt-2">
           Общий график доставки
         </h2>

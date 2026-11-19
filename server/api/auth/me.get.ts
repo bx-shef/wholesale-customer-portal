@@ -1,10 +1,14 @@
-import { portalCurrencies } from '../../utils/portalDirectory'
+// Кто вошёл: компания и контакт. 401 — сессии нет или ключ отозван (страница уводит на /login).
+// stockMode — можно ли заказывать сверх остатка (ORDER_STOCK_MODE); currencies — форматы валют портала
+// из кэша без ожидания портала (пусто — суммы запасным видом).
+import { meRoute, portalCurrencies } from '../../utils/portalDirectory'
 
-// Кто вошёл: компания и контакт; `currencies` — форматы валют портала для сумм на экранах. 401 — сессии нет или ключ отозван (страница уводит на /login).
 export default defineEventHandler(async (event) => {
-  const session = await resolveClientSession(event)
-  if (!session) throw createError({ statusCode: 401 })
-  const company = await useAccessDirectory().getCompany(session.companyId)
-  // stockMode — можно ли заказывать сверх остатка: по нему страницы ограничивают «+» (ORDER_STOCK_MODE).
-  return { currencies: await portalCurrencies(), stockMode: readServerEnv().orderStockMode, contactId: session.contactId, company: company ? { id: company.id, title: company.title } : { id: session.companyId, title: '' } }
+  const r = await meRoute(await resolveClientSession(event), {
+    company: id => useAccessDirectory().getCompany(id),
+    stockMode: readServerEnv().orderStockMode,
+    currencies: portalCurrencies.peek,
+  })
+  if (r.status === 401) throw createError({ statusCode: 401 })
+  return r.body
 })

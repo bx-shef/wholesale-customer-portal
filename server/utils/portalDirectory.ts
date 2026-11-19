@@ -11,19 +11,32 @@ import { parseCurrencyList, type PortalCurrencyFormats } from '../../shared/curr
 const HOUR = 3_600_000
 const RETRY = 5 * 60_000
 
-/** Кэш с разным сроком для успеха и сбоя: сбой портала не должен дёргать его на каждой странице. */
+/**
+ * Кэш справочника портала. `get()` — дождаться значения; `peek()` — отдать то, что есть, без ожидания
+ * (пусто — `empty`), и при устаревшем кэше запустить загрузку в фоне. Успех держится час; сбой —
+ * прежнее хорошее значение (если было) и повтор через 5 минут. Загрузка одна на всех: параллельные
+ * запросы ждут тот же промис, а не идут в портал толпой.
+ */
 export function cached<T>(load: () => Promise<T>, empty: T, now: () => number = Date.now) {
-  let entry: { value: T, until: number } | undefined
-  return async (): Promise<T> => {
-    if (entry && entry.until > now()) return entry.value
-    try {
-      entry = { value: await load(), until: now() + HOUR }
+  let value: T = empty
+  let until = 0
+  let pending: Promise<T> | null = null
+  const get = (): Promise<T> => {
+    if (until > now()) return Promise.resolve(value)
+    if (!pending) {
+      // `then(load)`: синхронный бросок (портал не подключён) — тоже сбой, а не исключение наружу.
+      pending = Promise.resolve().then(load).then(
+        (v) => { value = v; until = now() + HOUR; return v },
+        () => { until = now() + RETRY; return value },
+      ).finally(() => { pending = null })
     }
-    catch {
-      entry = { value: empty, until: now() + RETRY }
-    }
-    return entry.value
+    return pending
   }
+  const peek = (): T => {
+    if (until <= now()) void get()
+    return value
+  }
+  return Object.assign(get, { peek })
 }
 
 export interface SupplierAccount { account: string, bank: string, bik: string, currency: string }
@@ -72,7 +85,9 @@ export async function loadCurrencyFormats(call: B24Call): Promise<PortalCurrency
  */
 export async function loadSupplierRequisites(call: B24Call): Promise<SupplierRequisites | null> {
   const mine = await call('crm.item.list', { entityTypeId: 4, filter: { isMyCompany: 'Y' }, select: ['id', 'title'] }) as { items?: Array<{ id: number, title?: string }> }
-  const company = mine?.items?.[0]
+  // На портале поставщика «моя компания» одна — АльгенаЛайт; если их станет несколько, берём
+  // наименьший id, чтобы реквизиты не менялись от порядка ответа.
+  const company = [...(mine?.items ?? [])].sort((a, b) => Number(a.id) - Number(b.id))[0]
   if (!company) return null
   const reqs = await call('crm.requisite.list', { filter: { ENTITY_TYPE_ID: 4, ENTITY_ID: company.id }, select: ['ID', 'RQ_COMPANY_NAME', 'RQ_COMPANY_FULL_NAME', 'RQ_INN'] }) as Array<Record<string, unknown>>
   const req = Array.isArray(reqs) ? reqs[0] : undefined
@@ -96,3 +111,22 @@ export async function loadSupplierRequisites(call: B24Call): Promise<SupplierReq
 const call = () => useB24Call()
 export const portalCurrencies = cached(() => loadCurrencyFormats(call()), {} as PortalCurrencyFormats)
 export const supplierRequisites = cached(() => loadSupplierRequisites(call()), null as SupplierRequisites | null)
+
+type Routed<T> = { status: 401 } | { status: 200, body: T }
+
+/** «Кто вошёл»: без сессии — 401; валюты — из кэша без ожидания портала (`peek`). */
+export async function meRoute<S extends { companyId: number, contactId: number }>(session: S | null, deps: {
+  company: (id: number) => Promise<{ id: number, title: string } | null>
+  stockMode: string
+  currencies: () => PortalCurrencyFormats
+}): Promise<Routed<{ currencies: PortalCurrencyFormats, stockMode: string, contactId: number, company: { id: number, title: string } }>> {
+  if (!session) return { status: 401 }
+  const company = await deps.company(session.companyId)
+  return { status: 200, body: { currencies: deps.currencies(), stockMode: deps.stockMode, contactId: session.contactId, company: company ? { id: company.id, title: company.title } : { id: session.companyId, title: '' } } }
+}
+
+/** Реквизиты поставщика: без сессии — 401, портал не ответил — `supplier: null`. */
+export async function supplierRoute(session: unknown, load: () => Promise<SupplierRequisites | null>): Promise<Routed<{ supplier: SupplierRequisites | null }>> {
+  if (!session) return { status: 401 }
+  return { status: 200, body: { supplier: await load() } }
+}

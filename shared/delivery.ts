@@ -248,3 +248,6 @@ export function calendarWeeks(from: string, count: number, days: CalendarDay[]):
   }
   return weeks
 }
+
+/** Сегодняшняя дата по Минску `ГГГГ-ММ-ДД` — первый день окна календаря доставок. */
+export const minskToday = (now: Date) => minskDate(now.getTime())

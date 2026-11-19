@@ -50,10 +50,14 @@ const NAMED_ENTITIES: Record<string, string> = {
  * `&#8381;`, но гарантий, что не появится `&#x20BD;`, нет никаких.
  */
 export function decodeEntities(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replace(/&([a-z]+);/gi, (whole, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? whole)
+  // Один проход одной регуляркой: раскрытое значение не раскрывается повторно (`&amp;#8381;` → `&#8381;`,
+  // а не `₽`). Кодовая точка вне 0..0x10FFFF или суррогат — сущность остаётся как есть, без исключения.
+  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (whole, hex?: string, dec?: string, name?: string) => {
+    if (name) return NAMED_ENTITIES[name.toLowerCase()] ?? whole
+    const code = hex ? Number.parseInt(hex, 16) : Number.parseInt(dec!, 10)
+    if (!Number.isSafeInteger(code) || code < 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) return whole
+    return String.fromCodePoint(code)
+  })
 }
 
 /** Число по-русски: неразрывный пробел между разрядами, запятая перед копейками. */
@@ -89,7 +93,13 @@ export function applyFormatString(formatString: string, formattedNumber: string)
 export function formatAmountWithPortal(amount: number, currency: string, formats?: PortalCurrencyFormats): string {
   const code = (currency ?? '').trim().toUpperCase()
   const known = code && formats ? formats[code] : undefined
-  if (known && known.formatString) return applyFormatString(known.formatString, formatNumber(amount, known.decimals))
+  if (known && known.formatString) {
+    // Справочник приходит с портала: любой сбой разбора шаблона — запасной вид, а не упавшая страница.
+    try {
+      return applyFormatString(known.formatString, formatNumber(amount, known.decimals))
+    }
+    catch { /* запасной вид ниже */ }
+  }
   const number = formatNumber(amount, 2)
   if (code === 'BYN') return `${number} руб.`
   return code ? `${number} ${code}` : number

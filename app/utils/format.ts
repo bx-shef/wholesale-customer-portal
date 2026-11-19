@@ -1,13 +1,20 @@
 import { formatAmountWithPortal, type PortalCurrencyFormats } from '~~/shared/currencyFormat'
 
+/** Справочник валют из данных «кто вошёл» в payload (`payload.data.me.currencies`). */
+export function meCurrencies(payloadData: unknown): PortalCurrencyFormats | undefined {
+  const me = (payloadData as { me?: { currencies?: unknown } } | null | undefined)?.me
+  const c = me?.currencies
+  return c && typeof c === 'object' && !Array.isArray(c) ? c as PortalCurrencyFormats : undefined
+}
+
 /**
  * Деньги для экранов — как валюту показывает сам Битрикс24 («524,16 руб.», 2026-11-19). Справочник
  * приходит в «кто вошёл» (`/api/auth/me`, ключ `me`); не прочитан — запасной вид `formatAmountWithPortal`.
  */
 export const formatMoney = (value: number, currency: string) => {
   // В юнит-тестах вне Nuxt авто-импорта нет — тогда запасной вид.
-  const me = (typeof tryUseNuxtApp === 'function' ? tryUseNuxtApp() : null)?.payload.data.me as { currencies?: PortalCurrencyFormats } | undefined
-  return formatAmountWithPortal(value, currency, me?.currencies)
+  const data = (typeof tryUseNuxtApp === 'function' ? tryUseNuxtApp() : null)?.payload.data
+  return formatAmountWithPortal(value, currency, meCurrencies(data))
 }
 
 export const formatQty = (value: number, unit: string) =>
