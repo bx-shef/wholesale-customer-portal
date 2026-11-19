@@ -1,6 +1,14 @@
-/** Деньги и количества для экранов: русская локаль, валюта из ответа 1С (BYN). */
-export const formatMoney = (value: number, currency: string) =>
-  new Intl.NumberFormat('ru-RU', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
+import { formatAmountWithPortal, type PortalCurrencyFormats } from '../../shared/currencyFormat'
+
+/**
+ * Деньги для экранов — как валюту показывает сам Битрикс24 («524,16 руб.», 2026-11-19). Справочник
+ * приходит в «кто вошёл» (`/api/auth/me`, ключ `me`); не прочитан — запасной вид `formatAmountWithPortal`.
+ */
+export const formatMoney = (value: number, currency: string) => {
+  // В юнит-тестах вне Nuxt авто-импорта нет — тогда запасной вид.
+  const me = (typeof tryUseNuxtApp === 'function' ? tryUseNuxtApp() : null)?.payload.data.me as { currencies?: PortalCurrencyFormats } | undefined
+  return formatAmountWithPortal(value, currency, me?.currencies)
+}
 
 export const formatQty = (value: number, unit: string) =>
   `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(value)} ${unit}`
