@@ -240,26 +240,29 @@ function resetAll() {
           :actions="filters.q || activeCount || filters.section || filters.inStock ? [{ label: 'Сбросить', onClick: resetAll }] : []"
         />
 
-        <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <li v-for="it in items" :key="it.guid">
+        <!-- Колонки — по ширине самой области каталога, а не окна: при открытом сайдбаре карточки не сжимаются (2026-11-19). -->
+        <ul class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]">
+          <li v-for="it in items" :key="it.guid" class="min-w-0">
             <!-- Карточка — не ссылка целиком: внутри кнопки корзины, а кнопка в ссылке — невалидная разметка. -->
-            <B24Card class="h-full">
-              <div class="flex gap-3">
+            <B24Card class="h-full min-w-0 overflow-hidden">
+              <div class="flex min-w-0 gap-3">
                 <NuxtLink :to="`/product/${it.guid}`" class="shrink-0">
                   <img v-if="it.image" :src="it.image" alt="" onerror="this.remove()" loading="lazy" class="size-16 rounded object-contain bg-white">
                 </NuxtLink>
                 <div class="flex min-w-0 flex-1 flex-col gap-1">
-                  <NuxtLink :to="`/product/${it.guid}`" class="font-medium leading-snug hover:underline">
+                  <NuxtLink :to="`/product/${it.guid}`" class="font-medium leading-snug break-words hover:underline">
                     {{ it.name }}
                   </NuxtLink>
                   <p class="text-xs text-(--ui-color-design-plain-na-content-secondary)">
                     {{ it.sku }} · {{ it.brand }}
                   </p>
-                  <div class="flex items-center justify-between gap-2 pt-1">
-                    <span class="flex flex-wrap items-center gap-x-2">
-                      <span class="font-semibold">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}<span class="text-xs font-normal"> / {{ it.unit }} с НДС</span></span>
-                      <B24Badge v-if="it.packLabel" color="air-secondary" size="sm" :label="it.packLabel" />
-                    </span>
+                  <!-- Цена и наличие — отдельными строками: бейдж наличия рядом с ценой вылезал за карточку. -->
+                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-1">
+                    <span class="font-semibold whitespace-nowrap">{{ it.price ? formatMoney(it.price.value, it.price.currency) : '—' }}</span>
+                    <span class="text-xs whitespace-nowrap">/ {{ it.unit }} с НДС</span>
+                    <B24Badge v-if="it.packLabel" color="air-secondary" size="sm" :label="it.packLabel" />
+                  </div>
+                  <div class="min-w-0 max-w-full">
                     <StockBadge :available="it.available" :unit="it.unit" />
                   </div>
                   <div v-if="it.price && canOrder(it.available, stockMode)" class="flex items-center gap-2 pt-1">
