@@ -1,4 +1,4 @@
-import { formatAmountWithPortal, type PortalCurrencyFormats } from '../../shared/currencyFormat'
+import { formatAmountWithPortal, type PortalCurrencyFormats } from '~~/shared/currencyFormat'
 
 /**
  * Деньги для экранов — как валюту показывает сам Битрикс24 («524,16 руб.», 2026-11-19). Справочник
