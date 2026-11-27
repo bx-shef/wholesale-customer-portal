@@ -22,7 +22,7 @@ function onec(over: { existing?: object[], agreementPartner?: string, agreementS
       Catalog_СоглашенияСКлиентами: [{ Ref_Key: G(3), Статус: over.agreementStatus ?? 'Действует', Партнер_Key: over.agreementPartner ?? PARTNER, Валюта_Key: G(40), Договор_Key: G(4), Организация_Key: G(5), ВидЦен_Key: G(30) }],
       Catalog_Контрагенты: [{ Ref_Key: G(2), DeletionMark: true }, { Ref_Key: G(6) }],
       Catalog_Склады: [{ Ref_Key: G(50), Description: 'Основной склад' }],
-      Catalog_Партнеры: [{ Ref_Key: PARTNER, ЗонаДоставки_Key: G(51) }],
+      Catalog_Партнеры: [{ Ref_Key: PARTNER, ЗонаДоставки_Key: G(51), ОсновнойМенеджер_Key: G(71) }],
       Catalog_Партнеры_КонтактнаяИнформация: [{ Ref_Key: PARTNER, LineNumber: '1', Тип: 'Адрес', Вид_Key: G(60), Город: 'Минск', Представление: 'ул. Ленина, 1' }],
       Catalog_Номенклатура: (over.items ?? [G(10)]).map(g => ({ Ref_Key: g, СтавкаНДС_Key: G(90) })),
       ...over.extra,
@@ -57,6 +57,18 @@ describe('заказ по OData: тело документа', () => {
     expect((b.Товары as object[])[0]).toMatchObject({ LineNumber: '1', Номенклатура_Key: G(10), Количество: 3, Цена: 12.5, Сумма: 37.5, СтавкаНДС_Key: G(90), ВидЦены_Key: G(30) })
   })
 
+  it('менеджер заказа — основной менеджер партнёра; пустой не уходит', () => {
+    const refs = { agreement: { Ref_Key: G(3) }, counterparty: G(6), warehouse: G(50), zone: null, address: 'a', vat: new Map() }
+    expect(orderBody(req(), { ...refs, manager: G(70) }, opts.now)).toMatchObject({ Менеджер_Key: G(70) })
+    expect(orderBody(req(), refs, opts.now)).not.toHaveProperty('Менеджер_Key')
+  })
+
+  it('дата заявки ЛК — в «Дата по данным клиента»; без даты поле не уходит', () => {
+    const refs = { agreement: { Ref_Key: G(3) }, counterparty: G(6), warehouse: G(50), zone: null, address: 'a', vat: new Map() }
+    expect(orderBody({ ...req(), requestDate: '2026-11-25' }, refs, opts.now)).toMatchObject({ ДатаПоДаннымКлиента: '2026-11-25T00:00:00' })
+    expect(orderBody(req(), refs, opts.now)).not.toHaveProperty('ДатаПоДаннымКлиента')
+  })
+
   it('маркер — только безопасные символы: кавычка в фильтр не попадёт', () => {
     expect(orderMarker('deal-15')).toBe('ЛК-deal-15')
     expect(orderMarker('1'.repeat(37))).toHaveLength(40)
@@ -71,7 +83,7 @@ describe('заказ по OData: запись', () => {
     const r = await createOdataOrder(t.client, req(), opts)
     expect(r).toEqual({ orderGuid: G(77), number: 'ЗК-0001', status: 'new', items: [{ itemGuid: G(10), price: 12.5, reserved: 3 }] })
     const post = t.calls.find(c => c.method === 'POST')!
-    expect(post.body).toMatchObject({ Контрагент_Key: G(6), ЗонаДоставки_Key: G(51), Склад_Key: G(50) })
+    expect(post.body).toMatchObject({ Контрагент_Key: G(6), ЗонаДоставки_Key: G(51), Менеджер_Key: G(71), Склад_Key: G(50) })
     expect(post.url).toBe('https://x/b/odata/standard.odata/Document_ЗаказКлиента?$format=json')
     expect(post.headers).toMatchObject({ 'content-type': 'application/json', 'authorization': 'Bearer t' })
     expect(t.calls.filter(c => c.method === 'POST')).toHaveLength(1)

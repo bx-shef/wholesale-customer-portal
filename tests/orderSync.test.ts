@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { migrate } from '../server/db/sqlite'
 import { createClientStore } from '../server/utils/clients'
 import { createOrderStore, resendPauseMs, type OrderDraft } from '../server/utils/orders'
-import { applyOnecStatuses, deliveryDateFor, isForward, reportToCrm, syncOrders, type OrderSyncDeps } from '../server/utils/orderSync'
+import { applyOnecStatuses, deliveryDateFor, isForward, requestDay, reportToCrm, syncOrders, type OrderSyncDeps } from '../server/utils/orderSync'
 import type { DealStage } from '../server/services/b24Orders'
 import type { OrderStatusRowT } from '../shared/onec/schemas'
 
@@ -274,5 +274,13 @@ describe('причина ошибки 1С в журнале (стенд 2026-10-
     expect(errKind(new OnecError('contract', '1C OData order:\n delivery address not found'))).toBe('OnecError(contract): 1C OData order: delivery address not found')
     expect(errKind(new OnecError('http', 'x', 400))).toBe('OnecError(http 400): x')
     expect(errKind(new TypeError('секрет'))).toBe('TypeError')
+  })
+})
+
+describe('requestDay', () => {
+  it('день заявки по Минску: поздний вечер UTC — уже следующий день', () => {
+    expect(requestDay('2026-11-25T10:00:00.000Z')).toBe('2026-11-25')
+    expect(requestDay('2026-11-25T22:30:00.000Z')).toBe('2026-11-26')
+    expect(requestDay('не дата')).toBeUndefined()
   })
 })

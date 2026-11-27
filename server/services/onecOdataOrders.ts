@@ -50,6 +50,8 @@ export interface OrderRefs {
   counterparty: string
   warehouse: string
   zone: string | null
+  /** Основной менеджер партнёра: без него 1С ставит в заказ автора — служебного пользователя REST. */
+  manager?: string | null
   address: string
   vat: Map<string, string>
 }
@@ -98,6 +100,7 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
       Склад_Key: refs.warehouse,
       Валюта_Key: a.Валюта_Key,
       ЗонаДоставки_Key: refs.zone,
+      Менеджер_Key: refs.manager,
     }),
     ХозяйственнаяОперация: a.ХозяйственнаяОперация || DEFAULT_OPERATION,
     // Прайс 1С — без НДС (замечание клиента 2026-11-10): налог сверху, суммы строк — как считает 1С.
@@ -106,6 +109,7 @@ export function orderBody(o: z.infer<typeof OrderRequest>, refs: OrderRefs, now:
     АдресДоставки: o.deliveryAddressText || refs.address,
     Комментарий: o.comment ?? '',
     НомерПоДаннымКлиента: orderMarker(o.externalId),
+    ...(o.requestDate ? { ДатаПоДаннымКлиента: `${o.requestDate}T00:00:00` } : {}),
     Товары: o.items.map((it, i) => ({
       LineNumber: String(i + 1),
       Номенклатура_Key: it.itemGuid,
@@ -231,7 +235,7 @@ export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof Or
     warehouse = [...map].find(([, n]) => want.includes(n.trim().toLowerCase()))?.[0] ?? null
   }
   if (!warehouse) throw new OnecError('contract', '1C OData order: warehouse not found')
-  const p = await one<{ ЗонаДоставки_Key?: string }>(client, 'Catalog_Партнеры', `Ref_Key eq guid'${partner}'`, 'Ref_Key,ЗонаДоставки_Key')
+  const p = await one<{ ЗонаДоставки_Key?: string, ОсновнойМенеджер_Key?: string }>(client, 'Catalog_Партнеры', `Ref_Key eq guid'${partner}'`, 'Ref_Key,ЗонаДоставки_Key,ОсновнойМенеджер_Key')
   const contacts = await listAll<ContactRow>(client, 'Catalog_Партнеры_КонтактнаяИнформация', { $select: 'Ref_Key,LineNumber,Тип,Вид_Key,Представление,Город', $filter: `Ref_Key eq guid'${partner}'` }, 'Ref_Key,LineNumber')
   const want = assertGuid(o.deliveryAddressGuid).toLowerCase()
   const row = contacts.find(c => (c.Тип ?? '').trim() === 'Адрес' && addressGuid(partner, ref(c.Вид_Key) ?? '', `${(c.Город ?? '').trim()}|${(c.Представление ?? '').trim()}`) === want)
@@ -248,7 +252,7 @@ export async function resolveOrderRefs(client: ODataClient, o: z.infer<typeof Or
   }
   const missing = items.filter(g => !found.has(g))
   if (missing.length) throw new OnecError('contract', `1C OData order: items not found: ${missing.length}`)
-  return { agreement, counterparty, warehouse, zone: ref(p?.ЗонаДоставки_Key), address: (row.Представление ?? '').trim(), vat }
+  return { agreement, counterparty, warehouse, zone: ref(p?.ЗонаДоставки_Key), manager: ref(p?.ОсновнойМенеджер_Key), address: (row.Представление ?? '').trim(), vat }
 }
 
 /**
