@@ -136,6 +136,8 @@ export const OrderRequest = z.object({
   /** Новый адрес, которого нет у партнёра в 1С (#124): текстом в «Адрес доставки» заказа; GUID — запасной адрес партнёра. */
   deliveryAddressText: z.string().trim().min(1).max(300).optional(),
   deliveryDate: DateOnly,
+  /** День заявки в ЛК (по Минску): в 1С — «Дата по данным клиента» рядом с номером `ЛК-…`. */
+  requestDate: DateOnly.optional(),
   comment: z.string().max(2000).default(''),
   /** Заказ со стенда проверки (docs/onec-contract.md §1.7): 1С проверяет всё, документ не создаёт или помечает. */
   test: z.boolean().optional(),

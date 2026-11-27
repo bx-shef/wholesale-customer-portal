@@ -158,6 +158,7 @@ export async function syncOrders(deps: OrderSyncDeps): Promise<SyncSummary> {
           deliveryAddressGuid: addressGuid,
           ...(isNew ? { deliveryAddressText: row.address_text } : {}),
           deliveryDate: deliveryDateFor(from, now),
+          requestDate: requestDay(row.created_at),
           comment: row.comment,
           items: items.map(i => ({ itemGuid: i.guid, qty: i.qty, price: i.price, vatRate: i.vatRate })),
         })
@@ -222,4 +223,11 @@ export async function reportToCrm(deps: Pick<OrderSyncDeps, 'orders' | 'b24'>, g
     }
   }
   return reported
+}
+
+/** День заявки по Минску из `created_at` (ISO): «Дата по данным клиента» в заказе 1С. Не дата — не передаём. */
+export function requestDay(createdAt: string): string | undefined {
+  const t = Date.parse(createdAt)
+  if (Number.isNaN(t)) return undefined
+  return new Date(t + MINSK_OFFSET_MIN * 60_000).toISOString().slice(0, 10)
 }

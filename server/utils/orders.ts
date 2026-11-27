@@ -153,6 +153,7 @@ export interface OrderRowDb {
   comment: string
   deal_id: number | null
   status: string
+  created_at: string
   updated_at: string
   sending_at: string | null
   onec_order_guid: string | null
